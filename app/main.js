@@ -49,7 +49,7 @@ const SAMPLE = {
   width: 30, length: 48, eaveHeight: 12, pitch: 4, overhang: 12, postSpacing: 8, trussSpacing: 4,
   openings: [
     { type: 'slider', wall: 'front', offset: 18, width: 12, height: 10 },
-    { type: 'walk', wall: 'front', offset: 6.5, width: 3, height: 6 + 8 / 12 },
+    { type: 'walk', wall: 'front', offset: 5, width: 3, height: 6 + 8 / 12 },
     { type: 'window', wall: 'front', offset: 34, width: 4, height: 3.5, sill: 3 },
     { type: 'window', wall: 'front', offset: 41, width: 4, height: 3.5, sill: 3 },
   ],
