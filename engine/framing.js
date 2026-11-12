@@ -37,7 +37,18 @@ export function placePosts(b, rules) {
         spots = spots.filter((s) => !inside.includes(s));
         for (const jamb of [o.startIn, o.endIn]) {
           const atCorner = jamb < 6 || jamb > len - 6;
-          if (!(isGable(wall) && atCorner) && !spots.some((s) => Math.abs(s - jamb) < 6)) spots.push(jamb);
+          if (isGable(wall) && atCorner) continue;
+          const near = spots.find((s) => Math.abs(s - jamb) < 6);
+          if (near === undefined) { spots.push(jamb); continue; }
+          // A regular post a few inches off the door's edge serves as the door post, so the door should meet it.
+          if (Math.abs(near - jamb) > EPS && !warnings.some((w) => w.openingIndex === o.index)) {
+            const what = o.type === 'slider' ? 'sliding door' : 'overhead door';
+            warnings.push({
+              code: 'door-edge-off-post', wall, postAtIn: near, openingIndex: o.index, slideByIn: near - jamb,
+              text: `The ${what} on the ${wall} wall stops ${feetInches(Math.abs(near - jamb))} short of the post at ${feetInches(near)}. `
+                + `Slide it ${feetInches(Math.abs(near - jamb))} to meet the post, or move the post.`,
+            });
+          }
         }
       } else {
         for (const s of inside) {

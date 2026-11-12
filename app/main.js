@@ -391,7 +391,7 @@ document.addEventListener('click', (e) => {
   if ('dismiss' in d) { ui.problem = ''; return paint(); }
   if ('fix' in d) {
     const w = result.warnings[0], o = state.openings[w.openingIndex];
-    return setOpening(w.openingIndex, { offset: o.offset + w.slideByIn / 12 }, `${TYPE_NAMES[o.type]} moved to clear the post`);
+    return setOpening(w.openingIndex, { offset: o.offset + w.slideByIn / 12 }, `${TYPE_NAMES[o.type]} moved to ${w.code === 'door-edge-off-post' ? 'meet' : 'clear'} the post`);
   }
 });
 
