@@ -67,3 +67,13 @@ test('freight and extra lines add flat dollars and are not taxed', () => {
   assert.deepEqual(more.extraLines, [{ name: 'Permit', amount: 125.5 }]);
   assert.equal(more.total, Math.round((base.total + 475.5) * 100) / 100);
 });
+
+test('invoice file for QuickBooks', async () => {
+  const { invoiceCsv } = await import('../pricing.js');
+  const file = invoiceCsv([['Building Package', 24000], ['Freight And Delivery', 0], ['Labor, Crew', 5000.5]], { number: '1001', customer: 'Smith, 30 x 48', date: new Date(2026, 10, 2) });
+  assert.deepEqual(file.trimEnd().split('\n'), [
+    'Invoice number,Customer,Invoice date,Due date,Item description,Item amount',
+    '1001,"Smith, 30 x 48",11/02/2026,11/02/2026,Building Package,24000.00',
+    '1001,"Smith, 30 x 48",11/02/2026,11/02/2026,"Labor, Crew",5000.50',
+  ]);
+});

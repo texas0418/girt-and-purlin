@@ -177,3 +177,12 @@ export const toCsv = (table) => table.map((row) => row.map(csvCell).join(',')).j
 export function priceListCsv(catalog) {
   return toCsv([['Item', 'Size', 'Unit', 'Price'], ...catalog.rows.map((r) => [r.item, r.size, r.unit, r.price])]);
 }
+
+// One invoice as a file QuickBooks Online can import. The first four columns
+// and Item amount are the ones Intuit marks as required; every row of an
+// invoice repeats its number, customer and dates. Lines are [description, dollars].
+export function invoiceCsv(lines, { number, customer, date }) {
+  const day = `${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')}/${date.getFullYear()}`;
+  return toCsv([['Invoice number', 'Customer', 'Invoice date', 'Due date', 'Item description', 'Item amount'],
+    ...lines.filter(([, amount]) => amount > 0).map(([what, amount]) => [number, customer, day, day, what, amount.toFixed(2)])]);
+}

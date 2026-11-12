@@ -2,7 +2,7 @@ import { design } from '../engine/design.js';
 import { feetInches } from '../engine/stock.js';
 import { dxf } from '../engine/dxf.js';
 import { edgeOverhangIn, eaveDropIn } from '../engine/building.js';
-import { priceJob, parsePriceList, priceListCsv, toCsv, SAMPLE_CATALOG } from '../engine/pricing.js';
+import { priceJob, parsePriceList, priceListCsv, toCsv, invoiceCsv, SAMPLE_CATALOG } from '../engine/pricing.js';
 import { createView } from './scene.js';
 import { jobs, templates, company, priceLists, newId, designOf, STARTING_POINTS } from './office.js';
 import { floorPlan } from './plan.js';
@@ -453,6 +453,9 @@ function leftPanel() {
       ${row('Materials', priced.materials)}${row('Markup', priced.markup)}${row('Sales Tax', priced.tax)}${row('Labor', priced.labor)}
       ${priced.freight ? row('Freight And Delivery', priced.freight) : ''}${priced.extraLines.map((e) => row(esc(e.name), e.amount)).join('')}${row('Total', priced.total, true)}
       ${priced.unpriced ? `<p class="hint go">${priced.unpriced} ${priced.unpriced === 1 ? 'line has' : 'lines have'} no price in this list and count as zero.</p>` : ''}
+      <h2>For Your Books</h2>
+      <div class="seg stack"><button data-invoice>Save Invoice For QuickBooks</button></div>
+      <p class="hint">A file QuickBooks Online takes in under Settings, Import Data, Invoices. It carries the same lines the customer sees, never your costs. The customer is filled in with the job name and the due date with today, so change both as you import. QuickBooks shows a step for matching columns. Sales tax goes in as a plain line, so leave QuickBooks' own tax off for this invoice.</p>
       <h2>Options For The Customer</h2>${alts}
       ${(state.alts?.length ?? 0) < ALT_NAMES.length ? `<div class="seg"><button data-altadd>${state.alts ? 'Add Another Option' : 'Offer Good, Better, Best'}</button></div>` : ''}
       <p class="hint">Each option is its own version of this building. Changes go to the one that is showing and the others stay as they are. The proposal prints them all with their totals.</p>`;
@@ -631,6 +634,11 @@ document.addEventListener('click', (e) => {
   if ('engineer' in d) return openEngineer();
   const fileStem = state.job.replace(/[^\w]+/g, '-').replace(/^-|-$/g, '').toLowerCase() || 'building';
   if ('engdata' in d) return download(`${fileStem}-data.json`, engineerData(), 'application/json');
+  if ('invoice' in d) {
+    const now = new Date();
+    const number = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
+    return download(`${fileStem}-invoice.csv`, invoiceCsv(priceLines(priced), { number, customer: state.job, date: now }));
+  }
   if ('dxf' in d) return download(`${fileStem}.dxf`, dxf(result), 'application/dxf');
   if ('send' in d) return openSend();
   if ('copy' in d) {
