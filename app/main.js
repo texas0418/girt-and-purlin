@@ -53,7 +53,7 @@ const SAMPLE = {
     { type: 'window', wall: 'front', offset: 34, width: 4, height: 3.5, sill: 3 },
     { type: 'window', wall: 'front', offset: 41, width: 4, height: 3.5, sill: 3 },
   ],
-  colors: { walls: '#8b908d', roof: '#2f3336', trim: '#e6e6e0', wainscot: '#2f3336', wainscotOn: true },
+  colors: { walls: '#8b908d', roof: '#2f3336', trim: '#e6e6e0', wainscot: '#2f3336', wainscotOn: true, gutters: false, truck: true },
   pricing: { markupPct: 0, taxPct: 0, laborPerSqFt: 0 },
 };
 
@@ -213,6 +213,9 @@ function leftPanel() {
       <div class="swatches">${PALETTE.map(([n, hex]) =>
         `<button data-color="${part}" data-hex="${hex}" title="${n}" aria-label="${title} ${n}" style="background:${hex}" class="${state.colors[part] === hex ? 'on' : ''}"></button>`).join('')}</div>
       ${part === 'wainscot' ? `<div class="seg"><button data-wainscot="1" class="${state.colors.wainscotOn ? 'on' : ''}">Wainscot On</button><button data-wainscot="0" class="${state.colors.wainscotOn ? '' : 'on'}">Wainscot Off</button></div>` : ''}`).join('')
+      + '<h2>Extras</h2>' + [['gutters', 'Gutters'], ['truck', 'Pickup']].map(([key, title]) =>
+        `<div class="seg"><button data-extra="${key}" data-on="1" class="${state.colors[key] ? 'on' : ''}">${title} On</button><button data-extra="${key}" data-on="0" class="${state.colors[key] ? '' : 'on'}">${title} Off</button></div>`).join('')
+      + '<p class="hint">Gutters are in the picture only for now. They are not in the material list or the price. The pickup is there for scale.</p>'
       + '<p class="hint">Sample colors. Each supplier\'s own color chart comes with its catalog.</p>';
   }
   if (ui.step === 'Price') {
@@ -375,6 +378,10 @@ document.addEventListener('click', (e) => {
   if (d.wainscot) {
     return apply({ colors: { ...state.colors, wainscotOn: d.wainscot === '1' } }, `Wainscot ${d.wainscot === '1' ? 'on' : 'off'}`);
   }
+  if (d.extra) {
+    const on = d.on === '1';
+    return apply({ colors: { ...state.colors, [d.extra]: on } }, `${d.extra === 'gutters' ? 'Gutters' : 'Pickup'} ${on ? 'on' : 'off'}`);
+  }
   if ('dismiss' in d) { ui.problem = ''; return paint(); }
   if ('fix' in d) {
     const w = result.warnings[0], o = state.openings[w.openingIndex];
@@ -491,3 +498,4 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
 paint();
 view.resize();
 view.update(result, state.colors);
+if (shared) view.spin();
