@@ -112,6 +112,9 @@ out('index.html', page('index.html', 'Girt And Purlin, Pole Barn Design Software
       <a href="what-it-does.html#paper"><strong>Prints The Paperwork</strong><span>A proposal for the customer, a cut list for the crew and framing drawings of every wall. The material order saves as a spreadsheet for the yard.</span><i>&rarr;</i></a>
       <a href="what-it-does.html#link"><strong>Sends The Customer A Link</strong><span>They open it on a phone and turn their own building around. Your costs and markup stay with you.</span><i>&rarr;</i></a>
       <a href="tablet.html"><strong>Works On A Tablet Without Signal</strong><span>Open it once and it keeps working in a field with no bars. The job saves on the tablet.</span><i>&rarr;</i></a>
+      <a href="what-it-does.html#shapes"><strong>Draws More Than A Plain Box</strong><span>Gable, single slope and gambrel roofs. Lean-tos and porches on any wall, open walls, lofts, interior walls, cupolas, skylights and eave lights.</span><i>&rarr;</i></a>
+      <a href="what-it-does.html#lot"><strong>Checks The Lot And The Tractor</strong><span>Type in the lot and the setbacks and it draws the site plan. Type in the size of a tractor or camper and it tells you which door it fits through.</span><i>&rarr;</i></a>
+      <a href="what-it-does.html#sale"><strong>Closes The Sale</strong><span>Offer good, better and best side by side, set the payment schedule, and let the customer sign on the screen.</span><i>&rarr;</i></a>
       <a href="what-it-does.html#engineer"><strong>Packs A Folder For Your Engineer</strong><span>It does not do the engineering. It hands your engineer the size, the framing as drawn, every post and opening, and the drawings.</span><i>&rarr;</i></a>
     </div>
   </section>
@@ -119,7 +122,7 @@ out('index.html', page('index.html', 'Girt And Purlin, Pole Barn Design Software
   <section>
     <div class="two">
       <div><h3>No Charge For Shops Of Ten Or Fewer</h3><p>Builders and yards with ten people or fewer use the whole program without paying. Larger companies buy a license. The code is public for anyone to read, which makes it source-available.</p><a href="license.html">Read The License</a></div>
-      <div><h3>Where It Stands Today</h3><p>Version 1 draws rectangular buildings with a gable roof, with lean-tos and porches on any wall. Its framing rules are still being checked against published builder guides, and the drawings say so until that is done.</p><a href="what-it-does.html#notyet">See What Is Not In It Yet</a></div>
+      <div><h3>Where It Stands Today</h3><p>It draws gable, single slope and gambrel buildings up to 100 feet wide, with lean-tos, porches, lofts, interior walls, liner and insulation. Its framing rules are still being checked against published builder guides, and the drawings say so until that is done.</p><a href="what-it-does.html#notyet">See What Is Not In It Yet</a></div>
     </div>
   </section>
 </div>`));
@@ -131,8 +134,20 @@ ${head('What It Does', 'Everything on this page was made by the program from one
   <section>
     <h2>Lay Out The Building</h2>
     <div class="split">
-      <div class="prose"><p>Set the width, length, wall height, roof pitch and overhang with arrow buttons. Pick the post spacing and truss spacing. Click a wall to put a sliding door, overhead door, walk door or window on it, then nudge it along the wall.</p><p>The building redraws in 3D as you go, in your colors. Switch to Framing to see the posts, girts, trusses and purlins with the steel off, or to Floor Plan for the view from above.</p></div>
+      <div class="prose"><p>Set the width, length, wall height, roof pitch and overhang with arrow buttons. Pick the post spacing and truss spacing, for the whole building or wall by wall. Click a wall to put a sliding door, overhead door, walk door or window on it, then nudge it along the wall.</p><p>The building redraws in 3D as you go, in your colors. Switch to Framing to see the posts, girts, trusses and purlins with the steel off, or to Floor Plan for the view from above.</p></div>
       <div class="sheet"><b>Floor Plan</b>${floorPlan(result, true)}</div>
+    </div>
+  </section>
+
+  <section id="shapes">
+    <h2>Draws More Than A Plain Box</h2>
+    <div class="rows still">
+      <div><strong>Three Roof Shapes</strong><span>Gable, single slope and gambrel. The side overhang and the end overhang are set apart from each other.</span></div>
+      <div><strong>Lean-Tos And Porches</strong><span>On any wall, open or closed in, each with its own depth, pitch and drop below the main eave.</span></div>
+      <div><strong>Open Walls</strong><span>Leave any wall open for a hay shed or a pavilion. The steel, girts and skirt come off that wall and a beam goes over the posts of an open side wall.</span></div>
+      <div><strong>Inside The Building</strong><span>Interior walls with doors, a loft at either end, steel liner on the walls and ceiling, and insulation for the roof, the walls and the ceiling.</span></div>
+      <div><strong>Light And Trim</strong><span>Clear skylight panels in the roof, a 3 foot strip of clear eave light panels at the top of a side wall, wainscot, cupolas and gutters.</span></div>
+      <div><strong>In The Ground</strong><span>Posts set in the ground or on brackets, with footings, concrete and a slab counted in the material list.</span></div>
     </div>
   </section>
 
@@ -147,7 +162,7 @@ ${head('What It Does', 'Everything on this page was made by the program from one
   <section id="price">
     <h2>Prices From Your Own List</h2>
     <div class="split">
-      <div class="prose"><p>The material list counts posts by length, trusses, skirt boards, girts, purlins, headers, roof and wall panels, trim and screws. It updates on every change and marks the lines that moved.</p><p>A price list is a spreadsheet saved as CSV with four columns: Item, Size, Unit and Price. Load yours, set your markup, your labor per square foot and your sales tax, and the total follows. The program ships with sample prices so the screen has something to add up. They are not real quotes.</p></div>
+      <div class="prose"><p>The material list counts posts by length, trusses, skirt boards, girts, purlins, headers, roof and wall panels, trim, screws, concrete, gutters and everything you add inside. It updates on every change and marks the lines that moved.</p><p>A price list is a spreadsheet saved as CSV with four columns: Item, Size, Unit and Price. Load yours, or several from different suppliers, set your markup, your labor per square foot and your sales tax, and the total follows. The program ships with sample prices so the screen has something to add up. They are not real quotes.</p></div>
       <div class="list"><b>Material List, With Sample Prices</b>
         ${listRows(framing)}
         <div><span></span><span>and ${result.items.length - framing.length} more lines</span><span></span></div>
@@ -167,6 +182,27 @@ ${head('What It Does', 'Everything on this page was made by the program from one
     </div>
   </section>
 
+  <section id="lot">
+    <h2>Checks The Lot And The Tractor</h2>
+    <div class="rows still">
+      <div><strong>Site Plan</strong><span>Type in the lot width and depth, where the building sits and the setbacks your permit office gave you. It draws the lot with the distance to every line and says so when the building crosses a setback.</span></div>
+      <div><strong>Test Fit</strong><span>Type in the length, width and height of a tractor, camper or boat from its spec sheet. It tells you which doors it goes through, how much room is to spare, and whether it clears the loft and the interior walls.</span></div>
+      <div><strong>Site Conditions</strong><span>Record the snow load, wind speed, exposure and frost depth the permit office gave you. They print on the engineer package, and a frost depth past 4 feet sets the posts deeper.</span></div>
+    </div>
+  </section>
+
+  <section id="sale">
+    <h2>Closes The Sale</h2>
+    <div class="rows still">
+      <div><strong>Good, Better, Best</strong><span>Keep up to four versions of one job and print them side by side on the proposal, each with its own price.</span></div>
+      <div><strong>Payment Schedule And Signature</strong><span>Set the deposit and the payments. The customer signs on the screen with a finger or a mouse and the signature prints on the proposal.</span></div>
+      <div><strong>Templates And Saved Jobs</strong><span>Keep the buildings you sell often as templates and start each new job from one.</span></div>
+      <div><strong>A Designer For Your Own Website</strong><span>Put a simple version of the designer on your site. A customer lays out a building and sends it to you. They never see your costs.</span></div>
+      <div><strong>For Your Books And Your CAD</strong><span>The job saves as an invoice file for QuickBooks and the drawings save as DXF for a CAD program.</span></div>
+      <div><strong>Delivery Check Sheet</strong><span>A printed list of every item on the order with a box to tick as it comes off the truck.</span></div>
+    </div>
+  </section>
+
   <section id="link">
     <h2>Sends The Customer A Link</h2>
     <div class="prose wide"><p>Send To Customer makes a link you paste into a text or an email. The customer opens a look-only page with their building in 3D, the floor plan, what is included and the total. Your costs, your markup and the material list are not in it. The picture at the top of the <a href="index.html">front page</a> is that same view.</p></div>
@@ -174,16 +210,19 @@ ${head('What It Does', 'Everything on this page was made by the program from one
 
   <section id="engineer">
     <h2>Packs A Folder For Your Engineer</h2>
-    <div class="prose wide"><p>The program does not size anything for load. It has no footings, no bracing, no truss design and no connection details. What it does is save your engineer the first hour: a package with the building's size, the framing as drawn with room to mark changes, a table of every post and every opening, the post layout and the framing drawings, plus a data file they can load into their own software.</p></div>
+    <div class="prose wide"><p>The program does not size anything for load. It counts footings and a slab as material only, and it has no bracing, no truss design and no connection details. What it does is save your engineer the first hour: a package with the building's size, the framing as drawn with room to mark changes, a table of every post and every opening, the site conditions you typed in, the post layout and the framing drawings, plus a data file they can load into their own software.</p></div>
   </section>
 
   <div id="notyet">${notYet([
-    'Any main roof other than a gable. Lean-tos and porches are in, each on one wall with a single-slope roof; porches that wrap a corner and hip roofs are not.',
-    'Buildings that need a post longer than 24 feet. With 12 foot walls and a 4/12 roof, 50 feet wide works and 60 feet wide is turned away with a reason. So are walls over 20 feet tall.',
-    'Engineering of any kind. Snow, wind and soil are your engineer\'s call.',
+    'Hip roofs, dormers, awnings and porches that wrap a corner.',
+    'Buildings that need a post longer than 24 feet. Widths run to 100 feet, but a wall near 24 feet tall is turned away with a reason.',
+    'Engineering of any kind. The snow, wind and frost figures you type in are recorded and passed to your engineer. Nothing is sized from them except post depth for deep frost.',
+    'Truss types. Every truss is counted as one ordered item at the span and pitch, with no choice of scissor, attic or others.',
+    'Coverings other than ribbed steel panels. No shingles, standing seam, lap siding or board and batten.',
+    'Stud-framed walls and buildings joined to one another.',
+    'Eave lights on the printed framing drawings. They show in the 3D picture and the material list.',
     'Panel counts that subtract door and window openings. Today the walls are counted solid.',
     'Excel files. Price lists load as CSV.',
-    'Gutters in the material list. They show in the picture only.',
     'Typing a number straight into a size box. Sizes move by arrow buttons.',
   ])}</div>
 </div>`));
@@ -213,14 +252,15 @@ ${head('For Lumber Yards', 'Hand your builders a designer that adds up jobs at y
   <section>
     <div class="rows still">
       <div><strong>Your Price List, In Their Hands</strong><span>Fill in one spreadsheet with four columns: Item, Size, Unit and Price. Save it as CSV and send it to your builders. They load it once and every job adds up at your prices.</span></div>
+      <div><strong>A Price List For Each Builder</strong><span>Type a builder's name and a percent up or down, and the program saves a copy of your list at that builder's prices, ready to send.</span></div>
       <div><strong>An Order You Can Open In A Spreadsheet</strong><span>The material order saves as a CSV file with one line per item: quantity, item, size, length, price each and cost.</span></div>
       <div><strong>Nothing To Install</strong><span>It opens in a browser. A builder with ten people or fewer pays nothing to use it.</span></div>
       <div><strong>Your Yard's License</strong><span>A yard with ten people or fewer pays nothing. A larger yard buys a license. <a href="license.html">How the count works</a>.</span></div>
     </div>
   </section>
   ${notYet([
-    'More than one price list loaded at a time.',
-    'Your yard\'s name and logo on the designer itself.',
+        'Your yard\'s logo on the designer. Your company name and contact details print on the paperwork.',
+    'Manufacturer catalogs built in. Every item comes from the price list you load.',
     'Excel files. Price lists load as CSV.',
     'Orders sent to you from inside the program. The builder saves the order file and sends it.',
   ])}
