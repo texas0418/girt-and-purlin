@@ -8,7 +8,7 @@ Version 1 draws plain rectangular buildings with a gable roof.
 
 - Sets posts, girts, trusses and purlins from the size and spacing you pick, and warns when a door or window lands on a post.
 - Counts the material list and prices it from a CSV price list with four columns: Item, Size, Unit, Price.
-- Prints a proposal, a material order, a cut list and framing drawings of all four walls and the roof.
+- Prints a proposal, a cut list and framing drawings of all four walls and the roof, and saves the material order as a spreadsheet file.
 - Makes a look-only link for the customer that leaves out your costs and markup.
 - Works on a tablet without signal once it has been opened, and saves the job on the device.
 - Packs the building's facts and drawings into a package for your engineer.

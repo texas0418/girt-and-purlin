@@ -206,12 +206,17 @@ a.btn { display: inline-flex; align-items: center; text-decoration: none; }
 .page.eng > svg { max-height: 360px; }
 
 @media print {
-  @page { size: letter; margin: 0; }
+  /* The top and bottom margins belong to the sheet, so a table that runs on to a second sheet keeps them. */
+  @page { size: letter; margin: .3in 0; }
   html, body { height: auto; }
   body { display: block; min-width: 0; overflow: visible; background: #fff; }
   body > header, main, #proposal .bar { display: none; }
   #proposal { position: static; padding: 0; background: #fff; overflow: visible; }
-  .page { margin: 0; width: auto; min-height: 0; break-after: page; }
+  /* 850 px at 96% is the full width of a letter sheet, so a page prints as it looks on screen. */
+  .page, .page.sheet { margin: 0; width: 850px; zoom: .96; min-height: 0; padding-top: 0; padding-bottom: 0; break-after: page; }
+  .page tr, .page .sign { break-inside: avoid; }
+  .page.sheet svg { max-height: 400px; }
+  .page.eng tbody { break-inside: auto; }
   .page [contenteditable] { color: #1a1a1a; }
 }
 

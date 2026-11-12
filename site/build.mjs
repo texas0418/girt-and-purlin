@@ -109,7 +109,7 @@ out('index.html', page('index.html', 'Girt And Purlin, Pole Barn Design Software
     <div class="rows">
       <a href="what-it-does.html#posts"><strong>Catches A Post Under A Door</strong><span>Put a walk door where a post lands and it tells you in plain words, then offers to slide the door clear.</span><i>&rarr;</i></a>
       <a href="what-it-does.html#price"><strong>Prices From Your Own List</strong><span>Load a spreadsheet of your supplier's prices. Add your markup, labor and sales tax, and the total keeps up.</span><i>&rarr;</i></a>
-      <a href="what-it-does.html#paper"><strong>Prints The Paperwork</strong><span>A proposal for the customer, a material order for the yard, a cut list for the crew and framing drawings of every wall.</span><i>&rarr;</i></a>
+      <a href="what-it-does.html#paper"><strong>Prints The Paperwork</strong><span>A proposal for the customer, a cut list for the crew and framing drawings of every wall. The material order saves as a spreadsheet for the yard.</span><i>&rarr;</i></a>
       <a href="what-it-does.html#link"><strong>Sends The Customer A Link</strong><span>They open it on a phone and turn their own building around. Your costs and markup stay with you.</span><i>&rarr;</i></a>
       <a href="tablet.html"><strong>Works On A Tablet Without Signal</strong><span>Open it once and it keeps working in a field with no bars. The job saves on the tablet.</span><i>&rarr;</i></a>
       <a href="what-it-does.html#engineer"><strong>Packs A Folder For Your Engineer</strong><span>It does not do the engineering. It hands your engineer the size, the framing as drawn, every post and opening, and the drawings.</span><i>&rarr;</i></a>
@@ -158,7 +158,7 @@ ${head('What It Does', 'Everything on this page was made by the program from one
 
   <section id="paper">
     <h2>Prints The Paperwork</h2>
-    <div class="prose wide"><p>Four things print, or save as PDF: a proposal with the picture, the spec, the price and a signature line; a material order for the yard; a cut list for the crew; and framing drawings of all four walls and the roof.</p></div>
+    <div class="prose wide"><p>Three things print, or save as PDF: a proposal with the picture, the spec, the price and a signature line; a cut list for the crew; and framing drawings of all four walls and the roof. The material order for the yard saves as a spreadsheet file.</p></div>
     <div class="out even">
       <div class="sheet"><b>Left End Framing</b>${drawing(result, 'left', true)}</div>
       <div class="sheet"><b>Cut List, First Lines</b>
@@ -213,7 +213,7 @@ ${head('For Lumber Yards', 'Hand your builders a designer that adds up jobs at y
   <section>
     <div class="rows still">
       <div><strong>Your Price List, In Their Hands</strong><span>Fill in one spreadsheet with four columns: Item, Size, Unit and Price. Save it as CSV and send it to your builders. They load it once and every job adds up at your prices.</span></div>
-      <div><strong>An Order You Can Read</strong><span>The Material Order sheet lists every post, board, panel, trim piece and bag of screws by size and length, grouped the way a yard pulls it.</span></div>
+      <div><strong>An Order You Can Open In A Spreadsheet</strong><span>The material order saves as a CSV file with one line per item: quantity, item, size, length, price each and cost.</span></div>
       <div><strong>Nothing To Install</strong><span>It opens in a browser. A builder with ten people or fewer pays nothing to use it.</span></div>
       <div><strong>Your Yard's License</strong><span>A yard with ten people or fewer pays nothing. A larger yard buys a license. <a href="license.html">How the count works</a>.</span></div>
     </div>
@@ -222,7 +222,7 @@ ${head('For Lumber Yards', 'Hand your builders a designer that adds up jobs at y
     'More than one price list loaded at a time.',
     'Your yard\'s name and logo on the designer itself.',
     'Excel files. Price lists load as CSV.',
-    'Orders sent to you from inside the program. The builder prints or saves the order and sends it.',
+    'Orders sent to you from inside the program. The builder saves the order file and sends it.',
   ])}
 </div>`));
 
