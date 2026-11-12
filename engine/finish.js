@@ -1,7 +1,7 @@
 // Everything past the bare shell: wainscot, gutters, the steel liner,
 // insulation, footings, the slab, ridge vent and skylight panels. Each part
 // is counted only when the job turns it on in its options.
-import { wallLengthIn, isOpen, closedWalls, CORNERS } from './building.js';
+import { wallLengthIn, wallTopIn, isOpen, closedWalls, litWalls, CORNERS } from './building.js';
 import { wallAreaIn } from './metal.js';
 import { add, fitStock, spans, feetInches } from './stock.js';
 import { boards, openSpans, WALL_NAMES } from './runs.js';
@@ -30,6 +30,9 @@ export function finishRuns(b, rules, posts, trusses, sheds) {
       for (const [s, e] of spans(len, openSpans(b, wall, o.wainscotIn))) {
         put('Wainscot Girts', rules.wainscotGirtSize, WALL_NAMES[wall], boards(s, e, supports, stock), 'Backs the joint between wainscot and wall steel');
       }
+    }
+    if (litWalls(b).includes(wall)) {
+      put('Eave Light Girts', rules.eaveLightGirtSize, WALL_NAMES[wall], boards(0, len, supports, stock), 'Backs the joint between the eave lights and the wall steel');
     }
     if (o.linerWalls) {
       const rows = up(b.eaveIn / rules.linerGirtSpacingIn);
@@ -101,6 +104,22 @@ export function finishParts(b, rules, { posts, trusses, sheds, wallTally, roofTa
     add(trim, 'Wainscot Trim', baseRuns(b, sheds).reduce((sum, run) => sum + pieces(run, 0), 0));
   }
 
+  // Eave lights: clear panels across the top of a side wall, with Z trim over the joint.
+  const metal = [];
+  const lit = litWalls(b);
+  let lights = 0;
+  for (const wall of lit) {
+    const len = wallLengthIn(b, wall), top = wallTopIn(b, wall, 0), joint = top - rules.eaveLightIn;
+    const name = WALL_NAMES[wall].toLowerCase();
+    if (joint < o.wainscotIn + 12) errors.push(`The ${name} is too short for eave lights, which take the top ${feetInches(rules.eaveLightIn)}.`);
+    if (b.openings.some((op) => op.wall === wall && op.sillIn + op.heightIn > joint + EPS)) errors.push(`A door or window on the ${name} reaches into the top ${feetInches(rules.eaveLightIn)}, where the eave lights go. Lower it or take the eave lights off that wall.`);
+    if (sheds.some((s) => s.wall === wall)) errors.push(`The ${name} has a lean-to or porch against it, so it cannot take eave lights.`);
+    lights += up(len / rules.panelCoverageIn);
+    add(trim, 'Eave Light Trim', pieces(len, 0));
+  }
+  if (lights) metal.push({ group: 'Metal', name: 'Eave Light Panels', size: 'clear polycarbonate', length: feetInches(rules.eaveLightIn), qty: lights, ft: rules.eaveLightIn / 12 });
+  if (lit.length && o.linerWalls) warnings.push({ code: 'eave-light-liner', text: 'The steel wall liner covers the eave lights from the inside. Stop the liner below them on site, or leave one of the two off.' });
+
   // Skylight panels take the place of roof panels on the main roof.
   let roof = roofTally;
   if (o.skylights) {
@@ -111,7 +130,6 @@ export function finishParts(b, rules, { posts, trusses, sheds, wallTally, roofTa
       warnings.push({ code: 'skylight-long', text: `The skylight panels would be ${feetInches(mainRoofPanelIn)} long. Their maker recommends no longer than ${rules.skylightMaxFt} ft.` });
     }
   }
-  const metal = [];
   if (o.skylights) metal.push({ group: 'Metal', name: 'Skylight Panels', size: 'clear polycarbonate', length: feetInches(mainRoofPanelIn), qty: o.skylights, ft: mainRoofPanelIn / 12 });
   const hasRidge = b.planes.some((p) => p.highEdge === 'ridge');
   if (o.ridgeVent && !hasRidge) warnings.push({ code: 'no-ridge', text: 'A single-slope roof has no ridge, so no ridge vent is counted.' });
@@ -214,4 +232,4 @@ export function finishParts(b, rules, { posts, trusses, sheds, wallTally, roofTa
   return { items, metal, warnings, errors, cupolas, walls, roof, wainscot, liner, trim, screws, linerSqFt, slabSqFt };
 }
 
-export const FINISH_LUMBER = ['Wainscot Girts', 'Liner Girts', 'Ceiling Joists'];
+export const FINISH_LUMBER = ['Wainscot Girts', 'Eave Light Girts', 'Liner Girts', 'Ceiling Joists'];

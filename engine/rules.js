@@ -52,6 +52,8 @@ export const defaultRules = {
   linerEndLapIn:     { value: 4,    verified: false, note: 'Lap where two ceiling liner panels meet end to end' },
   linerScrewsPerSquare: { value: 80, verified: true, source: 'Metal Sales Post Frame Install Guide (80 screws per square for 3 ft panels)' },
   ridgeVentPieceIn:  { value: 120,  verified: true, source: 'Metal Sales Post Frame Install Guide (vent in 10 ft lengths)' },
+  eaveLightIn:       { value: 36,   verified: true, note: 'Height of the clear panels under the eave; Z trim covers the joint with the wall steel below', source: 'Hansen Pole Buildings, Eave Lights (standard 36 inch length polycarbonate panels, Z trim at the top of the steel wall panels)' },
+  eaveLightGirtSize: { value: '2x4',  verified: false, note: 'One extra girt row behind the joint under the eave lights, the same as behind wainscot. No published source names this board' },
   skylightMaxFt:     { value: 24,   verified: true, source: 'Palram SunSky 9 in rib installation addendum (maximum recommended panel length 24 ft; 36 in coverage)' },
 
   gutterSectionIn:   { value: 120,  verified: true, note: 'Gutter and downspout both come in 10 ft pieces', source: 'Amerimax, Installing Metal Gutter Systems' },

@@ -55,13 +55,14 @@ const OPTION_SETS = {
   ceilingR: ['Blown Ceiling Insulation', [[0, 'None'], [19, 'R-19'], [30, 'R-30'], [38, 'R-38'], [49, 'R-49'], [60, 'R-60']]],
   footing: ['Under Each Post', [['none', 'Not Listed'], ['pad', 'Concrete Pad'], ['collar', 'Poured Collar'], ['bracket', 'Bolt-Down Bracket']]],
   slab: ['Concrete Floor', [[false, 'None'], [true, '4 in Slab']]],
+  eaveLights: ['Eave Lights', [['none', 'None'], ['front', 'Front Wall'], ['back', 'Back Wall'], ['both', 'Both Side Walls']]],
   ridgeVent: ['Ridge Vent', [[false, 'None'], [true, 'Vented Ridge']]],
   cupolas: ['Cupolas', [[false, 'None'], [true, 'On The Ridge']]],
   cupolaSizeIn: ['Cupola Size', [[0, 'Sized To The Roof'], [24, '24 in'], [36, '36 in'], [48, '48 in']]],
 };
 const ROOF_NAMES = { gable: 'Gable', mono: 'Single Slope', gambrel: 'Gambrel' };
 const roofOf = () => state.roof ?? 'gable';
-const OPTION_DEFAULTS = { wainscotIn: 36, linerWalls: false, linerCeiling: false, roofInsulation: 'none', wallInsulation: 'none', ceilingR: 0, footing: 'none', slab: false, ridgeVent: false, skylights: 0, cupolas: false, cupolaSizeIn: 0 };
+const OPTION_DEFAULTS = { wainscotIn: 36, linerWalls: false, linerCeiling: false, roofInsulation: 'none', wallInsulation: 'none', ceilingR: 0, footing: 'none', slab: false, ridgeVent: false, eaveLights: 'none', skylights: 0, cupolas: false, cupolaSizeIn: 0 };
 const WALL_FIELDS = {
   at: { label: 'From Left End', other: 'From Front Wall', step: 1, min: 2 },
   start: { label: 'Starts At', step: 1, min: 0 },
@@ -533,6 +534,8 @@ function leftPanel() {
       ${optionRow('ridgeVent')}
       <h2>Skylight Panels</h2>${stepper('data-optstep="skylights"', 'Clear Roof Panels', String(opt('skylights')), '', false)}
       <p class="hint">Each skylight panel takes the place of one steel roof panel, eave to ridge.</p>
+      ${optionRow('eaveLights', true)}
+      <p class="hint">A strip of clear panels 3 ft tall across the top of a side wall, in place of the steel there. Doors and windows on that wall have to stop below it.</p>
       ${state.colors.wainscotOn ? optionRow('wainscotIn') : ''}
       <p class="hint">Wainscot and gutters are switched on the Colors step.</p>`;
   }
@@ -632,6 +635,7 @@ function finishRows() {
   if (opt('footing') !== 'none') rows.push(`${optName('footing')} under each post`);
   if (opt('slab')) rows.push('4 in concrete floor');
   if (opt('ridgeVent')) rows.push('Vented ridge');
+  if (opt('eaveLights') !== 'none') rows.push(`Clear eave lights, 3 ft tall, on ${{ front: 'the front wall', back: 'the back wall', both: 'both side walls' }[opt('eaveLights')]}`);
   if (opt('skylights')) rows.push(`${opt('skylights')} clear skylight ${opt('skylights') === 1 ? 'panel' : 'panels'}`);
   if (state.colors.gutters) rows.push('Gutters and downspouts');
   return rows;

@@ -169,6 +169,7 @@ export function normalize(input) {
     ridgeVent: !!o.ridgeVent,
     cupolas: !!o.cupolas,
     cupolaSizeIn: pick(o.cupolaSizeIn, [0, 24, 36, 48], 'Cupola size'),
+    eaveLights: pick(o.eaveLights, ['none', 'front', 'back', 'both'], 'Eave lights'),
     skylights: o.skylights == null ? 0 : Math.round(num(o.skylights, 'Skylight panels', 0, 200)),
   };
 
@@ -182,6 +183,8 @@ export function wallLengthIn(b, wall) {
 export function isGable(wall) { return wall === 'left' || wall === 'right'; }
 export const isOpen = (b, wall) => !!b.walls?.[wall]?.open;
 export const closedWalls = (b) => WALLS.filter((wall) => !isOpen(b, wall));
+// Side walls with a strip of clear panels under the eave. An open wall has no steel to swap.
+export const litWalls = (b) => ['front', 'back'].filter((wall) => !isOpen(b, wall) && [wall, 'both'].includes(b.options?.eaveLights));
 // The two walls that meet at each corner, with the wall whose top sets the corner's height first.
 export const CORNERS = [['front', 'left'], ['front', 'right'], ['back', 'left'], ['back', 'right']];
 

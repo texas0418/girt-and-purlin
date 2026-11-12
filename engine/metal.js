@@ -1,5 +1,5 @@
 // Counts the steel: roof and wall panels, trim, and screws.
-import { wallLengthIn, wallTopIn, gableAreaIn, isGable, isOpen, closedWalls, CORNERS } from './building.js';
+import { wallLengthIn, wallTopIn, gableAreaIn, isGable, isOpen, closedWalls, litWalls, CORNERS } from './building.js';
 import { add } from './stock.js';
 
 const EPS = 0.01;
@@ -14,7 +14,7 @@ export function roofPanels(b, rules) {
 // Gable-end panels are ordered at the height of their taller edge and cut
 // to the roof line on site.
 export function wallPanels(b, rules) {
-  const tally = {};
+  const tally = {}, lit = litWalls(b);
   for (const wall of closedWalls(b)) {
     const len = wallLengthIn(b, wall);
     const count = Math.ceil(len / rules.panelCoverageIn - EPS);
@@ -24,6 +24,8 @@ export function wallPanels(b, rules) {
       let tall = Math.max(wallTopIn(b, wall, left), wallTopIn(b, wall, right));
       // A panel that spans a peak or a break is as tall as the highest point it covers.
       if (isGable(wall)) for (const p of b.line) if (p.y > left && p.y < right) tall = Math.max(tall, p.h);
+      // Clear panels take the top of a wall with eave lights.
+      if (lit.includes(wall)) tall -= rules.eaveLightIn;
       add(tally, Math.ceil(tall - EPS));
     }
   }

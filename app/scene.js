@@ -502,16 +502,19 @@ export function createView(canvas, stage) {
     const wains = hasWainscot && H > wainsFt + 1 ? wainsFt : 0;
     const sorted = (list, max) => [...new Set(list.filter((v) => v >= 0 && v <= max).map((v) => +v.toFixed(4)))].sort((a, c) => a - c);
     const us = sorted([0, Lw, ...ops.flatMap((o) => [o.u0, o.u1])], Lw);
-    const vs = sorted([0, H, wains, ...ops.flatMap((o) => [o.v0, o.v1])], H);
+    // Eave lights: clear panels across the top 3 ft of a closed side wall.
+    const lightFt = !gable && [wall, 'both'].includes(b.options?.eaveLights) && H > wains + 4 ? 3 : 0;
+    const vs = sorted([0, H, wains, H - lightFt, ...ops.flatMap((o) => [o.v0, o.v1])], H);
     const open = (u, v) => ops.some((o) => u > o.u0 && u < o.u1 && v > o.v0 && v < o.v1);
 
-    const upper = sheet(), lower = sheet();
+    const upper = sheet(), lower = sheet(), clear = sheet();
     for (let i = 0; i < us.length - 1; i++) {
       const du = us[i + 1] - us[i], mid = (us[i] + us[i + 1]) / 2;
       for (let j = 0; j < vs.length - 1; j++) {
         if (open(mid, (vs[j] + vs[j + 1]) / 2)) continue;
-        (vs[j + 1] <= wains + 1e-6 ? lower : upper).quad(us[i], vs[j], us[i + 1], vs[j + 1]);
+        (lightFt && vs[j] >= H - lightFt - 1e-6 ? clear : vs[j + 1] <= wains + 1e-6 ? lower : upper).quad(us[i], vs[j], us[i + 1], vs[j + 1]);
       }
+      if (lightFt && !open(mid, H - lightFt)) box(g, mats.trim, du, 0.16, 0.07, mid, H - lightFt, 0.035);
       if (wains && !open(mid, wains)) box(g, mats.trim, du, 0.16, 0.07, mid, wains, 0.035);
       if (!open(mid, 0.05)) box(g, mats.trim, du, 0.34, 0.1, mid, 0.17, 0.05);
     }
@@ -523,7 +526,7 @@ export function createView(canvas, stage) {
       }
     }
 
-    for (const [part, mat] of [[upper, mats.wall], [lower, mats.wainscot]]) {
+    for (const [part, mat] of [[upper, mats.wall], [lower, mats.wainscot], [clear, mats.skylight]]) {
       if (part.empty) continue;
       const m = new THREE.Mesh(part.build(), mat);
       m.castShadow = m.receiveShadow = true;
