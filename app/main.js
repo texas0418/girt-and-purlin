@@ -8,6 +8,7 @@ import { jobs, templates, company, priceLists, newId, designOf, STARTING_POINTS 
 import { floorPlan } from './plan.js';
 import { drawing, sheetList } from './drawings.js';
 import { placeOnLot, feet, FACINGS } from '../engine/site.js';
+import { testFit, spare } from '../engine/fit.js';
 
 const STORE = 'girt-and-purlin.job.v1';
 const PRICE_STORE = 'girt-and-purlin.prices.v1';
@@ -92,6 +93,7 @@ const SAMPLE = {
   ],
   walls: {},
   site: {},
+  things: [],
   sheds: [],
   partitions: [],
   loft: null,
@@ -124,7 +126,7 @@ if (!state.id) { state.id = newId(); if (!shared) { try { localStorage.setItem(S
 let catalog = loadPrices();
 if (!shared && !designer && !catalog.sample && !priceLists.all().some((l) => l.supplier === catalog.supplier)) priceLists.put(catalog);
 let priced = priceJob(result, catalog, state.pricing);
-const ui = { delta: 0, notice: '', step: 'Size', view: 'finished', sheet: 'front', sel: null, opening: null, shed: null, part: null, side: null, placing: null, jobrow: null, tplrow: null, confirm: null, changed: new Set(), last: '', problem: '', savedAt: null };
+const ui = { delta: 0, notice: '', step: 'Size', view: 'finished', sheet: 'front', sel: null, opening: null, shed: null, part: null, thing: null, side: null, placing: null, jobrow: null, tplrow: null, confirm: null, changed: new Set(), last: '', problem: '', savedAt: null };
 if (unopened) { ui.lead = 'Your saved job could not be opened.'; ui.problem = `${unopened} The sample building is showing instead.`; }
 const view = createView($('view'), $('stage'));
 
@@ -221,10 +223,10 @@ function openJob(job, note) {
   state = next;
   result = tried;
   priced = priceJob(result, catalog, state.pricing);
-  Object.assign(ui, { changed: new Set(), last: note, delta: 0, problem: '', lead: '', opening: null, shed: null, side: null, placing: null, jobrow: null, tplrow: null, confirm: null });
+  Object.assign(ui, { changed: new Set(), last: note, delta: 0, problem: '', lead: '', opening: null, shed: null, thing: null, side: null, placing: null, jobrow: null, tplrow: null, confirm: null });
   $('job').value = state.job;
   save();
-  view.update(result, state.colors);
+  view.update(result, state.colors, fits());
   paint();
 }
 
@@ -276,7 +278,7 @@ function apply(change, note) {
   priced = priceJob(result, catalog, state.pricing);
   ui.delta = priced.total - was;
   save();
-  view.update(result, state.colors);
+  view.update(result, state.colors, fits());
   paint();
 }
 
@@ -289,6 +291,33 @@ function setShed(index, change, note) {
 }
 
 const walls = () => state.partitions ?? [];
+// Things to test fit: boxes the size of whatever is going to live in the building.
+const things = () => state.things ?? [];
+const fits = () => testFit(result.geometry, things());
+const THING_FIELDS = { fromLeft: 'From Left End', fromFront: 'From Front Wall' };
+function setThing(index, change, note) {
+  apply({ things: things().map((t, i) => (i === index ? { ...t, ...change } : t)) }, note);
+}
+function fitPanel() {
+  const checked = fits();
+  const rows = things().map((t, i) => {
+    const f = checked[i];
+    const head = `<button data-thingopen="${i}"><span>${esc(f.name)}<small>${f.ok ? 'Fits' : esc(f.problems[0])}</small></span><em>${num(t.length)} x ${num(t.width)}</em></button>`;
+    if (ui.thing !== i) return `<div class="op">${head}</div>`;
+    const typed = (key, label) => `<label class="lab">${label}<input class="in" type="number" min="0.5" step="0.1" inputmode="decimal" data-thingnum="${key}" value="${t[key]}"></label>`;
+    return `<div class="op open">${head}
+      ${textIn('data-thingname', 'What It Is', t.name, 'Tractor, camper, boat')}
+      ${typed('length', 'Length, Feet')}${typed('width', 'Width, Feet')}${typed('height', 'Height, Feet')}
+      ${Object.entries(THING_FIELDS).map(([k, label]) => stepper(`data-thingfield="${k}"`, label, feetInches(t[k] * 12), '', false)).join('')}
+      <div class="seg"><button data-thingturn="0" class="${t.turned ? '' : 'on'}">Along The Length</button><button data-thingturn="1" class="${t.turned ? 'on' : ''}">Front To Back</button></div>
+      ${f.problems.length ? `<p class="hint" style="color:var(--signal)">${f.problems.map(esc).join('<br>')}</p>` : ''}
+      ${f.through.length ? `<p class="hint">${f.through.map((w) => `${esc(w.label)}: ${spare(w)}.`).join('<br>')}</p>` : ''}
+      <button class="btn remove" data-thingremove="${i}">Remove</button></div>`;
+  }).join('');
+  return `<h2>Test Fit</h2>${rows}
+    <div class="seg"><button data-thingadd>Add Something To Park Inside</button></div>
+    <p class="hint">Type in the size of a tractor, camper, boat or lift from its maker's spec sheet, mirrors and hitch included. The program checks it against every door, the trusses, the loft and the interior walls, and draws it in the Framing and Floor Plan views. It checks size only, not the room to turn or back in.</p>`;
+}
 function setPart(index, change, note) {
   apply({ partitions: walls().map((p, i) => (i === index ? { ...p, ...change } : p)) }, note);
 }
@@ -468,7 +497,7 @@ function leftPanel() {
       `<button data-loftend="${e}" class="${(f?.end ?? '') === e ? 'on' : ''}">${name}</button>`).join('')}</div>
       ${f ? Object.entries(LOFT_FIELDS).map(([k, fd]) => stepper(`data-loftfield="${k}"`, fd.label, feetInches(f[k] * 12), '', false)).join('') : ''}
       <p class="hint">A loft is a floor across one end of the building, side wall to side wall, with a straight stair down along the front wall. The list adds its posts, beam, joists, subfloor, stair and guard rail. Its beam, posts and footings are sized by your engineer.</p>`;
-    return `<h2>Interior Walls</h2>${rows}
+    return `${fitPanel()}<h2>Interior Walls</h2>${rows}
       <div class="seg"><button data-partadd>Add An Interior Wall</button></div>
       <p class="hint">An interior wall is a stud wall from the floor to the underside of the trusses. It carries no roof. Each door is 3 ft wide. See the walls and loft in the Framing and Floor Plan views.</p>
       ${loftPart}
@@ -603,7 +632,7 @@ function paintShared() {
   $('views').innerHTML = [VIEWS[0], VIEWS[2]].map(([k, n]) => `<button data-view="${k}" class="${ui.view === k ? 'on' : ''}">${n}</button>`).join('');
   $('readout').textContent = `${result.summary.floorSqFt.toLocaleString()} sq ft`;
   $('plan').hidden = ui.view !== 'plan';
-  if (ui.view === 'plan') $('plan').innerHTML = floorPlan({ ...result, warnings: [] });
+  if (ui.view === 'plan') $('plan').innerHTML = floorPlan({ ...result, warnings: [] }, false, fits());
   $('total').innerHTML = `<small>${esc(state.job)}</small><strong>${money(Number(p.total) || 0)}</strong><em>Drag the picture to look around your building.</em>`;
   $('list').innerHTML = `<h2>Your Building</h2><dl class="spec">${specRows().map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>
     <h2>Price</h2>${lines.map(([k, v]) => `<div class="sum"><span>${esc(k)}</span><span>${money(Number(v) || 0)}</span></div>`).join('')}
@@ -632,7 +661,7 @@ function paint() {
   $('plan').hidden = !plan && !sheet;
   if (sheet && !sheetList(result).some(([k]) => k === ui.sheet)) ui.sheet = 'front';
   if (sheet) $('plan').innerHTML = drawing(result, ui.sheet, false, state.site);
-  else if (plan) $('plan').innerHTML = floorPlan(result);
+  else if (plan) $('plan').innerHTML = floorPlan(result, false, fits());
 
   const check = $('check');
   const warning = firstWarning();
@@ -807,6 +836,20 @@ document.addEventListener('click', (e) => {
     ui.shed = null;
     return apply({ sheds: state.sheds.filter((_, i) => i !== Number(d.shedremove)) }, `${SHED_NAMES[s.kind]} removed`);
   }
+  if ('thingadd' in d) {
+    ui.thing = things().length;
+    return apply({ things: [...things(), { name: '', length: 16, width: 8, height: 8, fromLeft: 2, fromFront: 2, turned: false }] }, 'Test-fit box added. Type in its real size.');
+  }
+  if (d.thingopen) { ui.thing = ui.thing === Number(d.thingopen) ? null : Number(d.thingopen); return paint(); }
+  if (d.thingfield) {
+    const to = Math.max(0, things()[ui.thing][d.thingfield] + Number(d.dir));
+    return setThing(ui.thing, { [d.thingfield]: to }, `Moved to ${feetInches(to * 12)} ${d.thingfield === 'fromLeft' ? 'from the left end' : 'from the front wall'}`);
+  }
+  if (d.thingturn) return setThing(ui.thing, { turned: d.thingturn === '1' }, 'Turned');
+  if (d.thingremove) {
+    ui.thing = null;
+    return apply({ things: things().filter((_, i) => i !== Number(d.thingremove)) }, 'Test-fit box removed');
+  }
   if ('partadd' in d) {
     ui.part = walls().length;
     apply({ partitions: [...walls(), { ...wallAcross('across'), doors: 1, sheathed: true }] }, 'Interior wall added');
@@ -890,6 +933,8 @@ document.addEventListener('change', (e) => {
   const later = (change, note) => setTimeout(() => apply(change, note), 200);
   const dollars = Math.max(0, Number(v) || 0);
   if (d.company) { company.set({ [d.company]: v.trim() }); return d.company === 'designerEmail' || d.company === 'name' ? paint() : null; }
+  if ('thingname' in d) return later({ things: things().map((t, i) => (i === ui.thing ? { ...t, name: v.trim() } : t)) }, 'Named');
+  if (d.thingnum) return later({ things: things().map((t, i) => (i === ui.thing ? { ...t, [d.thingnum]: Math.min(Math.max(Number(v) || 0.5, 0.5), 200) } : t)) }, 'Size updated');
   if (d.site) return later({ site: { ...state.site, [d.site]: Math.min(dollars, 100000) } }, 'Site plan updated');
   if (d.num) return later({ pricing: { ...state.pricing, [d.num]: dollars } }, `Freight now ${money(dollars)}`);
   if (d.xname) return later({ pricing: { ...state.pricing, extras: state.pricing.extras.map((x, i) => (i === Number(d.xname) ? { ...x, name: v.trim() } : x)) } }, 'Extra line named');
@@ -927,12 +972,12 @@ function companyHead(kind) {
 function optionPage() {
   if (!state.alts) return '';
   const cards = eachAlt((a) => {
-    view.update(result, state.colors);
+    view.update(result, state.colors, fits());
     return `<div class="optcard"><h3>${esc(a.name)}</h3><img src="${view.snapshot()}" alt="${esc(a.name)}">
       <dl>${specRows().map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>
       <div class="price"><div class="grand"><span>Total</span><span>${money(priced.total)}</span></div></div></div>`;
   }).filter(Boolean);
-  view.update(result, state.colors);
+  view.update(result, state.colors, fits());
   return `<div class="page"><h2>Your Options</h2><div class="optgrid">${cards.join('')}</div></div>`;
 }
 
@@ -1050,7 +1095,7 @@ function drawingPages() {
     <p class="fine">Built from framing rules that have not been checked against a builder's guide yet. Not an engineered drawing.</p></div>`).join('')
     + sitePage()
     + (result.geometry.loft || result.geometry.partitions?.length ? `<div class="page sheet">${sheetHead('Inside Layout')}
-    <h3>Interior walls and loft, seen from above, front wall at the bottom</h3>${floorPlan(result, true)}
+    <h3>Interior walls and loft, seen from above, front wall at the bottom</h3>${floorPlan(result, true, fits())}
     <table class="cuts"><thead><tr><th>Part</th><th>Where</th><th>Size</th></tr></thead><tbody>
     ${(result.geometry.partitions ?? []).map((p) => `<tr><td>Interior Wall ${p.index + 1}</td><td>${p.axis === 'across' ? `${feetInches(p.atIn)} from the left end, from ${feetInches(p.startIn)} to ${feetInches(p.endIn)} off the front wall` : `${feetInches(p.atIn)} from the front wall, from ${feetInches(p.startIn)} to ${feetInches(p.endIn)} off the left end`}</td><td>${p.studSize} studs, ${feetInches(p.heightIn)} tall${p.doors.map((d) => `, door at ${feetInches(d.startIn)}`).join('')}</td></tr>`).join('')}
     ${result.geometry.loft ? ((f) => `<tr><td>Loft</td><td>${f.end === 'left' ? 'Left' : 'Right'} end, ${feetInches(f.depthIn)} deep</td><td>${f.joistSize} joists, floor ${feetInches(f.heightIn)} up, ${feetInches(f.underIn)} clear under the joists</td></tr>
@@ -1183,5 +1228,5 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
 
 paint();
 view.resize();
-view.update(result, state.colors);
+view.update(result, state.colors, fits());
 if (shared) view.spin();

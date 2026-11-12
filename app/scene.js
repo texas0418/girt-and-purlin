@@ -323,6 +323,9 @@ export function createView(canvas, stage) {
   const mats = {
     wall: metal(ribs), wainscot: metal(ribs), roof: metal(roofRibs), shedRoof: metal(ribs), trim: metal(), cupolaRoof: metal(),
     door: new THREE.MeshStandardMaterial({ color: 0xe9e9e4, roughness: 0.55, metalness: 0.1 }),
+    // Test-fit boxes: see-through so the framing behind still reads.
+    fits: new THREE.MeshStandardMaterial({ color: 0x4772b3, roughness: 0.8, transparent: true, opacity: 0.4, depthWrite: false }),
+    misfit: new THREE.MeshStandardMaterial({ color: 0xf0883a, roughness: 0.8, transparent: true, opacity: 0.45, depthWrite: false }),
     glass: new THREE.MeshStandardMaterial({ color: 0x1a232b, roughness: 0.05, metalness: 0.9, envMapIntensity: 1.7 }),
     dark: new THREE.MeshStandardMaterial({ color: 0x1c1d1f, roughness: 0.5, metalness: 0.4 }),
     wood: new THREE.MeshStandardMaterial({ color: 0xcaa46c, roughness: 0.85 }),
@@ -778,10 +781,14 @@ export function createView(canvas, stage) {
 
   // Interior walls and the loft. They show in the framing view only, since the
   // finished view is closed in.
-  function buildInterior(result) {
+  function buildInterior(result, fits = []) {
     const { building: b, partitions = [], loft } = result.geometry;
     const L = b.lengthIn / 12, W = b.widthIn / 12;
     const X = (xIn) => xIn / 12 - L / 2, Z = (yIn) => W / 2 - yIn / 12;
+    for (const t of fits) {
+      const tall = Math.max(t.heightIn / 12, 0.1);
+      box(framing, t.ok ? mats.fits : mats.misfit, (t.x1 - t.x0) / 12, tall, (t.y1 - t.y0) / 12, X((t.x0 + t.x1) / 2), tall / 2 + 0.02, Z((t.y0 + t.y1) / 2));
+    }
     for (const p of partitions) {
       const across = p.axis === 'across', H = p.heightIn / 12, len = p.lengthIn / 12, mid = (p.startIn + p.endIn) / 2;
       const deep = p.studSize === '2x6' ? 0.46 : 0.29;
@@ -902,7 +909,7 @@ export function createView(canvas, stage) {
     controls.update();
   }
 
-  function update(result, colors) {
+  function update(result, colors, fits = []) {
     const b = result.geometry.building;
     for (const g of [finished, framing, site]) clear(g);
     wallMeshes = [];
@@ -935,7 +942,7 @@ export function createView(canvas, stage) {
     buildRoof(b, colors.gutters, result.geometry.cupolas ?? []);
     buildFraming(result);
     if (anyOpen) buildFraming(result, finished, true);
-    buildInterior(result);
+    buildInterior(result, fits);
     for (const s of result.geometry.sheds) buildShed(b, s);
     if (settingKey !== `${L}x${W}`) {
       settingKey = `${L}x${W}`;

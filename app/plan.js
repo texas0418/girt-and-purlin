@@ -1,9 +1,10 @@
 // The floor plan: a flat drawing seen from above, front wall at the bottom.
 const SIGNAL = '#f0883a';
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const fi = (inches) => { const f = Math.floor(inches / 12), i = Math.round(inches - f * 12); return i ? `${f} ft ${i} in` : `${f} ft`; };
 
 // light draws it in ink on white for the printed sheets.
-export function floorPlan(result, light = false) {
+export function floorPlan(result, light = false, fits = []) {
   const INK = light ? '#1a1a1a' : '#dcdcdc', SOFT = light ? '#777' : '#8f8f8f', PAPER = light ? '#fff' : '#262626';
   const { building: b, posts } = result.geometry;
   const L = b.lengthIn / 12, W = b.widthIn / 12;
@@ -87,6 +88,15 @@ export function floorPlan(result, light = false) {
         ? `<path d="M ${at} ${y(a)} L ${at + w} ${y(a)} A ${w} ${w} 0 0 0 ${at} ${y(e)}" fill="none" stroke="${INK}" stroke-width="0.08"/>`
         : `<path d="M ${a} ${y(at)} L ${a} ${y(at) - w} A ${w} ${w} 0 0 1 ${e} ${y(at)}" fill="none" stroke="${INK}" stroke-width="0.08"/>`);
     }
+  }
+
+  // Test-fit boxes: the things the builder wants to park inside.
+  for (const t of fits) {
+    const x = t.x0 / 12, w = (t.x1 - t.x0) / 12, h = (t.y1 - t.y0) / 12, top = y(t.y1 / 12), color = t.ok ? INK : SIGNAL;
+    out.push(`<rect x="${x}" y="${top}" width="${w}" height="${h}" fill="${color}" fill-opacity="0.08" stroke="${color}" stroke-width="0.1" stroke-dasharray="0.5 0.3"/>`,
+      `<line x1="${x}" y1="${top}" x2="${x + w}" y2="${top + h}" stroke="${color}" stroke-width="0.04"/>`, `<line x1="${x + w}" y1="${top}" x2="${x}" y2="${top + h}" stroke="${color}" stroke-width="0.04"/>`,
+      `<text x="${x + w / 2}" y="${top + h / 2 - pad * 0.03}" font-size="${pad * 0.1}" font-family="system-ui, Helvetica Neue, sans-serif" font-stretch="103%" font-weight="500" fill="${color}" text-anchor="middle" stroke="${PAPER}" stroke-width="${pad * 0.03}" paint-order="stroke">${esc(t.name)}</text>`,
+      `<text x="${x + w / 2}" y="${top + h / 2 + pad * 0.1}" font-size="${pad * 0.085}" font-family="system-ui, Helvetica Neue, sans-serif" font-stretch="103%" fill="${color}" text-anchor="middle" stroke="${PAPER}" stroke-width="${pad * 0.03}" paint-order="stroke">${fi(t.lengthIn)} x ${fi(t.widthIn)}</text>`);
   }
 
   const warned = new Set(result.warnings.map((w) => `${w.wall}:${w.postAtIn}`));
