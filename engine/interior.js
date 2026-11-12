@@ -77,7 +77,7 @@ export function placeInterior(b, rules, wallPosts) {
       const joists = evenSpots(W, rules.loftJoistSpacingIn);
       const cutIn = f.depthIn - 3;
       put('Loft Joists', size, 'Loft', joists.map(() => ({ cutIn, stockFt: fitStock(cutIn, stock) })), 'Hung in joist hangers between the ledger and the beam');
-      put('Stair Stringers', rules.stairStringerSize, 'Loft stair', Array.from({ length: rules.stairStringers }, () => ({ cutIn: stringerIn, stockFt: stringerFt })), `Notched for ${risers} risers of ${(riseIn / risers).toFixed(2)} in and ${treads} treads of ${rules.stairTreadIn} in`);
+      put('Stair Stringers', rules.stairStringerSize, 'Loft stair', Array.from({ length: rules.stairStringers }, () => ({ cutIn: stringerIn, stockFt: stringerFt })), `Notched for ${risers} risers of ${(riseIn / risers).toFixed(2)} in and ${treads} treads of ${rules.stairTreadIn} in. Long notched stringers need a support under the middle; your engineer says where`);
       const perBoard = Math.floor(144 / rules.stairWidthIn);
       put('Stair Treads', '2x12', 'Loft stair', Array.from({ length: up(treads / perBoard) }, () => ({ cutIn: 144, stockFt: 12 })), `Cut into ${rules.stairWidthIn} in treads, ${treads} needed`);
 
