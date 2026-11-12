@@ -6,7 +6,7 @@ const FILES = [
   'vendor/three.module.min.js', 'vendor/three.core.js', 'vendor/OrbitControls.js', 'vendor/Sky.js',
   '../engine/design.js',
   '../engine/sheds.js', '../engine/finish.js', '../engine/building.js', '../engine/framing.js', '../engine/metal.js', '../engine/cutlist.js',
-  '../engine/pricing.js', '../engine/rules.js', '../engine/stock.js', '../engine/runs.js',
+  '../engine/pricing.js', '../engine/rules.js', '../engine/stock.js', '../engine/runs.js', '../engine/interior.js', '../engine/dxf.js',
 ];
 
 self.addEventListener('install', (e) => {

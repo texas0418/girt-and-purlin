@@ -1,5 +1,6 @@
 import { design } from '../engine/design.js';
 import { feetInches } from '../engine/stock.js';
+import { dxf } from '../engine/dxf.js';
 import { edgeOverhangIn, eaveDropIn } from '../engine/building.js';
 import { priceJob, parsePriceList, priceListCsv, toCsv, SAMPLE_CATALOG } from '../engine/pricing.js';
 import { createView } from './scene.js';
@@ -461,6 +462,9 @@ function leftPanel() {
     <p class="hint">Walls are drawn from outside the building. ${result.rules?.postEmbedmentIn === 0 ? 'The posts stand on brackets at floor level.' : 'Dashed lines show the part of each post in the ground.'}</p>
     <h2>Print</h2>
     <div class="seg stack"><button data-sheets="all">All Sheets</button><button data-sheets="cuts">Cut List Only</button><button data-checksheet>Delivery Check Sheet</button></div>
+    <h2>For CAD</h2>
+    <div class="seg stack"><button data-dxf>Save CAD File</button></div>
+    <p class="hint">A DXF file with the floor plan and the four walls as plain lines. It opens in AutoCAD, DraftSight, LibreCAD, QCAD and most other drafting programs. One unit is one inch, so pick inches if the program asks.</p>
     <h2>For Your Engineer</h2>
     <div class="seg stack"><button data-engineer>Engineer Package</button></div>
     <p class="hint">Everything an engineer needs to start on this building: the size, the framing as drawn, where every post and opening sits, and the drawings. This program does not do the engineering.</p>`;
@@ -625,7 +629,9 @@ document.addEventListener('click', (e) => {
   if (d.sheet) { ui.sheet = d.sheet; return paint(); }
   if (d.sheets) return openSheets(d.sheets === 'all');
   if ('engineer' in d) return openEngineer();
-  if ('engdata' in d) return download(`${state.job.replace(/[^\w]+/g, '-').replace(/^-|-$/g, '').toLowerCase() || 'building'}-data.json`, engineerData(), 'application/json');
+  const fileStem = state.job.replace(/[^\w]+/g, '-').replace(/^-|-$/g, '').toLowerCase() || 'building';
+  if ('engdata' in d) return download(`${fileStem}-data.json`, engineerData(), 'application/json');
+  if ('dxf' in d) return download(`${fileStem}.dxf`, dxf(result), 'application/dxf');
   if ('send' in d) return openSend();
   if ('copy' in d) {
     const box = $('proposal').querySelector('input');
