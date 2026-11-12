@@ -157,7 +157,7 @@ function leftPanel() {
     return `<h2>Building Size</h2>${['width', 'length', 'eaveHeight', 'pitch', 'overhang'].map(field).join('')}
       <h2>Post Spacing</h2>${choice('postSpacing', [6, 8, 10, 12], 'ft')}
       <h2>Truss Spacing</h2>${choice('trussSpacing', [2, 4, 8], 'ft')}
-      <p class="hint">Drag the picture to look around the building. Scroll to move closer. The material list follows every change.</p>`;
+      <p class="hint">Drag the picture to look around the building. Scroll or pinch to move closer. The material list follows every change.</p>`;
   }
   if (ui.step === 'Roof') {
     return `<h2>Roof</h2>${['pitch', 'overhang'].map(field).join('')}
@@ -422,6 +422,8 @@ function openSheets(withDrawings) {
 
 $('job').value = state.job;
 $('job').addEventListener('change', (e) => { state = { ...state, job: e.target.value.trim() || SAMPLE.job }; save(); paint(); });
+
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
 
 paint();
 view.resize();
