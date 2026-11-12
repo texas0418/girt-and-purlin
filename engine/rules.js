@@ -18,12 +18,13 @@ export const defaultRules = {
   lumberStockFt:     { value: [8, 10, 12, 14, 16], verified: false, note: 'Board lengths a yard stocks' },
   headerSize:        { value: '2x10', verified: false },
 
-  panelCoverageIn:   { value: 36,   verified: false, note: 'Width one metal panel covers' },
-  roofPanelExtraIn:  { value: 1.5,  verified: false, note: 'Panel hang past the eave' },
-  trimPieceIn:       { value: 126,  verified: false, note: 'Trim comes in 10 ft 6 in pieces' },
-  trimLapIn:         { value: 6,    verified: false },
-  screwsPerSqFt:     { value: 0.8,  verified: false },
-  screwsPerBag:      { value: 250,  verified: false },
+  panelCoverageIn:   { value: 36,   verified: true, note: 'Width one metal panel covers', source: 'Fabral Grandrib 3 guide p.8; Metal Sales Classic Rib; A.B. Martin ABM Panel; Everlast II' },
+  roofPanelExtraIn:  { value: 2,    verified: true, note: 'Panel hang past the eave', source: 'Central States Panel-Loc Plus guide and A.B. Martin guide give 2 in; Fabral Standard Details p.2 gives 1 to 2 in' },
+  trimPieceIn:       { value: 126,  verified: true, note: 'Trim comes in 10 ft 6 in pieces', source: 'Fabral guide p.11; Metal Sales trim sheet' },
+  trimLapIn:         { value: 6,    verified: true, source: 'Fabral guide p.11. Hansen laps 3 in, so 6 is the safe figure' },
+  screwsPerSquare:   { value: { 24: 80, 21: 90, 18: 100, 15: 120, 12: 150, 9: 190 }, verified: true, note: 'Screws per 100 sq ft of panel, by girt or purlin spacing in inches', source: 'Fabral Standard Details p.31-32; Metal Sales Post Frame Install Guide p.20 agrees at 24 in' },
+  screwsPerBag:      { value: 250,  verified: true, source: 'Central States trim selection tool' },
+  closureStripIn:    { value: 36,   verified: true, note: 'Foam closure strips are 3 ft long', source: 'Fabral guide p.15; A.B. Martin guide' },
 };
 
 export function resolveRules(overrides = {}) {

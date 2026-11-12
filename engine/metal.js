@@ -53,8 +53,24 @@ export function areas(b) {
   return { roofSqFt, wallSqFt };
 }
 
+// Foam strips that seal the panel ribs: inside closures under the panel at
+// each eave, outside closures over the panel on both sides of the ridge.
+export function closures(b, rules) {
+  const strips = Math.ceil((b.lengthIn + 2 * b.overhangIn) / rules.closureStripIn - EPS) * 2;
+  return { 'Inside Closures': strips, 'Outside Closures': strips };
+}
+
+// The published table steps up as the framing rows get closer together.
+// Wider than the widest row in the table uses that row's count.
+function perSquare(table, spacingIn) {
+  const rows = Object.keys(table).map(Number).sort((x, y) => y - x);
+  return table[rows.find((r) => r <= spacingIn + EPS) ?? rows[rows.length - 1]];
+}
+
 export function screws(b, rules) {
   const { roofSqFt, wallSqFt } = areas(b);
-  const count = Math.ceil((roofSqFt + wallSqFt) * rules.screwsPerSqFt - EPS);
+  const count = Math.ceil(
+    (roofSqFt * perSquare(rules.screwsPerSquare, rules.purlinSpacingIn) + wallSqFt * perSquare(rules.screwsPerSquare, rules.girtSpacingIn)) / 100 - EPS,
+  );
   return { count, bags: Math.ceil(count / rules.screwsPerBag) };
 }

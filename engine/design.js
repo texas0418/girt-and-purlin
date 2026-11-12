@@ -2,7 +2,7 @@
 import { normalize } from './building.js';
 import { resolveRules, unverifiedRules } from './rules.js';
 import { placePosts, placeTrusses, frameWalls, frameRoof, frameOpenings } from './framing.js';
-import { roofPanels, wallPanels, trim, screws, areas } from './metal.js';
+import { roofPanels, wallPanels, trim, closures, screws, areas } from './metal.js';
 import { feetInches } from './stock.js';
 import { cutList } from './cutlist.js';
 
@@ -41,6 +41,7 @@ export function design(input, ruleOverrides) {
     ...lines('Metal', 'Roof Panels', '', roofPanels(b, rules), feetInches, inchesToFt),
     ...lines('Metal', 'Wall Panels', '', wallPanels(b, rules), feetInches, inchesToFt),
     ...Object.entries(trim(b, rules)).map(([name, qty]) => ({ group: 'Metal', name, size: '', length: feetInches(rules.trimPieceIn), qty, ft: rules.trimPieceIn / 12 })),
+    ...Object.entries(closures(b, rules)).map(([name, qty]) => ({ group: 'Metal', name, size: '', length: feetInches(rules.closureStripIn), qty })),
     { group: 'Metal', name: 'Panel Screws', size: `bag of ${rules.screwsPerBag}`, length: '', qty: fasteners.bags },
     ...b.openings.map((o) => ({
       group: 'Doors And Windows',

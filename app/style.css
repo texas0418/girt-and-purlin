@@ -200,6 +200,7 @@ a.btn { display: inline-flex; align-items: center; text-decoration: none; }
 .page.eng p { line-height: 1.5; }
 .page th.chg, .page td.chg { width: 190px; }
 .page .eng-members td { padding: 9px 12px 9px 0; vertical-align: top; }
+.page .eng-members td:nth-child(-n+2) { white-space: nowrap; }
 .page.eng > svg { max-height: 360px; }
 
 @media print {

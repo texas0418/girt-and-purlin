@@ -57,8 +57,8 @@ test('roof purlins', () => {
 });
 
 test('roof panels', () => {
-  // 600 in / 36 = 16.7, so 17 a side. Slope 202.39 + 1.5 = 203.89, ordered at 204 in = 17 ft 0 in.
-  assert.equal(qty(r, 'Roof Panels', '17 ft 0 in'), 34);
+  // 600 in / 36 = 16.7, so 17 a side. Slope 202.39 + 2 = 204.39, ordered at 205 in = 17 ft 1 in.
+  assert.equal(qty(r, 'Roof Panels', '17 ft 1 in'), 34);
 });
 
 test('wall panels', () => {
@@ -83,7 +83,18 @@ test('trim', () => {
 
 test('screws', () => {
   // Roof 2 x 202.39 x 600 / 144 = 1686.5 sq ft. Walls 156 x 12 + 150 gable = 2022 sq ft.
-  // 3708.5 x 0.8 = 2967 screws, 12 bags of 250.
+  // Girts and purlins at 24 in take 80 screws per 100 sq ft. 3708.5 x 0.8 = 2967 screws, 12 bags of 250.
   assert.equal(r.summary.screws, 2967);
   assert.equal(qty(r, 'Panel Screws'), 12);
+});
+
+test('closures', () => {
+  // 3 ft foam strips. 50 ft of eave = 17 strips, two eaves. Same count on each side of the ridge.
+  assert.equal(qty(r, 'Inside Closures'), 34);
+  assert.equal(qty(r, 'Outside Closures'), 34);
+});
+
+test('screws step up when the framing rows are closer', () => {
+  // Purlins at 18 in take 100 per 100 sq ft on the roof: 1686.5 + 2022 x 0.8 = 3304.1.
+  assert.equal(design(plain, { purlinSpacingIn: 18 }).summary.screws, 3305);
 });

@@ -26,6 +26,8 @@ export const SAMPLE_CATALOG = {
     { item: 'Rake Trim', size: '', unit: 'each', price: 22 },
     { item: 'Corner Trim', size: '', unit: 'each', price: 24 },
     { item: 'Base Trim', size: '', unit: 'each', price: 16 },
+    { item: 'Inside Closures', size: '', unit: 'each', price: 1.5 },
+    { item: 'Outside Closures', size: '', unit: 'each', price: 1.5 },
     { item: 'Panel Screws', size: '', unit: 'each', price: 28 },
     { item: 'Sliding Door', size: '', unit: 'sqft', price: 14 },
     { item: 'Overhead Door', size: '', unit: 'sqft', price: 16 },
