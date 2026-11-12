@@ -13,7 +13,9 @@ const UNIT = new THREE.BoxGeometry(1, 1, 1);
 const UPRIGHT = new THREE.PlaneGeometry(1, 1);
 const FLAT = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
 const TRUNK = new THREE.CylinderGeometry(0.5, 0.7, 1, 8);
-const SHARED = new Set([UNIT, UPRIGHT, FLAT, TRUNK]);
+const CUPOLA_CAP = new THREE.ConeGeometry(1, 1, 4).rotateY(Math.PI / 4).toNonIndexed();
+CUPOLA_CAP.computeVertexNormals();
+const SHARED = new Set([UNIT, UPRIGHT, FLAT, TRUNK, CUPOLA_CAP]);
 
 function seeded(seed) {
   return () => (seed = (seed * 16807) % 2147483647) / 2147483647;
@@ -319,7 +321,7 @@ export function createView(canvas, stage) {
   const gravelMap = speckle([150, 146, 138], 0.4, 40);
   gravelMap.repeat.set(1 / 7, 1 / 7);
   const mats = {
-    wall: metal(ribs), wainscot: metal(ribs), roof: metal(roofRibs), shedRoof: metal(ribs), trim: metal(),
+    wall: metal(ribs), wainscot: metal(ribs), roof: metal(roofRibs), shedRoof: metal(ribs), trim: metal(), cupolaRoof: metal(),
     door: new THREE.MeshStandardMaterial({ color: 0xe9e9e4, roughness: 0.55, metalness: 0.1 }),
     glass: new THREE.MeshStandardMaterial({ color: 0x1a232b, roughness: 0.05, metalness: 0.9, envMapIntensity: 1.7 }),
     dark: new THREE.MeshStandardMaterial({ color: 0x1c1d1f, roughness: 0.5, metalness: 0.4 }),
@@ -477,11 +479,16 @@ export function createView(canvas, stage) {
   }
 
   function buildWall(b, wall, hasWainscot) {
-    const L = b.lengthIn / 12, W = b.widthIn / 12, H = b.eaveIn / 12, rise = b.riseIn / 12;
+    const L = b.lengthIn / 12, W = b.widthIn / 12;
     const gable = wall === 'left' || wall === 'right';
     const Lw = gable ? W : L;
     const flip = wall === 'back' || wall === 'left';
     const g = wallGroup(b, wall);
+    // A side wall stands as tall as the roof line over it. An end wall is square to the
+    // lowest eave, and the roof line closes it in above that.
+    const last = b.line[b.line.length - 1];
+    const H = (gable ? b.eaveIn : wall === 'front' ? b.line[0].h : last.h) / 12;
+    const crest = b.line.map((p) => [flip ? W - p.y / 12 : p.y / 12, p.h / 12]).sort((p, q) => p[0] - q[0]);
 
     const ops = b.openings.filter((o) => o.wall === wall).map((o) => {
       const s = o.startIn / 12, e = o.endIn / 12;
@@ -504,7 +511,13 @@ export function createView(canvas, stage) {
       if (wains && !open(mid, wains)) box(g, mats.trim, du, 0.16, 0.07, mid, wains, 0.035);
       if (!open(mid, 0.05)) box(g, mats.trim, du, 0.34, 0.1, mid, 0.17, 0.05);
     }
-    if (gable) upper.tri([0, H], [Lw, H], [Lw / 2, H + rise]);
+    if (gable) {
+      for (let i = 0; i < crest.length - 1; i++) {
+        const [u0, h0] = crest[i], [u1, h1] = crest[i + 1];
+        if (h1 > H + 1e-6) upper.tri([u0, H], [u1, H], [u1, h1]);
+        if (h0 > H + 1e-6) upper.tri([u0, H], [u1, h1], [u0, h0]);
+      }
+    }
 
     for (const [part, mat] of [[upper, mats.wall], [lower, mats.wainscot]]) {
       if (part.empty) continue;
@@ -514,7 +527,8 @@ export function createView(canvas, stage) {
       g.add(m);
       wallMeshes.push(m);
     }
-    for (const u of [0.2, Lw - 0.2]) box(g, mats.trim, 0.42, H, 0.1, u, H / 2, 0.05);
+    const cornerTop = gable ? [crest[0][1], crest[crest.length - 1][1]] : [H, H];
+    [0.2, Lw - 0.2].forEach((u, i) => box(g, mats.trim, 0.42, cornerTop[i], 0.1, u, cornerTop[i] / 2, 0.05));
 
     // Soft dark bands where the wall meets the ground and tucks under the eave.
     const band = (mat, tall, v, upsideDown) => {
@@ -598,59 +612,117 @@ export function createView(canvas, stage) {
     return g;
   }
 
-  function buildRoof(b, gutters) {
-    const L = b.lengthIn / 12, W = b.widthIn / 12, H = b.eaveIn / 12, rise = b.riseIn / 12, oh = b.overhangIn / 12;
-    const a = Math.atan(b.pitch / 12), run = W / 2 + oh, slope = run / Math.cos(a), len = L + 2 * oh, t = 0.12;
-    roofRibs.normal.repeat.set(len / PANEL_FT, slope / ROW_FT);
-    roofRibs.shade.repeat.set(len / PANEL_FT / TINT_PANELS, slope / ROW_FT);
-    const lift = t / 2 / Math.cos(a) + 0.02;
-    const top = H + rise + lift;
-    box(finished, mats.trim, len + 0.16, 0.16, 0.26, 0, top + 0.09, 0);
-    // A vented ridge stands taller than a plain cap, with a dark slot down each side.
-    if (b.options?.ridgeVent) {
-      box(finished, mats.trim, len - 0.6, 0.22, 0.5, 0, top + 0.25, 0);
-      box(finished, mats.dark, len - 0.8, 0.07, 0.56, 0, top + 0.17, 0);
-    }
-    // Skylight panels share out between the two slopes, spread evenly along the roof.
+  // Each flat piece of roof, in feet: where its low and high edges sit across the
+  // building (z) and how high, with the overhangs already added on.
+  function planeShape(b, p) {
+    const W = b.widthIn / 12, tan = p.pitch / 12, a = Math.atan(tan);
+    const zOf = (yIn) => W / 2 - yIn / 12;
+    const lowY = p.lowY - p.dir * p.lowOverIn, highY = p.highY + p.dir * p.highOverIn;
+    const lowH = (p.lowIn - p.lowOverIn * tan) / 12, highH = (p.highIn + p.highOverIn * tan) / 12;
+    return {
+      a, tan, dir: p.dir, slope: p.slopeIn / 12, lowZ: zOf(lowY), highZ: zOf(highY), lowH, highH,
+      midZ: zOf((lowY + highY) / 2), midH: (lowH + highH) / 2, ridgeZ: zOf(p.highY), ridgeH: p.highIn / 12,
+    };
+  }
+
+  function buildRoof(b, gutters, cupolas) {
+    const L = b.lengthIn / 12, W = b.widthIn / 12, oh = b.overhangIn / 12;
+    const len = L + 2 * oh, t = 0.12;
+    const shapes = b.planes.map((p) => ({ ...planeShape(b, p), p }));
+    const longest = Math.max(...shapes.map((s) => s.slope));
+    roofRibs.normal.repeat.set(len / PANEL_FT, longest / ROW_FT);
+    roofRibs.shade.repeat.set(len / PANEL_FT / TINT_PANELS, longest / ROW_FT);
+    const liftOf = (s) => t / 2 / Math.cos(s.a) + 0.02;
+
+    // Skylight panels share out between the slopes that reach the top of the roof.
+    const lit = shapes.filter((s) => s.p.highEdge !== 'break');
     const lights = b.options?.skylights ?? 0, slots = Math.floor(len / PANEL_FT);
-    for (const side of [1, -1]) {
-      const count = Math.min(slots, side === 1 ? Math.ceil(lights / 2) : Math.floor(lights / 2));
+    lit.forEach((s, n) => {
+      const share = lit.length === 1 ? lights : n === 0 ? Math.ceil(lights / 2) : Math.floor(lights / 2);
+      const count = Math.min(slots, share);
       for (let k = 0; k < count; k++) {
         const x = (Math.floor((k + 0.5) * slots / count) + 0.5) * PANEL_FT - len / 2;
-        const midY = H + rise - (run / 2) * Math.tan(a) + lift;
-        box(finished, mats.skylight, PANEL_FT - 0.1, t + 0.03, slope - 1.2, x, midY, side * run / 2, side * a);
+        box(finished, mats.skylight, PANEL_FT - 0.1, t + 0.03, s.slope - 1.2, x, s.midH + liftOf(s), s.midZ, s.dir * s.a);
       }
-    }
-    for (const side of [1, -1]) {
-      const midY = H + rise - (run / 2) * Math.tan(a) + lift;
-      box(finished, mats.roof, len, t, slope, 0, midY, side * run / 2, side * a);
-      box(finished, mats.trim, len + 0.12, 0.08, 0.95, 0, top + 0.08 - 0.475 * Math.sin(a), side * 0.46 * Math.cos(a), side * a);
-      const eaveY = H - oh * Math.tan(a) + lift;
-      box(finished, mats.trim, len + 0.2, 0.6, 0.12, 0, eaveY - 0.24, side * (run + 0.04));
+    });
+
+    for (const s of shapes) {
+      const lift = liftOf(s), out = s.dir;
+      box(finished, mats.roof, len, t, s.slope, 0, s.midH + lift, s.midZ, s.dir * s.a);
       for (const end of [1, -1]) {
-        box(finished, mats.trim, 0.12, 0.6, slope, end * (len / 2 + 0.05), midY - 0.22, side * run / 2, side * a);
+        box(finished, mats.trim, 0.12, 0.6, s.slope, end * (len / 2 + 0.05), s.midH + lift - 0.22, s.midZ, s.dir * s.a);
       }
+      if (s.p.highEdge === 'ridge') {
+        const top = s.ridgeH + lift;
+        if (s.dir === 1) {
+          box(finished, mats.trim, len + 0.16, 0.16, 0.26, 0, top + 0.09, s.ridgeZ);
+          // A vented ridge stands taller than a plain cap, with a dark slot down each side.
+          if (b.options?.ridgeVent) {
+            box(finished, mats.trim, len - 0.6, 0.22, 0.5, 0, top + 0.25, s.ridgeZ);
+            box(finished, mats.dark, len - 0.8, 0.07, 0.56, 0, top + 0.17, s.ridgeZ);
+          }
+        }
+        box(finished, mats.trim, len + 0.12, 0.08, 0.95, 0, top + 0.08 - 0.475 * Math.sin(s.a), s.ridgeZ + out * 0.46 * Math.cos(s.a), s.dir * s.a);
+      }
+      if (s.p.highEdge === 'high') {
+        // The top edge of a single slope: a fascia under it and a cap folded over it.
+        box(finished, mats.trim, len + 0.2, 0.7, 0.12, 0, s.highH + lift - 0.28, s.highZ - out * 0.04);
+        box(finished, mats.trim, len + 0.2, 0.08, 0.6, 0, s.highH + lift + 0.06 - 0.3 * Math.sin(s.a), s.highZ + out * 0.3 * Math.cos(s.a), s.dir * s.a);
+      }
+      if (s.p.highEdge === 'break') {
+        // Flashing where the steep lower roof meets the flatter upper one.
+        box(finished, mats.trim, len + 0.12, 0.1, 0.7, 0, s.highH + lift + 0.03, s.highZ - out * 0.1, s.dir * 0.75);
+      }
+      if (s.p.lowEdge !== 'eave') continue;
+      const eaveY = s.lowH + lift;
+      box(finished, mats.trim, len + 0.2, 0.6, 0.12, 0, eaveY - 0.24, s.lowZ + out * 0.04);
       if (!gutters) continue;
-      const gz = run + 0.1 + 0.21;
-      box(finished, mats.trim, len + 0.1, 0.38, 0.42, 0, eaveY - 0.24, side * gz);
-      box(finished, mats.dark, len, 0.02, 0.3, 0, eaveY - 0.045, side * gz);
+      const gz = Math.abs(s.lowZ) + 0.1 + 0.21;
+      box(finished, mats.trim, len + 0.1, 0.38, 0.42, 0, eaveY - 0.24, out * gz);
+      box(finished, mats.dark, len, 0.02, 0.3, 0, eaveY - 0.045, out * gz);
       for (const end of [1, -1]) {
         const x = end * (L / 2 - 0.7), wallZ = W / 2 + 0.17, reach = gz - wallZ;
         const elbowed = reach > 0.35;
         const pipeTop = elbowed ? eaveY - 1.25 : eaveY - 0.4;
-        box(finished, mats.trim, 0.3, pipeTop - 0.35, 0.24, x, (pipeTop + 0.35) / 2, side * wallZ);
+        box(finished, mats.trim, 0.3, pipeTop - 0.35, 0.24, x, (pipeTop + 0.35) / 2, out * wallZ);
         if (elbowed) {
-          box(finished, mats.trim, 0.3, 0.24, Math.hypot(reach, 0.82) + 0.2, x, pipeTop + 0.41, side * (wallZ + reach / 2), -side * Math.atan2(0.82, reach));
+          box(finished, mats.trim, 0.3, 0.24, Math.hypot(reach, 0.82) + 0.2, x, pipeTop + 0.41, out * (wallZ + reach / 2), -out * Math.atan2(0.82, reach));
         }
-        box(finished, mats.trim, 0.3, 0.24, 0.7, x, 0.36, side * (wallZ + 0.3), side * 0.5);
+        box(finished, mats.trim, 0.3, 0.24, 0.7, x, 0.36, out * (wallZ + 0.3), out * 0.5);
       }
+    }
+
+    // Cupolas sit astride the ridge: a square louvered box under a small hip roof.
+    const ridge = shapes.find((s) => s.p.highEdge === 'ridge');
+    for (const c of ridge ? cupolas : []) {
+      const size = c.sizeIn / 12, x = c.x / 12 - L / 2, peak = ridge.ridgeH;
+      const foot = peak - (size / 2) * ridge.tan - 0.1, body = size * 0.85;
+      const topY = peak + body;
+      box(finished, mats.trim, size + 0.3, 0.3 + (peak - foot), size + 0.3, x, (foot + peak + 0.3) / 2, ridge.ridgeZ);
+      box(finished, mats.wall, size, body, size, x, peak + body / 2, ridge.ridgeZ);
+      const slats = Math.max(3, Math.round(body / 0.35));
+      for (let k = 0; k < slats; k++) {
+        const y = peak + 0.45 + (body - 0.7) * k / (slats - 1);
+        box(finished, mats.dark, size * 0.74, 0.1, size + 0.04, x, y, ridge.ridgeZ);
+        box(finished, mats.dark, size + 0.04, 0.1, size * 0.74, x, y, ridge.ridgeZ);
+      }
+      for (const [dx, dz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+        box(finished, mats.trim, 0.22, body, 0.22, x + dx * (size / 2 - 0.08), peak + body / 2, ridge.ridgeZ + dz * (size / 2 - 0.08));
+      }
+      box(finished, mats.trim, size + 0.7, 0.16, size + 0.7, x, topY + 0.08, ridge.ridgeZ);
+      const cap = new THREE.Mesh(CUPOLA_CAP, mats.cupolaRoof);
+      cap.scale.set((size + 0.9) / Math.SQRT2, size * 0.55, (size + 0.9) / Math.SQRT2);
+      cap.position.set(x, topY + 0.16 + size * 0.275, ridge.ridgeZ);
+      cap.castShadow = true;
+      finished.add(cap);
+      box(finished, mats.trim, 0.12, size * 0.35, 0.12, x, topY + 0.16 + size * 0.55 + size * 0.15, ridge.ridgeZ);
     }
   }
 
   function buildFraming(result) {
-    const { building: b, posts, trusses, girtRows } = result.geometry;
-    const L = b.lengthIn / 12, W = b.widthIn / 12, H = b.eaveIn / 12, rise = b.riseIn / 12, oh = b.overhangIn / 12;
-    const a = Math.atan(b.pitch / 12), slope = (W / 2 + oh) / Math.cos(a);
+    const { building: b, posts, trusses, girtRows, planes } = result.geometry;
+    const L = b.lengthIn / 12, W = b.widthIn / 12, H = b.eaveIn / 12;
+    const zOf = (yIn) => W / 2 - yIn / 12;
     for (const p of posts) {
       const inset = { front: [0, -0.23], back: [0, 0.23], left: [0.23, 0], right: [-0.23, 0] }[p.wall];
       box(framing, mats.treated, 0.46, p.topIn / 12, 0.46, p.x / 12 - L / 2 + inset[0], p.topIn / 24, W / 2 - p.y / 12 + inset[1]);
@@ -664,22 +736,34 @@ export function createView(canvas, stage) {
     }
     for (const row of girtRows) {
       const full = row.wall === 'front' || row.wall === 'back' ? L : W;
-      along(row.wall, row.lengthIn ? row.lengthIn / 12 : full, row.heightIn / 12 - 0.23, 0.46, mats.wood);
+      // Rows above the eave on an end wall stop where they meet the roof.
+      const centered = row.lengthIn ? zOf(row.startIn + row.lengthIn / 2) : 0;
+      along(row.wall, row.lengthIn ? row.lengthIn / 12 : full, row.heightIn / 12 - 0.23, 0.46, mats.wood, centered);
     }
+    const shapes = planes.map((p) => ({ ...planeShape(b, p), p }));
+    // Uprights inside the truss: one under each break or peak, and one between.
+    const webs = [];
+    for (let i = 0; i < b.line.length - 1; i++) {
+      const p = b.line[i], q = b.line[i + 1];
+      if (i > 0) webs.push([p.y, p.h]);
+      webs.push([(p.y + q.y) / 2, (p.h + q.h) / 2]);
+    }
+    if (b.roof === 'mono') webs.push([b.widthIn - 3, b.line[1].h]);
     for (const tr of trusses) {
       const x = tr.x / 12 - L / 2;
       box(framing, mats.wood, 0.125, 0.46, W, x, H + 0.23, 0);
-      box(framing, mats.wood, 0.125, rise, 0.3, x, H + rise / 2, 0);
-      for (const side of [1, -1]) {
-        box(framing, mats.wood, 0.125, 0.46, slope, x, H + rise - (W / 2 + oh) / 2 * Math.tan(a) - 0.1, side * (W / 2 + oh) / 2, side * a);
-        box(framing, mats.wood, 0.125, rise / 2, 0.3, x, H + rise / 4, side * W / 4);
+      for (const s of shapes) box(framing, mats.wood, 0.125, 0.46, s.slope, x, s.midH - 0.1, s.midZ, s.dir * s.a);
+      for (const [y, h] of webs) {
+        const tall = h / 12 - H;
+        if (tall > 0.5) box(framing, mats.wood, 0.125, tall, 0.3, x, H + tall / 2, zOf(y));
       }
     }
-    const rows = result.summary.purlinRowsPerSide, rowLen = result.geometry.purlinRowLengthIn / 12;
-    for (const side of [1, -1]) {
+    const rowLen = result.geometry.purlinRowLengthIn / 12;
+    for (const s of shapes) {
+      const rows = s.p.purlinRows;
       for (let i = 0; i < rows; i++) {
-        const s = slope * i / (rows - 1);
-        box(framing, mats.wood, rowLen, 0.125, 0.29, 0, H + rise - s * Math.sin(a) + 0.2, side * s * Math.cos(a), side * a);
+        const k = rows > 1 ? i / (rows - 1) : 0.5;
+        box(framing, mats.wood, rowLen, 0.125, 0.29, 0, s.highH + (s.lowH - s.highH) * k + 0.2, s.highZ + (s.lowZ - s.highZ) * k, s.dir * s.a);
       }
     }
   }
@@ -765,6 +849,7 @@ export function createView(canvas, stage) {
     bigDoors = [];
     mats.wall.color.set(colors.walls);
     mats.roof.color.set(colors.roof);
+    mats.cupolaRoof.color.set(colors.roof);
     mats.shedRoof.color.set(colors.roof);
     mats.shedRoof.side = THREE.DoubleSide;
     mats.trim.color.set(colors.trim);
@@ -778,7 +863,7 @@ export function createView(canvas, stage) {
       g.updateMatrixWorld(true);
       finished.add(g);
     }
-    buildRoof(b, colors.gutters);
+    buildRoof(b, colors.gutters, result.geometry.cupolas ?? []);
     buildFraming(result);
     for (const s of result.geometry.sheds) buildShed(b, s);
     if (settingKey !== `${L}x${W}`) {

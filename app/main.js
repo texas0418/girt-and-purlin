@@ -1,5 +1,6 @@
 import { design } from '../engine/design.js';
 import { feetInches } from '../engine/stock.js';
+import { edgeOverhangIn, eaveDropIn } from '../engine/building.js';
 import { priceJob, parsePriceList, priceListCsv, toCsv, SAMPLE_CATALOG } from '../engine/pricing.js';
 import { createView } from './scene.js';
 import { jobs, templates, company, priceLists, newId, designOf, STARTING_POINTS } from './office.js';
@@ -51,8 +52,12 @@ const OPTION_SETS = {
   footing: ['Under Each Post', [['none', 'Not Listed'], ['pad', 'Concrete Pad'], ['collar', 'Poured Collar']]],
   slab: ['Concrete Floor', [[false, 'None'], [true, '4 in Slab']]],
   ridgeVent: ['Ridge Vent', [[false, 'None'], [true, 'Vented Ridge']]],
+  cupolas: ['Cupolas', [[false, 'None'], [true, 'On The Ridge']]],
+  cupolaSizeIn: ['Cupola Size', [[0, 'Sized To The Roof'], [24, '24 in'], [36, '36 in'], [48, '48 in']]],
 };
-const OPTION_DEFAULTS = { wainscotIn: 36, linerWalls: false, linerCeiling: false, roofInsulation: 'none', wallInsulation: 'none', ceilingR: 0, footing: 'none', slab: false, ridgeVent: false, skylights: 0 };
+const ROOF_NAMES = { gable: 'Gable', mono: 'Single Slope', gambrel: 'Gambrel' };
+const roofOf = () => state.roof ?? 'gable';
+const OPTION_DEFAULTS = { wainscotIn: 36, linerWalls: false, linerCeiling: false, roofInsulation: 'none', wallInsulation: 'none', ceilingR: 0, footing: 'none', slab: false, ridgeVent: false, skylights: 0, cupolas: false, cupolaSizeIn: 0 };
 const OPENING_FIELDS = {
   offset: { label: 'Position', step: 0.5 },
   width: { label: 'Width', step: 0.5 },
@@ -296,15 +301,26 @@ function jobsPanel() {
 function leftPanel() {
   if (ui.step === 'Jobs') return jobsPanel();
   if (ui.step === 'Size') {
-    return `<h2>Building Size</h2>${['width', 'length', 'eaveHeight', 'pitch', 'overhang'].map(field).join('')}
+    return `<h2>Building Size</h2>${['width', 'length', 'eaveHeight', ...(roofOf() === 'gambrel' ? [] : ['pitch']), 'overhang'].map(field).join('')}
       <h2>Post Spacing</h2>${choice('postSpacing', [6, 8, 10, 12], 'ft')}
       <h2>Truss Spacing</h2>${choice('trussSpacing', [2, 4, 8], 'ft')}
       <p class="hint">Drag the picture to look around the building. Scroll or pinch to move closer. The material list follows every change.</p>`;
   }
   if (ui.step === 'Roof') {
-    return `<h2>Roof</h2>${['pitch', 'overhang'].map(field).join('')}
+    const shape = roofOf();
+    const about = {
+      gable: 'A gable has two equal slopes that meet at a ridge down the middle.',
+      mono: 'A single slope is low along the front wall and high along the back. The wall height on the Size step is the low wall.',
+      gambrel: `A gambrel is the classic barn roof: a steep lower slope, then a flatter one up to the ridge. Its slopes are fixed at ${result.rules.gambrelLowerPitch} in 12 and ${result.rules.gambrelUpperPitch} in 12, and the steep part stops at the wall line with no side overhang.`,
+    }[shape];
+    return `<h2>Roof Shape</h2>
+      <div class="seg">${Object.entries(ROOF_NAMES).map(([k, name]) => `<button data-roof="${k}" class="${shape === k ? 'on' : ''}">${name}</button>`).join('')}</div>
+      <p class="hint">${about}</p>
+      <h2>Roof</h2>${(shape === 'gambrel' ? ['overhang'] : ['pitch', 'overhang']).map(field).join('')}
       <h2>Truss Spacing</h2>${choice('trussSpacing', [2, 4, 8], 'ft')}
-      <p class="hint">The main roof is a gable. Lean-tos and porches are on their own step.</p>`;
+      ${shape === 'mono' ? '' : `${optionRow('cupolas')}${opt('cupolas') ? optionRow('cupolaSizeIn', true) : ''}
+      <p class="hint">Cupolas sit on the ridge. Sized to the roof means one or two, by the length of the ridge. They are priced as bought units.</p>`}
+      <p class="hint">Lean-tos and porches are on their own step.</p>`;
   }
   if (ui.step === 'Doors And Windows') {
     const rows = state.openings.map((o, i) => {
@@ -415,6 +431,8 @@ function leftPanel() {
 function finishRows() {
   const rows = [];
   if (state.colors.wainscotOn) rows.push(`${optName('wainscotIn')} wainscot`);
+  const cupolas = result.geometry.cupolas ?? [];
+  if (cupolas.length) rows.push(`${cupolas.length === 1 ? 'One' : 'Two'} ${cupolas[0].sizeIn} in ${cupolas.length === 1 ? 'cupola' : 'cupolas'} on the ridge`);
   const liner = [opt('linerWalls') && 'walls', opt('linerCeiling') && 'ceiling'].filter(Boolean);
   if (liner.length) rows.push(`Steel liner on the ${liner.join(' and ')}`);
   if (opt('roofInsulation') !== 'none') rows.push(`${optName('roofInsulation')} insulation under the roof`);
@@ -438,7 +456,7 @@ function specRows() {
   const openings = Object.entries(counts).map(([k, n]) => `${n} ${esc(k.replace('|', n > 1 ? 's, ' : ', '))}`).join('<br>');
   return [
     ['Size', `${state.width} ft wide, ${state.length} ft long, ${state.eaveHeight} ft walls`],
-    ['Roof', `${state.pitch} in 12 pitch, ${state.overhang} in overhang`],
+    ['Roof', `${ROOF_NAMES[roofOf()]}, ${roofOf() === 'gambrel' ? `${result.rules.gambrelLowerPitch} in 12 and ${result.rules.gambrelUpperPitch} in 12 slopes` : `${state.pitch} in 12 pitch`}, ${state.overhang} in overhang`],
     ['Frame', `Posts every ${state.postSpacing} ft, trusses every ${state.trussSpacing} ft`],
     ['Doors And Windows', openings || 'None'],
     ...(state.sheds.length ? [['Lean-Tos And Porches', state.sheds.map((s) => `${SHED_NAMES[s.kind]}, ${WALL_NAMES[s.wall].toLowerCase()} wall, ${num(s.depth)} x ${num(s.length)} ft${s.kind === 'leanto' && s.enclosed ? ', enclosed' : ''}`).join('<br>')]] : []),
@@ -572,6 +590,10 @@ document.addEventListener('click', (e) => {
   if ('proposal' in d) return openProposal();
   if ('print' in d) return window.print();
   if ('close' in d) { $('proposal').hidden = true; $('proposal').innerHTML = ''; return; }
+  if (d.roof) {
+    if (d.roof === roofOf()) return;
+    return apply({ roof: d.roof }, `Roof now ${ROOF_NAMES[d.roof].toLowerCase()}`);
+  }
   if (d.choice) {
     const label = d.choice === 'postSpacing' ? 'Post spacing' : 'Truss spacing';
     return apply({ [d.choice]: Number(d.value) }, `${label} ${state[d.choice]} to ${d.value} ft`);
@@ -602,7 +624,9 @@ document.addEventListener('click', (e) => {
     if (!wall) { ui.lead = ''; ui.problem = 'Every wall already has a lean-to or porch. Remove one first, or shorten one to make room.'; return paint(); }
     const length = wall === 'front' || wall === 'back' ? state.length : state.width;
     ui.shed = state.sheds.length;
-    const drop = state.overhang > 0 ? Math.ceil((state.overhang * state.pitch / 12 + 6) / 6) / 2 : 0;
+    // Low enough to tuck under the main roof's overhang and fascia on that wall.
+    const host = result.geometry.building;
+    const drop = edgeOverhangIn(host, wall) > 0 ? Math.ceil((eaveDropIn(host, wall) + 6) / 6) / 2 : 0;
     apply({ sheds: [...state.sheds, { kind: d.shedadd, wall, start: 0, length, ...NEW_SHED[d.shedadd], drop }] }, `${SHED_NAMES[d.shedadd]} added to the ${WALL_NAMES[wall].toLowerCase()} wall`);
     if (ui.problem) ui.shed = null;
     return paint();
@@ -825,12 +849,15 @@ function openEngineer() {
   const { building: b, posts } = result.geometry;
   const r = result.rules, sum = result.summary;
   const blank = (label, hint) => `<dt>${label}</dt><dd contenteditable spellcheck="false">${hint}</dd>`;
+  const pitchText = b.roof === 'gambrel' ? `${r.gambrelLowerPitch} in 12 lower slopes, ${r.gambrelUpperPitch} in 12 upper slopes, break ${feetInches(b.line[1].y)} in from each side wall and ${feetInches(b.line[1].h)} above the ground` : `${state.pitch} in 12`;
+  const planes = result.geometry.planes;
+  const purlinText = b.roof === 'gable' ? `${planes[0].purlinRows} rows each side` : b.roof === 'mono' ? `${planes[0].purlinRows} rows` : `${planes[0].purlinRows} rows on each lower slope and ${planes[1].purlinRows} on each upper slope`;
   const facts = [
-    ['Shape', `Rectangle with a gable roof, ridge running the long way${b.sheds.length ? `, plus ${b.sheds.length} single-slope ${b.sheds.length === 1 ? 'addition' : 'additions'}` : ''}`],
+    ['Shape', `Rectangle with a ${{ gable: 'gable roof, ridge running the long way', mono: 'single-slope roof, low along the front wall and high along the back', gambrel: 'gambrel roof, ridge running the long way' }[b.roof]}${b.sheds.length ? `, plus ${b.sheds.length} single-slope ${b.sheds.length === 1 ? 'addition' : 'additions'}` : ''}`],
     ['Width', `${state.width} ft`], ['Length', `${state.length} ft`],
-    ['Wall Height', `${state.eaveHeight} ft, ground to eave`],
-    ['Peak Height', `${feetInches(b.eaveIn + b.riseIn)}, ground to ridge`],
-    ['Roof Pitch', `${state.pitch} in 12`], ['Overhang', `${state.overhang} in, all four sides`],
+    ['Wall Height', `${state.eaveHeight} ft, ground to ${b.roof === 'mono' ? 'the low eave' : 'eave'}`],
+    ['Peak Height', `${feetInches(b.eaveIn + b.riseIn)}, ground to ${b.roof === 'mono' ? 'the top of the high wall' : 'ridge'}`],
+    ['Roof Pitch', pitchText], ['Overhang', b.roof === 'gambrel' ? `${state.overhang} in at each end wall, none along the side walls` : `${state.overhang} in, all four sides`],
     ['Floor Area', `${Math.round(sum.floorSqFt).toLocaleString('en-US')} sq ft`],
     ...(finishRows().length ? [['Inside And Finish', finishRows().join(', ')]] : []),
   ];
@@ -838,10 +865,10 @@ function openEngineer() {
   const headerSizes = [...new Set(result.items.filter((i) => i.name === 'Headers').map((i) => i.size))];
   const members = [
     ['Posts', r.postSize, `Every ${state.postSpacing} ft along each wall, ${posts.length} in all, set ${feetInches(r.postEmbedmentIn)} into the ground`],
-    ['Trusses', `${state.width} ft span, ${state.pitch} in 12`, `Every ${state.trussSpacing} ft, ${sum.trusses} in all`],
+    [{ gable: 'Trusses', mono: 'Single Slope Trusses', gambrel: 'Gambrel Trusses' }[b.roof], `${state.width} ft span, ${b.roof === 'gambrel' ? 'gambrel profile' : `${state.pitch} in 12`}`, `Every ${state.trussSpacing} ft, ${sum.trusses} in all`],
     ['Skirt Board', r.skirtSize, 'One row at the ground, all four walls'],
     ['Wall Girts', r.girtSize, `Every ${r.girtSpacingIn} in up the wall, on the outside face of the posts, joined on posts`],
-    ['Roof Purlins', r.purlinSize, `Every ${r.purlinSpacingIn} in up the slope, ${sum.purlinRowsPerSide} rows each side, joined on trusses`],
+    ['Roof Purlins', r.purlinSize, `Every ${r.purlinSpacingIn} in up the slope, ${purlinText}, joined on trusses`],
     ...(carriers ? [['Truss Carriers', r.trussCarrierSize, 'Two boards along the top of each long wall, under the trusses that land between posts, joined on posts']] : []),
     ...(headerSizes.length ? [['Headers', headerSizes.join(' and '), `Two boards over each door and window${headerSizes.length > 1 ? `, the larger size over openings wider than ${r.wideHeaderOverFt} ft` : ''}`]] : []),
     ...result.geometry.sheds.flatMap((s) => {

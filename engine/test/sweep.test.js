@@ -61,9 +61,9 @@ function check(job) {
   if (JSON.stringify(design(job)) !== JSON.stringify(r)) fail('same building gave two different answers', job);
   try { const p = priceJob(r, SAMPLE_CATALOG, { markupPct: 20, taxPct: 7, laborPerSqFt: 4 }); if (!(p.total > 0) || !Number.isFinite(p.total)) fail('price total is not a positive number', job); } catch (e) { fail('pricing crash: ' + e.message, job); }
 }
-const base = () => ({ job: 'sweep', width: between(8, 100, 2), length: between(8, 400, 4), eaveHeight: between(6, 24), pitch: between(1, 12), overhang: pick([0, 12, 18, 24, 36]), postSpacing: pick([4, 6, 8, 10, 12, 16]), trussSpacing: pick([2, 4, 8, 12, 16]) });
+const base = () => ({ job: 'sweep', width: between(8, 100, 2), length: between(8, 400, 4), eaveHeight: between(6, 24), pitch: between(1, 12), overhang: pick([0, 12, 18, 24, 36]), postSpacing: pick([4, 6, 8, 10, 12, 16]), trussSpacing: pick([2, 4, 8, 12, 16]), roof: pick(['gable', 'gable', 'mono', 'gambrel']) });
 for (let i = 0; i < 2000; i++) check(base());
-for (const w of [8, 100]) for (const l of [8, 400]) for (const e of [6, 24]) for (const p of [1, 12]) for (const ps of [4, 16]) for (const ts of [2, 16]) check({ width: w, length: l, eaveHeight: e, pitch: p, overhang: 36, postSpacing: ps, trussSpacing: ts });
+for (const w of [8, 100]) for (const l of [8, 400]) for (const e of [6, 24]) for (const p of [1, 12]) for (const ps of [4, 16]) for (const ts of [2, 16]) for (const roof of ['gable', 'mono', 'gambrel']) check({ roof, width: w, length: l, eaveHeight: e, pitch: p, overhang: 36, postSpacing: ps, trussSpacing: ts });
 for (let i = 0; i < 4000; i++) {
   const j = base(); j.openings = [];
   for (let k = between(1, 5); k > 0; k--) {

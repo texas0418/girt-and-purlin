@@ -38,7 +38,7 @@ export const company = {
 
 // The parts of a job that describe the building itself. Customer options and
 // templates copy these and nothing else.
-export const DESIGN_KEYS = ['width', 'length', 'eaveHeight', 'pitch', 'overhang', 'postSpacing', 'trussSpacing', 'openings', 'sheds', 'options', 'colors'];
+export const DESIGN_KEYS = ['roof', 'width', 'length', 'eaveHeight', 'pitch', 'overhang', 'postSpacing', 'trussSpacing', 'openings', 'sheds', 'options', 'colors'];
 export const designOf = (job) => structuredClone(Object.fromEntries(DESIGN_KEYS.filter((k) => k in job).map((k) => [k, job[k]])));
 
 const colors = (walls, roof, trim, wainscot, wainscotOn) => ({ walls, roof, trim, wainscot, wainscotOn, gutters: false, truck: false });
@@ -92,6 +92,20 @@ export const STARTING_POINTS = [
     ],
     sheds: [{ kind: 'porch', wall: 'front', start: 0, length: 36, depth: 8, pitch: 3, drop: 1, enclosed: false }],
     options: { slab: true, wallInsulation: 'wrap' }, colors: colors('#2e4a3a', '#2f3336', '#e6e6e0', '#2f3336', false) } },
+  { name: 'Gambrel Barn', design: {
+    roof: 'gambrel', width: 24, length: 40, eaveHeight: 10, pitch: 4, overhang: 12, postSpacing: 8, trussSpacing: 4,
+    openings: [
+      { type: 'slider', wall: 'left', offset: 7, width: 10, height: 9 },
+      { type: 'walk', wall: 'front', offset: 2.5, width: 3, height: 6 + 8 / 12 },
+    ],
+    sheds: [], options: { cupolas: true }, colors: colors('#7a2a22', '#2f3336', '#e6e6e0', '#2f3336', false) } },
+  { name: 'Single Slope Shed', design: {
+    roof: 'mono', width: 20, length: 32, eaveHeight: 9, pitch: 3, overhang: 12, postSpacing: 8, trussSpacing: 4,
+    openings: [
+      { type: 'overhead', wall: 'back', offset: 4, width: 10, height: 10 },
+      { type: 'overhead', wall: 'back', offset: 18, width: 10, height: 10 },
+    ],
+    sheds: [], options: {}, colors: colors('#8b908d', '#2f3336', '#e6e6e0', '#2f3336', false) } },
   { name: 'Empty Shell', design: {
     width: 30, length: 40, eaveHeight: 10, pitch: 4, overhang: 12, postSpacing: 8, trussSpacing: 4,
     openings: [], sheds: [], options: {}, colors: colors('#8b908d', '#2f3336', '#e6e6e0', '#2f3336', false) } },

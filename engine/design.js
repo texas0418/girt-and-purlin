@@ -2,8 +2,8 @@
 import { normalize } from './building.js';
 import { resolveRules, unverifiedRules } from './rules.js';
 import { placePosts, placeTrusses } from './framing.js';
-import { lumberRuns, girtRowCount, purlinRowsPerSide } from './runs.js';
-import { wallLengthIn, isGable, WALLS } from './building.js';
+import { lumberRuns, girtRowCount, girtTopIn, gableGirtRows, purlinRowsPerSide, purlinRows, planePurlinRows } from './runs.js';
+import { isGable, WALLS, GAMBREL } from './building.js';
 import { roofPanels, wallPanels, trim, closures, screws, areas } from './metal.js';
 import { feetInches, add } from './stock.js';
 import { cutList } from './cutlist.js';
@@ -16,6 +16,7 @@ function lines(group, name, size, tally, label = (k) => `${k} ft`, ft = (k) => k
     .map((k) => ({ group, name, size, length: label(k), qty: tally[k], ft: ft(k) }));
 }
 const inchesToFt = (k) => k / 12;
+export const TRUSS_NAMES = { gable: 'Trusses', mono: 'Single Slope Trusses', gambrel: 'Gambrel Trusses' };
 
 export function design(input, ruleOverrides) {
   const rules = resolveRules(ruleOverrides);
@@ -26,6 +27,12 @@ export function design(input, ruleOverrides) {
   if (postErrors.length) return { ok: false, errors: postErrors, warnings, items: [] };
 
   const trusses = placeTrusses(b);
+  if (b.roof !== 'gambrel' && b.pitch < rules.minPanelPitch - 0.01) {
+    warnings.push({ code: 'roof-flat', text: `The roof is flatter than ${rules.minPanelPitch} in 12. Rib panels that flat need sealant in every lap, and most steel warranties do not cover them.` });
+  }
+  if (b.roof === 'mono' && b.riseIn > rules.monoTrussMaxRiseFt * 12 + 0.01) {
+    warnings.push({ code: 'mono-tall', text: `The single-slope trusses would stand ${feetInches(b.riseIn)} tall. Past ${rules.monoTrussMaxRiseFt} ft a truss this shape is hard to build and haul, so lower the pitch or narrow the building.` });
+  }
   const { sheds, errors: shedErrors, warnings: shedWarnings } = placeSheds(b, rules);
   warnings.push(...shedWarnings);
   if (shedErrors.length) return { ok: false, errors: shedErrors, warnings, items: [] };
@@ -36,7 +43,7 @@ export function design(input, ruleOverrides) {
   const mainRoof = roofPanels(b, rules);
   const finish = finishParts(b, rules, {
     posts: [...posts, ...shedPosts], trusses, sheds,
-    wallTally: merged(wallPanels(b, rules), extra.wall), roofTally: merged({ ...mainRoof }, extra.roof), mainRoofPanelIn: Number(Object.keys(mainRoof)[0]),
+    wallTally: merged(wallPanels(b, rules), extra.wall), roofTally: merged({ ...mainRoof }, extra.roof), mainRoofPanelIn: Math.max(...Object.keys(mainRoof).map(Number)),
   });
   if (finish.errors.length) return { ok: false, errors: finish.errors, warnings, items: [] };
   warnings.push(...finish.warnings);
@@ -54,13 +61,11 @@ export function design(input, ruleOverrides) {
   // Where each girt row sits, for the picture and the drawings.
   const girtRows = [];
   for (const wall of WALLS) {
-    for (let i = 0; i < girtRowCount(b, rules); i++) {
-      girtRows.push({ wall, heightIn: Math.min(rules.skirtHeightIn + (i + 1) * rules.girtSpacingIn, b.eaveIn) });
+    for (let i = 0; i < girtRowCount(b, rules, wall); i++) {
+      girtRows.push({ wall, heightIn: Math.min(rules.skirtHeightIn + (i + 1) * rules.girtSpacingIn, girtTopIn(b, wall)) });
     }
     if (isGable(wall)) {
-      for (let up = rules.girtSpacingIn; up < b.riseIn - 0.01; up += rules.girtSpacingIn) {
-        girtRows.push({ wall, heightIn: b.eaveIn + up, lengthIn: wallLengthIn(b, wall) * (1 - up / b.riseIn) });
-      }
+      for (const g of gableGirtRows(b, rules)) girtRows.push({ wall, heightIn: g.heightIn, startIn: g.startIn, lengthIn: g.endIn - g.startIn });
     }
   }
 
@@ -69,7 +74,7 @@ export function design(input, ruleOverrides) {
 
   const items = [
     ...lines('Framing', 'Posts', rules.postSize, postTally),
-    { group: 'Framing', name: 'Trusses', size: `${b.widthIn / 12} ft span, ${b.pitch}/12`, length: '', qty: trusses.length, ft: b.widthIn / 12 },
+    { group: 'Framing', name: TRUSS_NAMES[b.roof], size: `${b.widthIn / 12} ft span, ${b.roof === 'gambrel' ? `${GAMBREL.lowerPitch}/12 and ${GAMBREL.upperPitch}/12` : `${b.pitch}/12`}`, length: '', qty: trusses.length, ft: b.widthIn / 12 },
     ...lumber('Skirt Boards'),
     ...lumber('Wall Girts'),
     ...lumber('Roof Purlins'),
@@ -102,11 +107,12 @@ export function design(input, ruleOverrides) {
       floorSqFt: (b.widthIn * b.lengthIn) / 144,
       shedSqFt: sheds.reduce((sum, s) => sum + (s.lengthIn * s.depthIn) / 144, 0),
       posts: posts.length + shedPosts.length, trusses: trusses.length,
-      girtRowsPerWall: girtRowCount(b, rules), purlinRowsPerSide: purlinRowsPerSide(b, rules),
+      girtRowsPerWall: girtRowCount(b, rules), purlinRowsPerSide: purlinRowsPerSide(b, rules), purlinRows: purlinRows(b, rules),
+      peakIn: b.eaveIn + b.riseIn,
       linerSqFt: finish.linerSqFt, slabSqFt: finish.slabSqFt,
       screws: fasteners.count, roofSqFt: areas(b).roofSqFt + extra.roofSqFt, wallSqFt: areas(b).wallSqFt + extra.wallSqFt,
     },
-    geometry: { building: b, posts, trusses, girtRows, sheds, purlinRowLengthIn: b.lengthIn + 2 * b.overhangIn },
+    geometry: { building: b, posts, trusses, girtRows, sheds, cupolas: finish.cupolas, planes: b.planes.map((p) => ({ ...p, purlinRows: planePurlinRows(p, rules) })), purlinRowLengthIn: b.lengthIn + 2 * b.overhangIn },
     cuts: cutList(rules, [...posts, ...sheds.flatMap((sh) => sh.posts.map((p) => ({ ...p, where: sh.label, sloped: p.line !== 'outer' })))], runs),
     rules,
     unverifiedRules: unverifiedRules(),

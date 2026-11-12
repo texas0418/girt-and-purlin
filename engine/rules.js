@@ -7,6 +7,7 @@ export const defaultRules = {
   postEmbedmentIn:   { value: 48,   verified: true, note: 'Depth of post below grade', source: 'American Wood Council Post Frame Buildings (about 4 ft); Bannock County ID guide (48 in minimum); FBi Buildings. A minimum: frost depth or the engineer can make it deeper' },
   postStockFt:       { value: [10, 12, 14, 16, 18, 20, 24], verified: false, note: 'Post lengths a yard stocks' },
   postSize:          { value: '6x6 treated', verified: true, source: 'Bannock County ID and Kochville Township MI guides (6x6 minimum). Fits small and medium buildings; tall walls move to laminated columns' },
+  endPostsStopAtTruss: { value: true, verified: false, note: 'End wall posts normally run up to the roof line. Where that is taller than any stocked post they stop at the eave height under the end truss. No source read confirms this as standard practice' },
   doorJambPostMinFt: { value: 6,    verified: false, note: 'Doors this wide or wider get a post at each jamb' },
 
   skirtSize:         { value: '2x8 treated', verified: true, source: 'USDA NRCS PA-12 Fig 5.10 (2x8 treated skirt board)' },
@@ -28,6 +29,13 @@ export const defaultRules = {
   shedBeamSize:      { value: '2x12', verified: false, note: 'Two boards along the outer posts under the low ends of the rafters. Clermont County OH lists two 2x10 or two 2x12 for bearing headers by building width; the engineer sets the real size' },
   shedRafterMaxFt:   { value: 24,   verified: true, note: 'Deeper lean-tos move from rafters to single-slope trusses', source: 'FBi Buildings (rafters up to 24 ft wide, wider is most likely a mono truss)' },
   minPanelPitch:     { value: 3,    verified: true, note: 'Flattest roof for screw-down rib panels without sealant in the laps', source: 'IRC R905.10.2 (3 in 12 without lap sealant, down to 1/2 in 12 with it); Metal Sales Classic Rib guide (minimum 3:12); Hansen Pole Buildings' },
+  gambrelLowerPitch: { value: 24,   verified: true, note: 'Rise in 12 of the steep lower roof on a gambrel', source: 'Hansen Pole Buildings, gambrel roof proportions; Medeek gambrel truss uses the same pair of pitches' },
+  gambrelUpperPitch: { value: 6,    verified: true, note: 'Rise in 12 of the upper roof on a gambrel', source: 'Hansen Pole Buildings, gambrel roof proportions' },
+  gambrelBreakShare: { value: 1 / 3, verified: true, note: 'How far in from the wall the gambrel break sits, as a share of the distance from wall to peak. Medeek instead makes the two slopes equal in length, which lands in the same place at these pitches', source: 'Hansen Pole Buildings, gambrel roof proportions' },
+  gambrelEaveOverhangIn: { value: 0, verified: false, note: 'The steep lower roof of a gambrel stops at the wall line here. No source read gives a sidewall overhang for one' },
+  monoTrussMaxRiseFt: { value: 12,  verified: true, note: 'Tallest single-slope truss before the building needs another way to frame it', source: 'Hansen Pole Buildings (clearspan single-slope truss height no more than 12 ft)' },
+  cupolaByRidgeFt:   { value: [[16, 1, 24], [24, 1, 36], [32, 1, 48], [48, 2, 24], [72, 2, 36], [96, 2, 48]], verified: true, note: 'Ridge length up to, how many cupolas, and how many inches square', source: 'Hansen Pole Buildings (1.5 in of cupola per ft of ridge to 32 ft, then two cupolas at 1 in per ft); 24, 36 and 48 in are the stock sizes at MWI Components and Plyco' },
+  cupolaBaseMaxPitch: { value: 7,   verified: true, note: 'Steepest roof a standard cupola base fits', source: 'MWI Components (universal base 1/12 to 7/12, high pitch base above)' },
 
   panelCoverageIn:   { value: 36,   verified: true, note: 'Width one metal panel covers', source: 'Fabral Grandrib 3 guide p.8; Metal Sales Classic Rib; A.B. Martin ABM Panel; Everlast II' },
   roofPanelExtraIn:  { value: 2,    verified: true, note: 'Panel hang past the eave', source: 'Central States Panel-Loc Plus guide and A.B. Martin guide give 2 in; Fabral Standard Details p.2 gives 1 to 2 in' },

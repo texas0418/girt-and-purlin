@@ -66,8 +66,16 @@ export function placePosts(b, rules) {
     }
 
     for (const atIn of spots.sort((a, c) => a - c)) {
-      const topIn = wallTopIn(b, wall, atIn);
-      const stockFt = fitStock(topIn + rules.postEmbedmentIn, rules.postStockFt);
+      let topIn = wallTopIn(b, wall, atIn);
+      let stockFt = fitStock(topIn + rules.postEmbedmentIn, rules.postStockFt);
+      // An end wall post too tall for any stocked length stops under the end truss instead.
+      if (stockFt === null && isGable(wall) && topIn > b.eaveIn + EPS) {
+        topIn = b.eaveIn;
+        stockFt = fitStock(topIn + rules.postEmbedmentIn, rules.postStockFt);
+        if (!warnings.some((w) => w.code === 'end-posts-short')) {
+          warnings.push({ code: 'end-posts-short', text: 'The roof at the end walls is taller than the longest stocked post, so those posts stop at the eave height under the end truss and the wall above is framed on the truss. Have the engineer confirm the end wall.' });
+        }
+      }
       if (stockFt === null) {
         errors.push(`The post at ${feetInches(atIn)} on the ${wall} wall needs to be `
           + `${feetInches(topIn + rules.postEmbedmentIn)} long, which is longer than any stocked post.`);

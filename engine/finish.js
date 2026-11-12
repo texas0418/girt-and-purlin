@@ -1,7 +1,7 @@
 // Everything past the bare shell: wainscot, gutters, the steel liner,
 // insulation, footings, the slab, ridge vent and skylight panels. Each part
 // is counted only when the job turns it on in its options.
-import { wallLengthIn, WALLS } from './building.js';
+import { wallLengthIn, wallTopIn, gableAreaIn, WALLS } from './building.js';
 import { add, fitStock, spans, feetInches } from './stock.js';
 import { boards, openSpans, WALL_NAMES } from './runs.js';
 
@@ -111,10 +111,27 @@ export function finishParts(b, rules, { posts, trusses, sheds, wallTally, roofTa
   }
   const metal = [];
   if (o.skylights) metal.push({ group: 'Metal', name: 'Skylight Panels', size: 'clear polycarbonate', length: feetInches(mainRoofPanelIn), qty: o.skylights, ft: mainRoofPanelIn / 12 });
-  if (o.ridgeVent) metal.push({ group: 'Metal', name: 'Ridge Vent', size: '', length: feetInches(rules.ridgeVentPieceIn), qty: up(roofRunIn / rules.ridgeVentPieceIn) });
+  const hasRidge = b.planes.some((p) => p.highEdge === 'ridge');
+  if (o.ridgeVent && !hasRidge) warnings.push({ code: 'no-ridge', text: 'A single-slope roof has no ridge, so no ridge vent is counted.' });
+  if (o.ridgeVent && hasRidge) metal.push({ group: 'Metal', name: 'Ridge Vent', size: '', length: feetInches(rules.ridgeVentPieceIn), qty: up(roofRunIn / rules.ridgeVentPieceIn) });
+
+  // Cupolas sit on the ridge: one in the middle, or two at the quarter points.
+  let cupolas = [];
+  if (o.cupolas && !hasRidge) warnings.push({ code: 'no-ridge-cupola', text: 'A single-slope roof has no ridge, so no cupola is counted.' });
+  if (o.cupolas && hasRidge) {
+    const table = rules.cupolaByRidgeFt;
+    const [, count, autoIn] = table.find(([maxFt]) => b.lengthIn <= maxFt * 12 + EPS) ?? table[table.length - 1];
+    const sizeIn = o.cupolaSizeIn || autoIn;
+    cupolas = (count === 1 ? [0.5] : [0.25, 0.75]).map((share) => ({ x: b.lengthIn * share, sizeIn }));
+    metal.push({ group: 'Metal', name: 'Cupolas', size: `${sizeIn} in square`, length: '', qty: count });
+    const ridgePitch = Math.max(...b.planes.filter((p) => p.highEdge === 'ridge').map((p) => p.pitch));
+    if (ridgePitch > rules.cupolaBaseMaxPitch + EPS) {
+      warnings.push({ code: 'cupola-steep', text: `A standard cupola base fits roofs up to ${rules.cupolaBaseMaxPitch} in 12. This roof needs the high pitch base.` });
+    }
+  }
 
   if (o.gutters) {
-    const eaves = [{ runIn: roofRunIn, highIn: b.eaveIn }, { runIn: roofRunIn, highIn: b.eaveIn },
+    const eaves = [...b.planes.filter((p) => p.lowEdge === 'eave').map((p) => ({ runIn: roofRunIn, highIn: p.lowIn })),
       ...sheds.map((s) => ({ runIn: s.lengthIn + 2 * b.overhangIn, highIn: s.lowIn }))];
     const t = { sections: 0, joiners: 0, hangers: 0, caps: 0, spouts: 0, spoutSections: 0 };
     for (const e of eaves) {
@@ -154,8 +171,8 @@ export function finishParts(b, rules, { posts, trusses, sheds, wallTally, roofTa
   }
 
   // Insulation is measured over the building itself, not the overhangs or lean-tos.
-  const roofSqFt = (2 * Math.hypot(b.widthIn / 2, b.riseIn) * b.lengthIn) / 144;
-  const wallSqFt = (perimeterIn * b.eaveIn + b.widthIn * b.riseIn) / 144;
+  const roofSqFt = b.planes.reduce((sum, p) => sum + p.bareSlopeIn, 0) * b.lengthIn / 144;
+  const wallSqFt = (b.lengthIn * (wallTopIn(b, 'front', 0) + wallTopIn(b, 'back', 0)) + 2 * gableAreaIn(b)) / 144;
   const rolls = (sqFt, widthIn, lengthFt, lapIn) => up(sqFt / ((widthIn - lapIn) / 12 * lengthFt));
   for (const [where, kind, sqFt] of [['Roof', o.roofInsulation, roofSqFt], ['Wall', o.wallInsulation, wallSqFt]]) {
     if (kind === 'bubble') {
@@ -186,7 +203,7 @@ export function finishParts(b, rules, { posts, trusses, sheds, wallTally, roofTa
     );
   }
 
-  return { items, metal, warnings, errors, walls, roof, wainscot, liner, trim, screws, linerSqFt, slabSqFt };
+  return { items, metal, warnings, errors, cupolas, walls, roof, wainscot, liner, trim, screws, linerSqFt, slabSqFt };
 }
 
 export const FINISH_LUMBER = ['Wainscot Girts', 'Liner Girts', 'Ceiling Joists'];

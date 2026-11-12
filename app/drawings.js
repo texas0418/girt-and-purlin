@@ -1,5 +1,5 @@
 // Framing drawings: one view of each wall from outside, and the roof from above.
-import { wallLengthIn, wallTopIn, isGable } from '../engine/building.js';
+import { wallLengthIn, wallTopIn, edgeOverhangIn, isGable } from '../engine/building.js';
 import { spans, feetInches } from '../engine/stock.js';
 
 export const SHEETS = [['front', 'Front Wall'], ['back', 'Back Wall'], ['left', 'Left End'], ['right', 'Right End'], ['roof', 'Roof Framing']];
@@ -32,7 +32,9 @@ function wallSheet(result, wall, c) {
   const { building: b, posts, girtRows } = result.geometry;
   const rules = result.rules;
   const len = wallLengthIn(b, wall) / 12;
-  const top = (isGable(wall) ? b.eaveIn + b.riseIn : b.eaveIn) / 12;
+  // The wall's own top: the eave on a side wall, the low eave on an end wall.
+  const wallIn = isGable(wall) ? b.eaveIn : wallTopIn(b, wall, 0);
+  const top = (isGable(wall) ? b.eaveIn + b.riseIn : wallIn) / 12;
   const unit = Math.max(len, top * 2) * 0.016 + 0.2;
   const { line, text, across, upright } = pen(c, unit);
   const u = (atIn) => (MIRRORED[wall] ? len - atIn / 12 : atIn / 12);
@@ -40,7 +42,7 @@ function wallSheet(result, wall, c) {
   const out = [];
 
   const bury = rules.postEmbedmentIn / 12;
-  const corner = isGable(wall) ? [{ atIn: 0, topIn: b.eaveIn }, { atIn: len * 12, topIn: b.eaveIn }] : [];
+  const corner = isGable(wall) ? [0, len * 12].map((atIn) => ({ atIn, topIn: wallTopIn(b, wall, atIn) })) : [];
   const stand = [...posts.filter((p) => p.wall === wall), ...corner].sort((p, q) => u(p.atIn) - u(q.atIn));
   for (const p of stand) {
     const x = Math.min(Math.max(u(p.atIn), 0.25), len - 0.25);
@@ -60,7 +62,7 @@ function wallSheet(result, wall, c) {
   const heights = [];
   for (const row of girtRows.filter((r) => r.wall === wall)) {
     if (row.lengthIn) {
-      out.push(board((len * 12 - row.lengthIn) / 2, row.lengthIn, row.heightIn, 5.5));
+      out.push(board(row.startIn ?? (len * 12 - row.lengthIn) / 2, row.lengthIn, row.heightIn, 5.5));
     } else {
       for (const [from, to] of spans(len * 12, gaps(row.heightIn))) out.push(board(from, to - from, row.heightIn, 5.5));
     }
@@ -87,9 +89,9 @@ function wallSheet(result, wall, c) {
   }
 
   if (isGable(wall)) {
-    out.push(`<path d="M 0 ${y(b.eaveIn)} L ${len / 2} 0 L ${len} ${y(b.eaveIn)}" fill="none" stroke="${c.ink}" stroke-width="0.12"/>`);
+    out.push(`<path d="M ${b.line.map((p) => `${u(p.y)} ${y(p.h)}`).join(' L ')}" fill="none" stroke="${c.ink}" stroke-width="0.12"/>`);
   } else {
-    out.push(line(0, y(b.eaveIn), len, y(b.eaveIn), 0.12));
+    out.push(line(0, y(wallIn), len, y(wallIn), 0.12));
   }
   out.push(line(-unit, top, len + unit, top, 0.05, c.soft), text(len + unit * 2.2, top + unit * 0.3, 'Grade', 0.8, c.soft));
 
@@ -107,44 +109,60 @@ function wallSheet(result, wall, c) {
   const row2 = row1 + unit * (2.4 + Math.max(0, lastRight.length - 1) * 0.95);
   out.push(across(0, len, row2, `${short(len * 12)} overall`),
     text(len / 2, row1 - unit * 1.5, 'Post centers', 0.75, c.soft),
-    upright(y(b.eaveIn), top, -unit * 2, `${short(b.eaveIn)} eave`));
+    upright(y(wallIn), top, -unit * 2, `${short(wallIn)} ${wallIn > b.eaveIn ? 'high wall' : 'eave'}`));
   if (isGable(wall)) out.push(upright(0, top, -unit * 4.4, `${short(b.eaveIn + b.riseIn)} peak`));
-  for (const h of [...new Set(heights)].filter((v) => v <= b.eaveIn)) {
+  for (const h of [...new Set(heights)].filter((v) => v <= wallIn)) {
     out.push(line(len + unit * 0.4, y(h), len + unit * 1.1, y(h)), text(len + unit * 1.4, y(h) + unit * 0.3, short(h), 0.75, c.soft, 'text-anchor="start"').replace('text-anchor="middle" ', ''));
   }
-  out.push(text(len + unit * 1.4, y(b.eaveIn) - unit * 1.2, 'Girt heights', 0.75, c.soft, 'text-anchor="start"').replace('text-anchor="middle" ', ''));
+  out.push(text(len + unit * 1.4, y(wallIn) - unit * 1.2, 'Girt heights', 0.75, c.soft, 'text-anchor="start"').replace('text-anchor="middle" ', ''));
 
   const left = unit * 6.5, right = unit * 8;
   return `<svg viewBox="${-left} ${-unit * 2} ${len + left + right} ${row2 + unit * 3.5}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Wall framing">${out.join('')}</svg>`;
 }
 
 function roofSheet(result, c) {
-  const { building: b, trusses } = result.geometry;
+  const { building: b, trusses, planes } = result.geometry;
   const rules = result.rules;
   const over = b.overhangIn / 12, L = b.lengthIn / 12, W = b.widthIn / 12;
+  // The plan reads with the back wall at the top of the sheet.
+  const side = { back: edgeOverhangIn(b, 'back') / 12, front: edgeOverhangIn(b, 'front') / 12 };
+  const yy = (yIn) => W - yIn / 12;
   const unit = Math.max(L, W) * 0.016 + 0.2;
   const { line, text, across, upright } = pen(c, unit);
-  const out = [`<rect x="${-over}" y="${-over}" width="${L + 2 * over}" height="${W + 2 * over}" fill="${c.paper}" stroke="${c.ink}" stroke-width="0.1"/>`,
+  const out = [`<rect x="${-over}" y="${-side.back}" width="${L + 2 * over}" height="${W + side.back + side.front}" fill="${c.paper}" stroke="${c.ink}" stroke-width="0.1"/>`,
     `<rect x="0" y="0" width="${L}" height="${W}" fill="none" stroke="${c.soft}" stroke-width="0.05" stroke-dasharray="0.5 0.3"/>`];
 
-  const half = W / 2 + over;
-  const slope = Math.hypot(b.widthIn / 2 + b.overhangIn, (b.widthIn / 2 + b.overhangIn) * b.pitch / 12);
-  const rows = Math.ceil(slope / rules.purlinSpacingIn - 0.01) + 1;
-  for (let i = 0; i < rows; i++) {
-    const off = Math.min(i * rules.purlinSpacingIn, slope) / slope * half;
-    for (const yy of i === 0 ? [W / 2 - 0.12, W / 2 + 0.12] : [W / 2 - off, W / 2 + off]) out.push(line(-over, yy, L + over, yy, 0.05, c.soft));
+  for (const p of planes) {
+    const low = p.lowY - p.dir * p.lowOverIn, high = p.highY + p.dir * p.highOverIn;
+    for (let i = 0; i < p.purlinRows; i++) {
+      const at = high + (low - high) * (p.purlinRows > 1 ? i / (p.purlinRows - 1) : 0.5);
+      // The top row of each slope sits just off the ridge or break so the two do not print as one line.
+      const nudge = i === 0 && p.highEdge !== 'high' ? p.dir * 0.12 : 0;
+      out.push(line(-over, yy(at) + nudge, L + over, yy(at) + nudge, 0.05, c.soft));
+    }
+    if (p.highEdge !== 'high' && p.dir === 1) out.push(line(-over, yy(p.highY), L + over, yy(p.highY), 0.04, c.ink, 'stroke-dasharray="1 0.3 0.2 0.3"'));
+    if (p.highEdge === 'break' && p.dir === -1) out.push(line(-over, yy(p.highY), L + over, yy(p.highY), 0.04, c.ink, 'stroke-dasharray="1 0.3 0.2 0.3"'));
   }
-  for (const t of trusses) out.push(line(t.x / 12, -over, t.x / 12, W + over, 0.16));
-  out.push(line(-over, W / 2, L + over, W / 2, 0.04, c.ink, 'stroke-dasharray="1 0.3 0.2 0.3"'));
+  for (const t of trusses) out.push(line(t.x / 12, -side.back, t.x / 12, W + side.front, 0.16));
+  for (const cup of result.geometry.cupolas ?? []) {
+    const half = cup.sizeIn / 24;
+    out.push(`<rect x="${cup.x / 12 - half}" y="${W / 2 - half}" width="${half * 2}" height="${half * 2}" fill="${c.paper}" stroke="${c.ink}" stroke-width="0.1"/>`,
+      text(cup.x / 12, W / 2 + half + unit * 1.1, `Cupola ${short(cup.sizeIn)}`, 0.75, c.soft));
+  }
 
   const xs = trusses.map((t) => t.x / 12).sort((p, q) => p - q);
-  const row1 = W + over + unit * 2.4, row2 = row1 + unit * 2.4;
+  const row1 = W + side.front + unit * 2.4, row2 = row1 + unit * 2.4;
   if (xs.length > 1) out.push(across(xs[0], xs[1], row1, short((xs[1] - xs[0]) * 12), 0.8),
     text((xs[1] + xs[xs.length - 1]) / 2, row1 + unit * 0.3, `${xs.length} trusses, same spacing to the far end`, 0.8, c.soft));
+  const counts = planes.map((p) => p.purlinRows);
+  const rowsNote = b.roof === 'gable' ? `${counts[0]} purlin rows each side`
+    : b.roof === 'mono' ? `${counts[0]} purlin rows`
+      : `${counts[0]} purlin rows on each lower slope, ${counts[1]} on each upper slope`;
   out.push(across(-over, L + over, row2, `${short(result.geometry.purlinRowLengthIn)} purlin rows`),
     upright(0, W, -over - unit * 2, `${short(b.widthIn)} truss span`),
-    text(L / 2, -over - unit * 2.4, `${rows} purlin rows each side, ${rules.purlinSpacingIn} in apart up the slope`, 0.8, c.soft),
-    text(L / 2, -over - unit * 0.9, 'Back', 0.8, c.soft), text(L / 2, W + over + unit * 1.1, 'Front', 0.8, c.soft));
+    text(L / 2, -side.back - unit * 2.4, `${rowsNote}, ${rules.purlinSpacingIn} in apart up the slope`, 0.8, c.soft),
+    text(L / 2, -side.back - unit * 0.9, b.roof === 'mono' ? 'Back, high side' : 'Back', 0.8, c.soft),
+    text(L / 2, W + side.front + unit * 1.1, b.roof === 'mono' ? 'Front, low side' : 'Front', 0.8, c.soft));
 
   const left = over + unit * 5;
   return `<svg viewBox="${-left} ${-over - unit * 4.5} ${L + left + over + unit * 2} ${row2 + over + unit * 7}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Roof framing">${out.join('')}</svg>`;
@@ -154,7 +172,12 @@ function roofSheet(result, c) {
 function shedSheet(result, s, c) {
   const { building: b } = result.geometry;
   const rules = result.rules;
-  const D = s.depthIn / 12, over = b.overhangIn / 12, hi = s.highIn / 12, lo = s.lowIn / 12, eave = b.eaveIn / 12;
+  const D = s.depthIn / 12, over = b.overhangIn / 12, hi = s.highIn / 12, lo = s.lowIn / 12;
+  const eave = (isGable(s.wall) ? b.eaveIn : wallTopIn(b, s.wall, 0)) / 12;
+  // How the main roof leaves the wall the shed hangs on: up and inward on a low eave,
+  // down and inward on the high side of a single slope, level on an end wall.
+  const mainPitch = isGable(s.wall) ? 0 : b.roof === 'mono' && s.wall === 'back' ? -b.pitch : b.planes[0].pitch;
+  const mainOver = edgeOverhangIn(b, s.wall) / 12;
   const top = eave + 1.5;
   const unit = Math.max(D + over, top * 1.6) * 0.02 + 0.2;
   const { line, text, across, upright } = pen(c, unit);
@@ -166,8 +189,8 @@ function shedSheet(result, s, c) {
   const deep = 0.6;
   const out = [
     post(-0.46, eave, c.wood),
-    line(-0.46, y(eave), -0.46 - 1.2, y(eave + 1.2 * b.pitch / 12), 0.12),
-    line(-0.46, y(eave), over, y(eave - over * b.pitch / 12), 0.12),
+    line(-0.46, y(eave), -0.46 - 1.2, y(eave + 1.2 * Math.max(-1, Math.min(1, mainPitch / 12))), 0.12),
+    line(-0.46, y(eave), mainOver, y(eave - mainOver * mainPitch / 12), 0.12),
     text(-0.23, y(eave) - unit * 2.6, 'Main wall', 0.75, c.soft),
     post(D - 0.46, lo - 0.9, c.wood),
     `<rect x="${D - 0.46 - 0.13}" y="${y(lo - 0.12)}" width="0.25" height="0.94" fill="${c.paper}" stroke="${c.ink}" stroke-width="0.05"/>`,
