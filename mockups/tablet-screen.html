@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Girt And Purlin, Tablet Mockup</title>
+<style>
+  :root {
+    --ink: #14171a; --ink-2: #4a5157; --ink-3: #868d93; --line: #d5d8d4;
+    --panel: #fbfbfa; --signal: #c8431f; --ok: #2c6e49;
+    --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    font: 16px/1.35 -apple-system, "Helvetica Neue", Arial, sans-serif; color: var(--ink);
+    background: #d9dbd6; padding: 28px; display: flex; flex-wrap: wrap; gap: 28px; justify-content: center;
+  }
+  figure { width: min(100%, 1060px); }
+  figcaption { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; font-weight: 700; color: var(--ink-2); margin-bottom: 10px; }
+  .tablet { background: #101214; padding: 14px; border-radius: 22px; }
+  .screen {
+    position: relative; aspect-ratio: 4 / 3; overflow: hidden; background: var(--panel); border-radius: 8px;
+    display: grid; grid-template-rows: 56px 1fr auto auto;
+  }
+
+  .bar { display: grid; grid-template-columns: auto 1fr auto; align-items: center; border-bottom: 1px solid var(--ink); background: var(--panel); z-index: 2; }
+  .mark { display: flex; align-items: center; gap: 10px; padding: 0 18px; font-weight: 800; letter-spacing: .14em; font-size: 13px; text-transform: uppercase; }
+  .mark i { display: block; width: 18px; height: 14px; border-top: 3px solid var(--ink); border-bottom: 3px solid var(--signal); }
+  .job { font-weight: 600; padding-left: 18px; border-left: 1px solid var(--line); }
+  .offline { display: flex; align-items: center; gap: 8px; margin-right: 14px; padding: 8px 12px; border: 1px solid var(--ink); font-size: 13px; font-weight: 600; }
+  .offline i { width: 8px; height: 8px; background: var(--ok); }
+
+  .view { position: relative; min-height: 0; }
+  .view img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 55% 62%; }
+  .views { position: absolute; top: 14px; left: 14px; display: flex; border: 1px solid var(--ink); background: var(--panel); }
+  .views span { padding: 12px 18px; font-weight: 600; color: var(--ink-2); }
+  .views span + span { border-left: 1px solid var(--ink); }
+  .views .on { background: var(--ink); color: #fff; }
+  .check { position: absolute; left: 14px; right: 14px; bottom: 14px; background: var(--panel); border: 1px solid var(--ink); border-left: 5px solid var(--signal); display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 14px; padding: 10px 10px 10px 14px; }
+  .check b { font-weight: 700; }
+  .btn { font: inherit; font-weight: 700; padding: 12px 18px; border: 1px solid var(--ink); background: var(--ink); color: #fff; }
+
+  .controls { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--ink); background: var(--panel); }
+  .ctl { padding: 10px 14px 12px; border-right: 1px solid var(--line); }
+  .ctl:last-child { border-right: 0; }
+  .ctl label { display: block; font-size: 12px; letter-spacing: .1em; text-transform: uppercase; font-weight: 700; color: var(--ink-3); margin-bottom: 6px; }
+  .ctl.sel { background: #fff; box-shadow: inset 0 3px 0 var(--signal); }
+  .step { display: grid; grid-template-columns: 52px 1fr 52px; }
+  .step button { height: 52px; border: 1px solid var(--ink); background: #fff; font: 26px var(--mono); color: var(--ink); }
+  .step output { font: 700 24px/50px var(--mono); text-align: center; border-top: 1px solid var(--ink); border-bottom: 1px solid var(--ink); background: #fff; }
+  .step output small { font-size: 13px; font-weight: 400; color: var(--ink-3); margin-left: 4px; }
+
+  .steps { display: grid; grid-template-columns: repeat(6, 1fr) 1.5fr; border-top: 1px solid var(--ink); background: var(--panel); }
+  .steps span { padding: 17px 4px; text-align: center; font-weight: 600; color: var(--ink-2); border-right: 1px solid var(--line); font-size: 15px; }
+  .steps .on { color: var(--ink); box-shadow: inset 0 -4px 0 var(--signal); }
+  .steps .price { background: var(--ink); color: #fff; font: 700 20px var(--mono); border: 0; display: flex; align-items: center; justify-content: center; gap: 10px; padding: 0; }
+  .steps .price small { font: 600 11px -apple-system, sans-serif; letter-spacing: .1em; text-transform: uppercase; opacity: .7; }
+
+  .sheet { position: absolute; left: 0; right: 0; bottom: 0; height: 62%; background: var(--panel); border-top: 2px solid var(--ink); z-index: 3; display: grid; grid-template-rows: auto 1fr auto; }
+  .grab { display: grid; grid-template-columns: 1fr auto; align-items: end; padding: 16px 20px 14px; border-bottom: 1px solid var(--ink); position: relative; }
+  .grab::before { content: ""; position: absolute; top: 7px; left: 50%; width: 56px; height: 4px; margin-left: -28px; background: var(--ink); }
+  .grab small { display: block; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; font-weight: 700; color: var(--ink-3); }
+  .grab strong { font: 700 36px/1.1 var(--mono); letter-spacing: -.02em; }
+  .grab em { font-style: normal; color: var(--ok); font-weight: 600; font-size: 14px; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; overflow: hidden; }
+  .cols > div + div { border-left: 1px solid var(--line); }
+  h3 { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); padding: 12px 20px 6px; }
+  table { width: 100%; border-collapse: collapse; }
+  td { padding: 8px 20px; border-top: 1px solid var(--line); vertical-align: baseline; font-size: 15px; }
+  td.q { font: 700 15px var(--mono); width: 52px; text-align: right; padding-right: 0; }
+  td.p { font: 15px var(--mono); text-align: right; color: var(--ink-2); }
+  td small { color: var(--ink-3); font-size: 13px; margin-left: 6px; }
+  .acts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 12px 20px; border-top: 1px solid var(--ink); }
+  .acts .btn.line { background: none; color: var(--ink); }
+  .dimmed { filter: brightness(.55); }
+  .note { width: 100%; text-align: center; font-size: 13px; color: var(--ink-2); }
+</style>
+</head>
+<body>
+
+<figure>
+  <figcaption>Tablet, Designing On Site</figcaption>
+  <div class="tablet"><div class="screen">
+    <div class="bar">
+      <div class="mark"><i></i>Girt And Purlin</div>
+      <div class="job">Sample Job, Machine Shed</div>
+      <div class="offline"><i></i>No Signal. Saved On This Tablet.</div>
+    </div>
+    <div class="view">
+      <img src="barn-render.jpg" alt="30 by 48 post-frame building">
+      <div class="views"><span class="on">Finished</span><span>Framing</span><span>Floor Plan</span></div>
+      <div class="check"><span><b>Check this.</b> The walk door lands on the post at 8 ft.</span><button class="btn">Fix It For Me</button></div>
+    </div>
+    <div class="controls">
+      <div class="ctl sel"><label>Width</label><div class="step"><button>&minus;</button><output>30<small>ft</small></output><button>+</button></div></div>
+      <div class="ctl"><label>Length</label><div class="step"><button>&minus;</button><output>48<small>ft</small></output><button>+</button></div></div>
+      <div class="ctl"><label>Wall Height</label><div class="step"><button>&minus;</button><output>12<small>ft</small></output><button>+</button></div></div>
+      <div class="ctl"><label>Roof Pitch</label><div class="step"><button>&minus;</button><output>4<small>/12</small></output><button>+</button></div></div>
+    </div>
+    <div class="steps">
+      <span class="on">Size</span><span>Roof</span><span>Doors</span><span>Colors</span><span>Price</span><span>Drawings</span>
+      <span class="price"><small>Total</small>$24,860</span>
+    </div>
+  </div></div>
+</figure>
+
+<figure>
+  <figcaption>Tablet, Price Panel Pulled Up</figcaption>
+  <div class="tablet"><div class="screen">
+    <div class="bar">
+      <div class="mark"><i></i>Girt And Purlin</div>
+      <div class="job">Sample Job, Machine Shed</div>
+      <div class="offline"><i></i>No Signal. Saved On This Tablet.</div>
+    </div>
+    <div class="view"><img class="dimmed" src="barn-render.jpg" alt=""></div>
+    <div class="steps">
+      <span class="on">Size</span><span>Roof</span><span>Doors</span><span>Colors</span><span>Price</span><span>Drawings</span>
+      <span class="price"><small>Total</small>$24,860</span>
+    </div>
+    <div class="sheet">
+      <div class="grab">
+        <div><small>Materials Total</small><strong>$24,860</strong></div>
+        <em>+ $412 from the last change (width 28 to 30 ft)</em>
+      </div>
+      <div class="cols">
+        <div>
+          <h3>Framing</h3>
+          <table>
+            <tr><td class="q">18</td><td>Posts<small>6x6, 16 ft</small></td><td class="p">$1,746</td></tr>
+            <tr><td class="q">13</td><td>Trusses<small>30 ft, 4/12</small></td><td class="p">$3,965</td></tr>
+            <tr><td class="q">49</td><td>Wall Girts<small>2x6, 16 ft</small></td><td class="p">$882</td></tr>
+            <tr><td class="q">57</td><td>Roof Purlins<small>2x4, 16 ft</small></td><td class="p">$627</td></tr>
+            <tr><td class="q">10</td><td>Skirt Boards<small>2x8, 16 ft</small></td><td class="p">$310</td></tr>
+          </table>
+        </div>
+        <div>
+          <h3>Metal, Doors, Windows</h3>
+          <table>
+            <tr><td class="q">34</td><td>Roof Panels<small>17 ft 0 in</small></td><td class="p">$3,468</td></tr>
+            <tr><td class="q">52</td><td>Wall Panels<small>with wainscot</small></td><td class="p">$3,952</td></tr>
+            <tr><td class="q">1</td><td>Sliding Door<small>12 x 10 ft</small></td><td class="p">$1,640</td></tr>
+            <tr><td class="q">1</td><td>Walk Door<small>3 ft</small></td><td class="p">$385</td></tr>
+            <tr><td class="q">2</td><td>Windows<small>4 ft</small></td><td class="p">$560</td></tr>
+          </table>
+        </div>
+      </div>
+      <div class="acts">
+        <button class="btn line">Material Order</button>
+        <button class="btn line">Send To Customer</button>
+        <button class="btn">Proposal</button>
+      </div>
+    </div>
+  </div></div>
+</figure>
+
+<p class="note">Mockup only. Every count and price on this page is a sample figure.</p>
+</body>
+</html>

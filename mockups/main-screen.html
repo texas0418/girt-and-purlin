@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Girt And Purlin, Main Screen Mockup</title>
+<style>
+  :root {
+    --ink: #14171a;
+    --ink-2: #4a5157;
+    --ink-3: #868d93;
+    --line: #d5d8d4;
+    --panel: #fbfbfa;
+    --stage: #e9ebe7;
+    --signal: #c8431f;
+    --ok: #2c6e49;
+    --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; }
+  body {
+    font: 14px/1.4 -apple-system, "Helvetica Neue", Arial, sans-serif;
+    color: var(--ink); background: var(--panel);
+    display: grid; grid-template-rows: 52px 1fr; min-width: 1100px;
+  }
+
+  header {
+    display: grid; grid-template-columns: 300px 1fr auto; align-items: stretch;
+    border-bottom: 1px solid var(--ink);
+  }
+  .mark {
+    display: flex; align-items: center; gap: 10px; padding: 0 20px;
+    font-weight: 800; letter-spacing: .14em; font-size: 13px; text-transform: uppercase;
+    border-right: 1px solid var(--line);
+  }
+  .mark i { display: block; width: 18px; height: 14px; border-top: 3px solid var(--ink); border-bottom: 3px solid var(--signal); }
+  nav { display: flex; }
+  nav a {
+    display: flex; align-items: center; padding: 0 22px; color: var(--ink-2);
+    text-decoration: none; font-weight: 600; border-right: 1px solid var(--line);
+  }
+  nav a.on { color: var(--ink); box-shadow: inset 0 -3px 0 var(--signal); }
+  nav a.done::after { content: ""; width: 6px; height: 6px; background: var(--ok); margin-left: 8px; }
+  .job { display: flex; align-items: center; gap: 18px; padding: 0 20px; }
+  .job b { font-weight: 600; }
+  .job span { color: var(--ink-3); font-size: 12px; }
+  .btn {
+    font: inherit; font-weight: 600; padding: 7px 14px; border: 1px solid var(--ink);
+    background: none; color: var(--ink); cursor: pointer;
+  }
+  .btn.solid { background: var(--ink); color: #fff; }
+
+  main { display: grid; grid-template-columns: 300px 1fr 360px; min-height: 0; }
+
+  .left { border-right: 1px solid var(--line); overflow: auto; }
+  .left h2, .right h2 {
+    font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3);
+    padding: 18px 20px 8px; font-weight: 700;
+  }
+  .dim {
+    display: grid; grid-template-columns: 1fr auto; align-items: center;
+    padding: 12px 20px; border-top: 1px solid var(--line);
+  }
+  .dim label { color: var(--ink-2); }
+  .step { display: flex; align-items: center; }
+  .step button {
+    width: 30px; height: 30px; border: 1px solid var(--line); background: #fff;
+    font: 16px var(--mono); color: var(--ink); cursor: pointer;
+  }
+  .step output {
+    font: 600 18px var(--mono); width: 78px; text-align: center;
+    border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); height: 30px; line-height: 28px; background: #fff;
+  }
+  .step output small { font-size: 11px; color: var(--ink-3); font-weight: 400; margin-left: 3px; }
+  .dim.sel { background: #fff; box-shadow: inset 3px 0 0 var(--signal); }
+  .seg { display: flex; margin: 4px 20px 16px; border: 1px solid var(--ink); }
+  .seg span { flex: 1; text-align: center; padding: 7px 0; font-weight: 600; font-size: 13px; color: var(--ink-2); }
+  .seg span + span { border-left: 1px solid var(--ink); }
+  .seg .on { background: var(--ink); color: #fff; }
+  .hint { padding: 14px 20px; color: var(--ink-3); font-size: 12.5px; border-top: 1px solid var(--line); }
+
+  .stage { position: relative; background: var(--stage); min-width: 0; overflow: hidden; }
+  .stage .shot { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 60%; }
+  .views { position: absolute; top: 14px; left: 16px; display: flex; border: 1px solid var(--ink); background: var(--panel); }
+  .views span { padding: 6px 14px; font-weight: 600; font-size: 13px; color: var(--ink-2); }
+  .views span + span { border-left: 1px solid var(--ink); }
+  .views .on { background: var(--ink); color: #fff; }
+  .readout { position: absolute; top: 14px; right: 16px; font: 12px var(--mono); color: var(--ink); background: var(--panel); border: 1px solid var(--ink); padding: 7px 12px; }
+  .check {
+    position: absolute; left: 16px; right: 16px; bottom: 14px; background: var(--panel);
+    border: 1px solid var(--ink); border-left: 4px solid var(--signal);
+    display: grid; grid-template-columns: 1fr auto; align-items: center; padding: 9px 14px; gap: 16px;
+  }
+  .check b { font-weight: 700; }
+  .check a { color: var(--ink); font-weight: 600; }
+
+  .right { border-left: 1px solid var(--line); display: grid; grid-template-rows: auto 1fr auto; min-height: 0; }
+  .total { padding: 20px; border-bottom: 1px solid var(--ink); }
+  .total small { display: block; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); font-weight: 700; }
+  .total strong { font: 700 40px/1.1 var(--mono); letter-spacing: -.02em; display: block; margin: 6px 0 4px; }
+  .total em { font-style: normal; color: var(--ok); font-size: 12.5px; font-weight: 600; }
+  .list { overflow: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  td { padding: 7px 20px; border-top: 1px solid var(--line); vertical-align: baseline; }
+  td.q { font: 600 13px var(--mono); width: 54px; text-align: right; padding-right: 0; }
+  td.p { font: 13px var(--mono); text-align: right; color: var(--ink-2); white-space: nowrap; }
+  td small { color: var(--ink-3); display: block; font-size: 12px; }
+  tr.new td { background: #fff; }
+  tr.new td:first-child { box-shadow: inset 3px 0 0 var(--signal); }
+  .actions { padding: 14px 20px; border-top: 1px solid var(--ink); display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .actions .btn { padding: 10px 0; }
+  .note { grid-column: 1 / -1; font-size: 11.5px; color: var(--ink-3); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="mark"><i></i>Girt And Purlin</div>
+  <nav>
+    <a class="on" href="#">Size</a>
+    <a href="#">Roof</a>
+    <a href="#">Doors And Windows</a>
+    <a href="#">Colors</a>
+    <a href="#">Price</a>
+    <a href="#">Drawings</a>
+  </nav>
+  <div class="job">
+    <div><b>Sample Job, Machine Shed</b><br><span>Saved on this device 07:52</span></div>
+    <button class="btn">Send To Customer</button>
+    <button class="btn solid">Proposal</button>
+  </div>
+</header>
+
+<main>
+  <section class="left">
+    <h2>Building Size</h2>
+    <div class="dim sel"><label>Width</label><div class="step"><button>&minus;</button><output>30<small>ft</small></output><button>+</button></div></div>
+    <div class="dim"><label>Length</label><div class="step"><button>&minus;</button><output>48<small>ft</small></output><button>+</button></div></div>
+    <div class="dim"><label>Wall Height</label><div class="step"><button>&minus;</button><output>12<small>ft</small></output><button>+</button></div></div>
+    <div class="dim"><label>Roof Pitch</label><div class="step"><button>&minus;</button><output>4<small>/12</small></output><button>+</button></div></div>
+    <div class="dim"><label>Overhang</label><div class="step"><button>&minus;</button><output>12<small>in</small></output><button>+</button></div></div>
+
+    <h2>Post Spacing</h2>
+    <div class="seg"><span>6 ft</span><span class="on">8 ft</span><span>10 ft</span><span>12 ft</span></div>
+
+    <h2>Truss Spacing</h2>
+    <div class="seg"><span>2 ft</span><span class="on">4 ft</span><span>8 ft</span></div>
+
+    <p class="hint">Drag any wall in the picture to resize. The material list and price follow as you go.</p>
+  </section>
+
+  <section class="stage">
+    <div class="views"><span class="on">Finished</span><span>Framing</span><span>Floor Plan</span></div>
+    <div class="readout">1,440 sq ft &nbsp; 18 posts &nbsp; 13 trusses</div>
+    <img class="shot" src="barn-render.jpg" alt="30 by 48 post-frame building">
+    <div class="check">
+      <span><b>Check this.</b> The walk door lands on the post at 8 ft. Slide the door 1 ft either way, or move the post.</span>
+      <a href="#">Fix It For Me</a>
+    </div>
+  </section>
+
+  <section class="right">
+    <div class="total">
+      <small>Materials Total</small>
+      <strong>$24,860</strong>
+      <em>+ $412 from the last change (width 28 to 30 ft)</em>
+    </div>
+    <div class="list">
+      <h2>Framing</h2>
+      <table>
+        <tr><td class="q">18</td><td>Posts<small>6x6, 16 ft, treated</small></td><td class="p">$1,746</td></tr>
+        <tr class="new"><td class="q">13</td><td>Trusses<small>30 ft span, 4/12</small></td><td class="p">$3,965</td></tr>
+        <tr><td class="q">49</td><td>Wall Girts<small>2x6, 16 ft</small></td><td class="p">$882</td></tr>
+        <tr class="new"><td class="q">57</td><td>Roof Purlins<small>2x4, 16 ft</small></td><td class="p">$627</td></tr>
+        <tr><td class="q">10</td><td>Skirt Boards<small>2x8, 16 ft, treated</small></td><td class="p">$310</td></tr>
+      </table>
+      <h2>Metal</h2>
+      <table>
+        <tr class="new"><td class="q">34</td><td>Roof Panels<small>17 ft 0 in, Charcoal</small></td><td class="p">$3,468</td></tr>
+        <tr><td class="q">52</td><td>Wall Panels<small>Ash Gray, Charcoal wainscot</small></td><td class="p">$3,952</td></tr>
+        <tr><td class="q">1</td><td>Trim Package<small>ridge, corners, eave, base</small></td><td class="p">$1,180</td></tr>
+      </table>
+      <h2>Doors And Windows</h2>
+      <table>
+        <tr><td class="q">1</td><td>Sliding Door<small>12 ft x 10 ft</small></td><td class="p">$1,640</td></tr>
+        <tr><td class="q">1</td><td>Walk Door<small>3 ft x 6 ft 8 in</small></td><td class="p">$385</td></tr>
+        <tr><td class="q">2</td><td>Windows<small>4 ft x 3 ft 6 in</small></td><td class="p">$560</td></tr>
+      </table>
+    </div>
+    <div class="actions">
+      <button class="btn">Material Order</button>
+      <button class="btn">Cut List</button>
+      <p class="note">Mockup only. Every count and price on this page is a sample figure.</p>
+    </div>
+  </section>
+</main>
+
+</body>
+</html>

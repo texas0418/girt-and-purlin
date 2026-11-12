@@ -1,0 +1,3 @@
+three 0.187.0, MIT license, from cdn.jsdelivr.net/npm/three@0.187.0
+
+Inter.woff2: the Inter typeface by Rasmus Andersson, SIL Open Font License 1.1. Copied from the Blender 5.2 install on this Mac. Confirm the exact Inter version on wired.

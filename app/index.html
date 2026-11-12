@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Girt And Purlin</title>
+<link rel="stylesheet" href="style.css">
+<script type="importmap">{ "imports": { "three": "./vendor/three.module.min.js" } }</script>
+</head>
+<body>
+
+<header>
+  <div class="mark"><svg viewBox="0 0 48 48" aria-hidden="true"><mask id="door"><path d="M6 42V20L24 7l18 13v22H31V26H17v16z" fill="#fff" stroke="#fff" stroke-width="3" stroke-linejoin="round"/><path d="M14 26h20" stroke="#000" stroke-width="3" stroke-linecap="round"/></mask><rect width="48" height="48" fill="currentColor" mask="url(#door)"/></svg>Girt And Purlin</div>
+  <nav id="nav"></nav>
+  <div class="job">
+    <div><input id="job" class="jobname" aria-label="Job name" spellcheck="false"><br><span id="saved"></span></div>
+    <button class="btn" disabled title="Comes with the share link stage">Send To Customer</button>
+    <button class="btn solid" data-proposal>Proposal</button>
+  </div>
+</header>
+
+<main>
+  <section class="left" id="left"></section>
+
+  <section class="stage" id="stage">
+    <canvas id="view"></canvas>
+    <div id="plan" hidden></div>
+    <div class="views" id="views"></div>
+    <div class="readout" id="readout"></div>
+    <div class="check" id="check" hidden></div>
+  </section>
+
+  <section class="right">
+    <div class="total" id="total"></div>
+    <div class="list" id="list"></div>
+    <div class="actions">
+      <button class="btn" data-order>Material Order</button>
+      <button class="btn" data-sheets="cuts">Cut List</button>
+      <p class="note">Counts come from framing rules that have not been checked against a builder's guide yet.</p>
+    </div>
+  </section>
+</main>
+
+<div id="proposal" hidden></div>
+<input id="pricefile" type="file" accept=".csv,text/csv" hidden>
+
+<script type="module" src="main.js"></script>
+</body>
+</html>
