@@ -126,7 +126,7 @@ function wallSheet(result, wall, c) {
 function roofSheet(result, c) {
   const { building: b, trusses, planes } = result.geometry;
   const rules = result.rules;
-  const over = b.overhangIn / 12, L = b.lengthIn / 12, W = b.widthIn / 12;
+  const over = b.endOverhangIn / 12, L = b.lengthIn / 12, W = b.widthIn / 12;
   // The plan reads with the back wall at the top of the sheet.
   const side = { back: edgeOverhangIn(b, 'back') / 12, front: edgeOverhangIn(b, 'front') / 12 };
   const yy = (yIn) => W - yIn / 12;

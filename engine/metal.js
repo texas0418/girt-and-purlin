@@ -5,7 +5,7 @@ import { add } from './stock.js';
 const EPS = 0.01;
 
 export function roofPanels(b, rules) {
-  const perPlane = Math.ceil((b.lengthIn + 2 * b.overhangIn) / rules.panelCoverageIn - EPS);
+  const perPlane = Math.ceil((b.lengthIn + 2 * b.endOverhangIn) / rules.panelCoverageIn - EPS);
   const tally = {};
   for (const p of b.planes) add(tally, Math.ceil(p.slopeIn + rules.roofPanelExtraIn - EPS), perPlane);
   return tally;
@@ -33,7 +33,7 @@ export function wallPanels(b, rules) {
 export function trim(b, rules) {
   const covers = rules.trimPieceIn - rules.trimLapIn;
   const pieces = (runIn) => Math.ceil(runIn / covers - EPS);
-  const roofRun = b.lengthIn + 2 * b.overhangIn;
+  const roofRun = b.lengthIn + 2 * b.endOverhangIn;
   let base = 0;
   for (const wall of closedWalls(b)) {
     const doors = b.openings.filter((o) => o.wall === wall && o.toGround).reduce((sum, o) => sum + o.widthIn, 0);
@@ -59,7 +59,7 @@ export function wallAreaIn(b) {
 }
 
 export function areas(b) {
-  const roofSqFt = b.planes.reduce((sum, p) => sum + p.slopeIn, 0) * (b.lengthIn + 2 * b.overhangIn) / 144;
+  const roofSqFt = b.planes.reduce((sum, p) => sum + p.slopeIn, 0) * (b.lengthIn + 2 * b.endOverhangIn) / 144;
   return { roofSqFt, wallSqFt: wallAreaIn(b) / 144 };
 }
 
@@ -67,7 +67,7 @@ export function areas(b) {
 // of every roof plane, outside closures over its top edge under the ridge cap,
 // the high side trim or the gambrel flashing.
 export function closures(b, rules) {
-  const strips = Math.ceil((b.lengthIn + 2 * b.overhangIn) / rules.closureStripIn - EPS) * b.planes.length;
+  const strips = Math.ceil((b.lengthIn + 2 * b.endOverhangIn) / rules.closureStripIn - EPS) * b.planes.length;
   return { 'Inside Closures': strips, 'Outside Closures': strips };
 }
 

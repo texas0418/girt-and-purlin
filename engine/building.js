@@ -32,6 +32,8 @@ export function normalize(input) {
     eaveIn: num(input.eaveHeight, 'Wall height', 6, 24) * 12,
     pitch: num(input.pitch ?? 4, 'Roof pitch', 1, 12),
     overhangIn: num(input.overhang ?? 12, 'Overhang', 0, 36),
+    // The roof can run a different distance past the end walls than past the side walls.
+    endOverhangIn: num(input.endOverhang ?? input.overhang ?? 12, 'End overhang', 0, 36),
     postSpacingIn: num(input.postSpacing ?? 8, 'Post spacing', 4, 16) * 12,
     trussSpacingIn: num(input.trussSpacing ?? 4, 'Truss spacing', 2, 16) * 12,
     openings: [],
@@ -220,7 +222,7 @@ export function roofPlanes(b) {
 
 // How far the roof runs past a wall, and how far its edge hangs below the wall top there.
 export function edgeOverhangIn(b, wall) {
-  if (isGable(wall)) return b.overhangIn;
+  if (isGable(wall)) return b.endOverhangIn;
   return b.roof === 'gambrel' ? 0 : b.overhangIn;
 }
 export function eaveDropIn(b, wall) {

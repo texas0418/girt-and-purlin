@@ -125,7 +125,7 @@ export function design(input, ruleOverrides) {
       loftSqFt: interior.loft?.sqFt ?? 0, linerSqFt: finish.linerSqFt, slabSqFt: finish.slabSqFt,
       screws: fasteners.count, roofSqFt: areas(b).roofSqFt + extra.roofSqFt, wallSqFt: areas(b).wallSqFt + extra.wallSqFt,
     },
-    geometry: { building: b, posts, trusses, girtRows, sheds, partitions: interior.partitions, loft: interior.loft, cupolas: finish.cupolas, planes: b.planes.map((p) => ({ ...p, purlinRows: planePurlinRows(p, rules) })), purlinRowLengthIn: b.lengthIn + 2 * b.overhangIn },
+    geometry: { building: b, posts, trusses, girtRows, sheds, partitions: interior.partitions, loft: interior.loft, cupolas: finish.cupolas, planes: b.planes.map((p) => ({ ...p, purlinRows: planePurlinRows(p, rules) })), purlinRowLengthIn: b.lengthIn + 2 * b.endOverhangIn },
     cuts: cutList(rules, [...posts, ...sheds.flatMap((sh) => sh.posts.map((p) => ({ ...p, where: sh.label, sloped: p.line !== 'outer' }))), ...interior.posts], runs),
     rules,
     unverifiedRules: unverifiedRules(),

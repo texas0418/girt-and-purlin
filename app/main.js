@@ -28,7 +28,8 @@ const FIELDS = {
   length: { label: 'Length', unit: 'ft', step: 1 },
   eaveHeight: { label: 'Wall Height', unit: 'ft', step: 1 },
   pitch: { label: 'Roof Pitch', unit: '/12', step: 1 },
-  overhang: { label: 'Overhang', unit: 'in', step: 6 },
+  overhang: { label: 'Overhang, Side Walls', unit: 'in', step: 6 },
+  endOverhang: { label: 'Overhang, End Walls', unit: 'in', step: 6 },
 };
 const PRICE_FIELDS = {
   markupPct: { label: 'Markup', unit: '%', step: 1 },
@@ -347,7 +348,14 @@ const optionRow = (key, stack) => `<h2>${OPTION_SETS[key][0]}</h2><div class="se
 // One wall's own settings, falling back to the building's.
 const wallOf = (w) => ({ open: !!state.walls?.[w]?.open, postSpacing: state.walls?.[w]?.postSpacing ?? state.postSpacing });
 const sideName = (w) => `${WALL_NAMES[w]}${w === 'front' || w === 'back' ? ' wall' : ''}`;
-const field = (key) => stepper(`data-field="${key}"`, FIELDS[key].label, String(state[key]), FIELDS[key].unit, ui.sel === key);
+// The end overhang follows the side overhang until it is given its own figure.
+const fieldValue = (key) => (key === 'endOverhang' ? state.endOverhang ?? state.overhang : state[key]);
+const overhangText = () => {
+  const b = result.geometry.building;
+  if (roofOf() === 'gambrel') return `${b.endOverhangIn} in overhang at the ends`;
+  return b.endOverhangIn === b.overhangIn ? `${b.overhangIn} in overhang` : `${b.overhangIn} in overhang at the sides, ${b.endOverhangIn} in at the ends`;
+};
+const field = (key) => stepper(`data-field="${key}"`, FIELDS[key].label, String(fieldValue(key)), FIELDS[key].unit, ui.sel === key);
 const choice = (key, options, unit) => `<div class="seg">${options.map((v) =>
   `<button data-choice="${key}" data-value="${v}" class="${state[key] === v ? 'on' : ''}">${v} ${unit}</button>`).join('')}</div>`;
 
@@ -417,7 +425,7 @@ function designerLink(co) {
 function leftPanel() {
   if (ui.step === 'Jobs') return jobsPanel();
   if (ui.step === 'Size') {
-    return `<h2>Building Size</h2>${['width', 'length', 'eaveHeight', ...(roofOf() === 'gambrel' ? [] : ['pitch']), 'overhang'].map(field).join('')}
+    return `<h2>Building Size</h2>${['width', 'length', 'eaveHeight', ...(roofOf() === 'gambrel' ? ['endOverhang'] : ['pitch', 'overhang', 'endOverhang'])].map(field).join('')}
       <h2>Post Spacing</h2>${choice('postSpacing', [6, 8, 10, 12], 'ft')}
       <h2>Truss Spacing</h2>${choice('trussSpacing', [2, 4, 8], 'ft')}
       <h2>Wall By Wall</h2>${Object.entries(WALL_NAMES).map(([w, name]) => {
@@ -440,7 +448,7 @@ function leftPanel() {
     return `<h2>Roof Shape</h2>
       <div class="seg">${Object.entries(ROOF_NAMES).map(([k, name]) => `<button data-roof="${k}" class="${shape === k ? 'on' : ''}">${name}</button>`).join('')}</div>
       <p class="hint">${about}</p>
-      <h2>Roof</h2>${(shape === 'gambrel' ? ['overhang'] : ['pitch', 'overhang']).map(field).join('')}
+      <h2>Roof</h2>${(shape === 'gambrel' ? ['endOverhang'] : ['pitch', 'overhang', 'endOverhang']).map(field).join('')}
       <h2>Truss Spacing</h2>${choice('trussSpacing', [2, 4, 8], 'ft')}
       ${shape === 'mono' ? '' : `${optionRow('cupolas')}${opt('cupolas') ? optionRow('cupolaSizeIn', true) : ''}
       <p class="hint">Cupolas sit on the ridge. Sized to the roof means one or two, by the length of the ridge. They are priced as bought units.</p>`}
@@ -621,7 +629,7 @@ function specRows() {
   const openings = Object.entries(counts).map(([k, n]) => `${n} ${esc(k.replace('|', n > 1 ? 's, ' : ', '))}`).join('<br>');
   return [
     ['Size', `${state.width} ft wide, ${state.length} ft long, ${state.eaveHeight} ft walls`],
-    ['Roof', `${ROOF_NAMES[roofOf()]}, ${roofOf() === 'gambrel' ? `${result.rules.gambrelLowerPitch} in 12 and ${result.rules.gambrelUpperPitch} in 12 slopes` : `${state.pitch} in 12 pitch`}, ${state.overhang} in overhang`],
+    ['Roof', `${ROOF_NAMES[roofOf()]}, ${roofOf() === 'gambrel' ? `${result.rules.gambrelLowerPitch} in 12 and ${result.rules.gambrelUpperPitch} in 12 slopes` : `${state.pitch} in 12 pitch`}, ${overhangText()}`],
     ['Frame', `Posts every ${state.postSpacing} ft${ownSpacing().length ? ` (${ownSpacing().map((w) => `${wallOf(w).postSpacing} ft on the ${sideName(w).toLowerCase()}`).join(', ')})` : ''}, trusses every ${state.trussSpacing} ft`],
     ...(openSides().length ? [['Open Walls', `${openSides().map((w) => sideName(w)).join(', ')}: posts and roof only, no steel`]] : []),
     ['Doors And Windows', openings || 'None'],
@@ -707,7 +715,7 @@ document.addEventListener('click', (e) => {
   if (d.nav) { ui.step = d.nav; ui.placing = null; return paint(); }
   if (d.view) { ui.view = d.view; if (d.view !== 'plan') view.setMode(d.view); return paint(); }
   if (d.field) {
-    const f = FIELDS[d.field], from = state[d.field], to = from + f.step * Number(d.dir);
+    const f = FIELDS[d.field], from = fieldValue(d.field), to = from + f.step * Number(d.dir);
     ui.sel = d.field;
     return apply({ [d.field]: to }, `${f.label} ${from} to ${to} ${f.unit === '/12' ? 'in 12' : f.unit}`);
   }
@@ -1188,7 +1196,7 @@ function openEngineer() {
     ['Width', `${state.width} ft`], ['Length', `${state.length} ft`],
     ['Wall Height', `${state.eaveHeight} ft, ground to ${b.roof === 'mono' ? 'the low eave' : 'eave'}`],
     ['Peak Height', `${feetInches(b.eaveIn + b.riseIn)}, ground to ${b.roof === 'mono' ? 'the top of the high wall' : 'ridge'}`],
-    ['Roof Pitch', pitchText], ['Overhang', b.roof === 'gambrel' ? `${state.overhang} in at each end wall, none along the side walls` : `${state.overhang} in, all four sides`],
+    ['Roof Pitch', pitchText], ['Overhang', b.roof === 'gambrel' ? `${b.endOverhangIn} in at each end wall, none along the side walls` : b.endOverhangIn === b.overhangIn ? `${b.overhangIn} in, all four sides` : `${b.overhangIn} in along the side walls, ${b.endOverhangIn} in at each end wall`],
     ['Floor Area', `${Math.round(sum.floorSqFt).toLocaleString('en-US')} sq ft`],
     ...(finishRows().length ? [['Inside And Finish', finishRows().join(', ')]] : []),
   ];

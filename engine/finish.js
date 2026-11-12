@@ -87,7 +87,7 @@ export function finishParts(b, rules, { posts, trusses, sheds, wallTally, roofTa
   const floorSqFt = (b.widthIn * b.lengthIn) / 144;
   const perimeterIn = 2 * (b.widthIn + b.lengthIn);
   const closedIn = closedWalls(b).reduce((sum, wall) => sum + wallLengthIn(b, wall), 0);
-  const roofRunIn = b.lengthIn + 2 * b.overhangIn;
+  const roofRunIn = b.lengthIn + 2 * b.endOverhangIn;
 
   // Wainscot: every wall panel is cut in two, with Z trim over the joint. Z trim butts end to end.
   let walls = wallTally;

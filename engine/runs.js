@@ -107,7 +107,7 @@ export function lumberRuns(b, rules, posts, trusses) {
 
   const trussAt = trusses.map((t) => t.x);
   for (let i = 0; i < purlinRows(b, rules); i++) {
-    put('Roof Purlins', rules.purlinSize, 'Roof', boards(-b.overhangIn, b.lengthIn + b.overhangIn, trussAt, stock, i % 2 === 1));
+    put('Roof Purlins', rules.purlinSize, 'Roof', boards(-b.endOverhangIn, b.lengthIn + b.endOverhangIn, trussAt, stock, i % 2 === 1));
   }
 
   for (const o of b.openings) {

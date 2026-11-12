@@ -630,7 +630,7 @@ export function createView(canvas, stage) {
   }
 
   function buildRoof(b, gutters, cupolas) {
-    const L = b.lengthIn / 12, W = b.widthIn / 12, oh = b.overhangIn / 12;
+    const L = b.lengthIn / 12, W = b.widthIn / 12, oh = b.endOverhangIn / 12;
     const len = L + 2 * oh, t = 0.12;
     const shapes = b.planes.map((p) => ({ ...planeShape(b, p), p }));
     const longest = Math.max(...shapes.map((s) => s.slope));
