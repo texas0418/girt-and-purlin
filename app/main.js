@@ -119,9 +119,9 @@ function setPrices(next) {
   paint();
 }
 
-function download(name, text) {
+function download(name, text, type = 'text/csv') {
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([text], { type: 'text/csv' }));
+  a.href = URL.createObjectURL(new Blob([text], { type }));
   a.download = name;
   a.click();
   URL.revokeObjectURL(a.href);
@@ -238,7 +238,9 @@ function leftPanel() {
     <p class="hint">Walls are drawn from outside the building. Dashed lines show the part of each post in the ground.</p>
     <h2>Print</h2>
     <div class="seg stack"><button data-sheets="all">All Sheets</button><button data-sheets="cuts">Cut List Only</button></div>
-    <p class="hint">The engineer handoff package is a later stage.</p>`;
+    <h2>For Your Engineer</h2>
+    <div class="seg stack"><button data-engineer>Engineer Package</button></div>
+    <p class="hint">Everything an engineer needs to start on this building: the size, the framing as drawn, where every post and opening sits, and the drawings. This program does not do the engineering.</p>`;
 }
 
 function specRows() {
@@ -338,6 +340,8 @@ document.addEventListener('click', (e) => {
   }
   if (d.sheet) { ui.sheet = d.sheet; return paint(); }
   if (d.sheets) return openSheets(d.sheets === 'all');
+  if ('engineer' in d) return openEngineer();
+  if ('engdata' in d) return download(`${state.job.replace(/[^\w]+/g, '-').replace(/^-|-$/g, '').toLowerCase() || 'building'}-data.json`, engineerData(), 'application/json');
   if ('send' in d) return openSend();
   if ('copy' in d) {
     const box = $('proposal').querySelector('input');
@@ -467,13 +471,92 @@ function cutLength(inches) {
   return `${ft} ft ${whole}${part ? ` ${part / div}/${8 / div}` : ''} in`;
 }
 
-function openSheets(withDrawings) {
+const today = () => new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
+function sheetHead(title) {
+  return `<div class="top"><div><h1>${title}</h1><p>${esc(state.job)}</p></div>
+    <div class="when">${state.width} x ${state.length} x ${state.eaveHeight} ft<br>${today()}</div></div>`;
+}
+
+function drawingPages() {
   const names = Object.fromEntries(SHEETS);
-  const head = (title) => `<div class="top"><div><h1>${title}</h1><p>${esc(state.job)}</p></div>
-    <div class="when">${state.width} x ${state.length} x ${state.eaveHeight} ft<br>${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</div></div>`;
-  const pages = [['front', 'back'], ['left', 'right'], ['roof']].map((set) => `<div class="page sheet">${head('Framing Drawings')}
+  return [['front', 'back'], ['left', 'right'], ['roof']].map((set) => `<div class="page sheet">${sheetHead('Framing Drawings')}
     ${set.map((k) => `<h3>${names[k]}${k === 'roof' ? ', seen from above' : ', seen from outside'}</h3>${drawing(result, k, true)}`).join('')}
     <p class="fine">Built from framing rules that have not been checked against a builder's guide yet. Not an engineered drawing.</p></div>`).join('');
+}
+
+// The same building as numbers, for an engineer who wants to load it into
+// their own software. Lengths are in inches.
+function engineerData() {
+  const g = result.geometry;
+  return JSON.stringify({
+    madeWith: 'Girt And Purlin',
+    note: 'A description of the building as drawn. Not an engineered design. No loads were calculated. Lengths are in inches, measured along each wall from the front-left corner (front and back walls) or from the front wall (end walls).',
+    job: state.job, date: new Date().toISOString().slice(0, 10),
+    building: g.building, posts: g.posts, trusses: g.trusses, girtRows: g.girtRows, purlinRowLengthIn: g.purlinRowLengthIn,
+    framingAsDrawn: result.rules, summary: result.summary,
+  }, null, 2);
+}
+
+function openEngineer() {
+  if (ui.view !== 'finished') { ui.view = 'finished'; view.setMode('finished'); paint(); }
+  const picture = view.snapshot();
+  const { building: b, posts } = result.geometry;
+  const r = result.rules, sum = result.summary;
+  const blank = (label, hint) => `<dt>${label}</dt><dd contenteditable spellcheck="false">${hint}</dd>`;
+  const facts = [
+    ['Shape', 'Rectangle with a gable roof, ridge running the long way'],
+    ['Width', `${state.width} ft`], ['Length', `${state.length} ft`],
+    ['Wall Height', `${state.eaveHeight} ft, ground to eave`],
+    ['Peak Height', `${feetInches(b.eaveIn + b.riseIn)}, ground to ridge`],
+    ['Roof Pitch', `${state.pitch} in 12`], ['Overhang', `${state.overhang} in, all four sides`],
+    ['Floor Area', `${Math.round(sum.floorSqFt).toLocaleString('en-US')} sq ft`],
+  ];
+  const members = [
+    ['Posts', r.postSize, `Every ${state.postSpacing} ft along each wall, ${posts.length} in all, set ${feetInches(r.postEmbedmentIn)} into the ground`],
+    ['Trusses', `${state.width} ft span, ${state.pitch} in 12`, `Every ${state.trussSpacing} ft, ${sum.trusses} in all`],
+    ['Skirt Board', r.skirtSize, 'One row at the ground, all four walls'],
+    ['Wall Girts', r.girtSize, `Every ${r.girtSpacingIn} in up the wall, flat on the outside of the posts`],
+    ['Roof Purlins', r.purlinSize, `Every ${r.purlinSpacingIn} in up the slope, ${sum.purlinRowsPerSide} rows each side`],
+    ['Headers', r.headerSize, 'Over each door and window'],
+    ['Roof And Walls', 'Ribbed steel panel', `${r.panelCoverageIn} in coverage, screwed to the purlins and girts`],
+  ];
+  const first = `<div class="page sheet eng">
+    <div class="top"><div><h1 contenteditable spellcheck="false">Your Company Name</h1><p contenteditable spellcheck="false">Address, phone and email</p></div>
+      <div class="when"><b>Engineer Package</b><br>${today()}</div></div>
+    <h2>${esc(state.job)}</h2>
+    <p class="lead">This package describes a post-frame building we want to build. We are asking you for the engineered design. Nothing in it has been engineered and no loads have been calculated. The member sizes are our starting point and are yours to change.</p>
+    <img src="${picture}" alt="The building">
+    <div class="cols even"><div><h3>The Building</h3><dl>${facts.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl></div>
+      <div><h3>The Site</h3><dl>${blank('Site Address', 'Type the address')}${blank('County And State', 'Type the county and state')}${blank('Permit Office', 'Type who issues the permit')}
+        ${blank('What The Building Is For', 'Type the use, such as equipment storage')}${blank('Heated', 'Type yes or no')}${blank('Soil', 'Type what you know, or leave for the engineer')}
+        <dt>Snow, Wind And Soil Loads</dt><dd>Engineer to set for this site</dd></dl></div></div>
+  </div>`;
+  const second = `<div class="page sheet eng">${sheetHead('Framing As Drawn')}
+    <p class="fine">These are the sizes and spacings the drawings use. Write your change beside any line.</p>
+    <table class="cuts eng-members"><thead><tr><th>Member</th><th>Size</th><th>Layout</th><th class="chg">Engineer's Change</th></tr></thead>
+      <tbody>${members.map(([m, s, l]) => `<tr><td>${m}</td><td>${esc(s)}</td><td>${esc(l)}</td><td class="chg">&nbsp;</td></tr>`).join('')}</tbody></table>
+    <h3>What We Need From You</h3>
+    <p>The program that made this package lays out the frame and counts the material. It does not size anything for load. It has no footings, no bracing, no truss design and no connection details. Those are yours, along with any stamped drawings the permit office asks for.</p>
+    <h3>Doors And Windows</h3>
+    ${b.openings.length ? `<table class="cuts"><thead><tr><th>Opening</th><th>Wall</th><th>Starts At</th><th>Width</th><th>Height</th><th>Sill</th></tr></thead>
+      <tbody>${b.openings.map((o) => `<tr><td>${TYPE_NAMES[o.type]}</td><td>${WALL_NAMES[o.wall]}</td><td>${feetInches(o.startIn)}</td><td>${feetInches(o.widthIn)}</td><td>${feetInches(o.heightIn)}</td><td>${o.toGround ? 'At the ground' : feetInches(o.sillIn)}</td></tr>`).join('')}</tbody></table>` : '<p>None.</p>'}
+    <p class="fine">Front and back walls are measured from the left corner as you face the front wall. End walls are measured from the front wall.</p>
+  </div>`;
+  const third = `<div class="page sheet eng">${sheetHead('Post Layout')}
+    <h3>Seen from above, front wall at the bottom</h3>${floorPlan(result, true)}
+    <table class="cuts posts"><thead><tr><th>Wall</th><th>At</th><th>Top Above Ground</th><th>Post Length</th></tr></thead>
+      <tbody>${posts.map((p) => `<tr><td>${WALL_NAMES[p.wall]}</td><td>${feetInches(p.atIn)}</td><td>${feetInches(p.topIn)}</td><td>${p.stockFt} ft</td></tr>`).join('')}</tbody></table>
+  </div>`;
+  $('proposal').innerHTML = `<div class="bar"><span>Click any gray text on the first page to type your own. The data file is the same building as numbers, for the engineer's own software.</span>
+    <button class="btn" data-close>Close</button><button class="btn" data-engdata>Save Data File</button><button class="btn solid" data-print>Print Or Save As PDF</button></div>${first}${second}${third}${drawingPages()}`;
+  $('proposal').hidden = false;
+  $('proposal').scrollTop = 0;
+}
+
+function openSheets(withDrawings) {
+  const head = sheetHead;
+  const pages = drawingPages();
   const parts = [...new Set(result.cuts.map((c) => c.part))];
   const boards = result.cuts.reduce((n, c) => n + c.qty, 0);
   const cuts = `<div class="page sheet">${head('Cut List')}

@@ -1,7 +1,9 @@
 // The floor plan: a flat drawing seen from above, front wall at the bottom.
-const INK = '#dcdcdc', SOFT = '#8f8f8f', SIGNAL = '#f0883a', PAPER = '#262626';
+const SIGNAL = '#f0883a';
 
-export function floorPlan(result) {
+// light draws it in ink on white for the printed sheets.
+export function floorPlan(result, light = false) {
+  const INK = light ? '#1a1a1a' : '#dcdcdc', SOFT = light ? '#777' : '#8f8f8f', PAPER = light ? '#fff' : '#262626';
   const { building: b, posts } = result.geometry;
   const L = b.lengthIn / 12, W = b.widthIn / 12;
   const pad = Math.max(L, W) * 0.16 + 6;
