@@ -80,13 +80,23 @@ function wallSheet(result, wall, c) {
     heights.push(row.heightIn);
   }
 
+  // Opening labels stay inside the opening: a tall narrow door reads up its
+  // height, and the lettering shrinks before it runs past an edge.
+  const label = (o, cx, cy, w, h) => {
+    const turned = h > w * 1.5;
+    const room = (turned ? h : w) - 0.4;
+    const words = [TYPES[o.type], `${short(o.widthIn)} x ${short(o.heightIn)}`];
+    const size = Math.min(w < 6 ? 0.65 : 0.9, ...words.map((s) => room / (s.length * 0.55 * unit)));
+    const turn = turned ? `transform="rotate(-90 ${cx} ${cy})"` : '';
+    return [text(cx, cy - (turned ? unit * size * 0.25 : 0), words[0], size, c.ink, turn),
+      text(cx, cy + unit * size * (turned ? 0.95 : 1.2), words[1], size, c.soft, turn)];
+  };
   for (const o of mine) {
     const a = Math.min(u(o.startIn), u(o.endIn)), w = o.widthIn / 12, h = o.heightIn / 12;
     const head = y(o.sillIn + o.heightIn);
     out.push(`<rect x="${a}" y="${head}" width="${w}" height="${h}" fill="${c.paper}" stroke="${c.ink}" stroke-width="0.1"/>`,
       `<rect x="${a}" y="${head - 0.77}" width="${w}" height="0.77" fill="${c.wood}" stroke="${c.ink}" stroke-width="0.05"/>`,
-      text(a + w / 2, head + h / 2, TYPES[o.type], w < 6 ? 0.65 : 0.9),
-      text(a + w / 2, head + h / 2 + unit * 1.1, `${short(o.widthIn)} x ${short(o.heightIn)}`, w < 6 ? 0.65 : 0.9, c.soft));
+      ...label(o, a + w / 2, head + h / 2, w, h));
   }
 
   if (isGable(wall)) {
