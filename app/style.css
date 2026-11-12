@@ -1,7 +1,3 @@
-@font-face {
-  font-family: Inter; src: url(vendor/fonts/Inter.woff2) format("woff2");
-  font-weight: 100 900; font-display: block;
-}
 :root {
   --gap: #161616;
   --area: #303030;
