@@ -225,15 +225,14 @@ a.btn { display: inline-flex; align-items: center; text-decoration: none; }
   .jobname { width: 150px; }
 }
 @media (max-width: 1250px) {
+  body { grid-template-rows: auto 1fr; }
   nav button { padding: 0 9px; }
   .jobname { width: 120px; }
-  header { grid-template-columns: 260px 1fr auto; }
+  header { grid-template-columns: 1fr auto; }
+  nav { grid-column: 1 / -1; grid-row: 2; overflow-x: auto; }
   main { grid-template-columns: 260px 1fr 300px; }
 }
 @media (max-width: 1000px) {
-  body { grid-template-rows: auto 1fr; }
-  header { grid-template-columns: 1fr auto; }
-  nav { grid-column: 1 / -1; grid-row: 2; overflow-x: auto; }
   main { grid-template-columns: 1fr 1fr; grid-template-rows: 46% 1fr; }
   .stage { grid-column: 1 / -1; grid-row: 1; }
   .left, .right { min-height: 0; }
@@ -252,8 +251,25 @@ a.btn { display: inline-flex; align-items: center; text-decoration: none; }
   .left h2, .list h2 { padding: 9px 10px; }
   td { padding: 8px 10px; }
 }
-@media (pointer: coarse) and (max-width: 1000px) {
+@media (pointer: coarse) and (max-width: 1250px) {
   body { grid-template-rows: auto 1fr; }
+}
+/* Phones: one column that scrolls, with the picture pinned on top. */
+@media (max-width: 700px) {
+  body { min-width: 0; }
+  header { grid-template-columns: auto minmax(0, 1fr); }
+  nav::-webkit-scrollbar { display: none; }
+  .mark { font-size: 0; gap: 0; padding: 0 8px; }
+  .shared .mark { font-size: 14px; gap: 9px; }
+  .job { gap: 6px; padding: 0 6px; min-width: 0; }
+  .job > div { flex: 1; min-width: 0; }
+  .jobname { width: 100%; min-width: 0; }
+  .btn { padding: 0 9px; }
+  main, .shared main { display: flex; flex-direction: column; gap: 3px; overflow-y: auto; }
+  .stage { order: -1; flex: 0 0 40vh; position: sticky; top: 0; z-index: 2; }
+  .left, .right { flex: none; overflow: visible; display: block; }
+  .readout { top: auto; bottom: 10px; right: 10px; }
+  .check:not([hidden]) ~ .readout, .readout:has(~ .check:not([hidden])) { display: none; }
 }
 
 body.embed { grid-template-rows: 1fr; min-width: 0; }
