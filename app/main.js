@@ -65,10 +65,13 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&l
 const shared = readShare();
 let state = load();
 let result = design(state);
-if (!result.ok) { state = structuredClone(SAMPLE); result = design(state); }
+// A saved job the engine turns away is not opened; the sample shows instead and the reason is given.
+let unopened = '';
+if (!result.ok) { unopened = result.errors[0]; state = structuredClone(SAMPLE); result = design(state); }
 let catalog = loadPrices();
 let priced = priceJob(result, catalog, state.pricing);
 const ui = { delta: 0, notice: '', step: 'Size', view: 'finished', sheet: 'front', sel: null, opening: null, placing: null, changed: new Set(), last: '', problem: '', savedAt: null };
+if (unopened) { ui.lead = 'Your saved job could not be opened.'; ui.problem = `${unopened} The sample building is showing instead.`; }
 const view = createView($('view'), $('stage'));
 
 function readShare() {
@@ -140,12 +143,14 @@ function apply(change, note) {
   const next = { ...state, ...change };
   const tried = design(next);
   if (!tried.ok) {
+    ui.lead = '';
     ui.problem = tried.errors[0];
     return paint();
   }
   const before = new Map(result.items.map((i) => [lineKey(i), i.qty]));
   ui.changed = new Set(tried.items.filter((i) => before.get(lineKey(i)) !== i.qty).map(lineKey));
   ui.problem = '';
+  ui.lead = '';
   ui.last = note;
   state = next;
   result = tried;
@@ -301,7 +306,7 @@ function paint() {
   check.hidden = !ui.problem && !warning;
   check.innerHTML = '';
   if (ui.problem) {
-    check.innerHTML = `<span><b>That will not fit.</b> ${esc(ui.problem)}</span><button data-dismiss>OK</button>`;
+    check.innerHTML = `<span><b>${ui.lead || 'That will not fit.'}</b> ${esc(ui.problem)}</span><button data-dismiss>OK</button>`;
   } else if (warning) {
     const more = result.warnings.length > 1 ? ` (1 of ${result.warnings.length})` : '';
     check.innerHTML = `<span><b>Check this${more}.</b> ${esc(warning.text)}</span><button data-fix>Fix It For Me</button>`;
@@ -388,7 +393,7 @@ document.addEventListener('click', (e) => {
     const on = d.on === '1';
     return apply({ colors: { ...state.colors, [d.extra]: on } }, `${d.extra === 'gutters' ? 'Gutters' : 'Pickup'} ${on ? 'on' : 'off'}`);
   }
-  if ('dismiss' in d) { ui.problem = ''; return paint(); }
+  if ('dismiss' in d) { ui.problem = ''; ui.lead = ''; return paint(); }
   if ('fix' in d) {
     const w = result.warnings[0], o = state.openings[w.openingIndex];
     return setOpening(w.openingIndex, { offset: o.offset + w.slideByIn / 12 }, `${TYPE_NAMES[o.type]} moved to ${w.code === 'door-edge-off-post' ? 'meet' : 'clear'} the post`);
