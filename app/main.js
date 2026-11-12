@@ -49,7 +49,7 @@ const OPTION_SETS = {
   roofInsulation: ['Roof Insulation', [['none', 'None'], ['bubble', 'Bubble'], ['fiberglass', 'Fiberglass']]],
   wallInsulation: ['Wall Insulation', [['none', 'None'], ['wrap', 'House Wrap'], ['bubble', 'Bubble'], ['fiberglass', 'Fiberglass']]],
   ceilingR: ['Blown Ceiling Insulation', [[0, 'None'], [19, 'R-19'], [30, 'R-30'], [38, 'R-38'], [49, 'R-49'], [60, 'R-60']]],
-  footing: ['Under Each Post', [['none', 'Not Listed'], ['pad', 'Concrete Pad'], ['collar', 'Poured Collar']]],
+  footing: ['Under Each Post', [['none', 'Not Listed'], ['pad', 'Concrete Pad'], ['collar', 'Poured Collar'], ['bracket', 'Bolt-Down Bracket']]],
   slab: ['Concrete Floor', [[false, 'None'], [true, '4 in Slab']]],
   ridgeVent: ['Ridge Vent', [[false, 'None'], [true, 'Vented Ridge']]],
   cupolas: ['Cupolas', [[false, 'None'], [true, 'On The Ridge']]],
@@ -403,7 +403,7 @@ function leftPanel() {
       ${optionRow('roofInsulation')}${optionRow('wallInsulation', true)}${optionRow('ceilingR', true)}
       <p class="hint">Bubble is a thin foil roll that stops dripping under a steel roof. Blown insulation lies on top of a ceiling liner, so picking it turns the ceiling liner on.</p>
       ${optionRow('footing', true)}${optionRow('slab')}
-      <p class="hint">The slab is counted at 4 in thick with a plastic sheet under it. No mesh, bar or thickened edge is counted. That is your concrete man's call.</p>
+      <p class="hint">The slab is counted at 4 in thick with a plastic sheet under it. No mesh, bar or thickened edge is counted. That is your concrete man's call. A bolt-down bracket stands each post on top of the concrete, so no wood goes in the ground and the posts are ordered 4 ft shorter. The concrete under the brackets has to be made for them, and a bracket does not hold a post upright the way a buried post holds itself. That is engineer work.</p>
       ${optionRow('ridgeVent')}
       <h2>Skylight Panels</h2>${stepper('data-optstep="skylights"', 'Clear Roof Panels', String(opt('skylights')), '', false)}
       <p class="hint">Each skylight panel takes the place of one steel roof panel, eave to ridge.</p>
@@ -458,7 +458,7 @@ function leftPanel() {
   }
   return `<h2>Drawings</h2>
     <div class="seg stack">${sheetList(result).map(([k, n]) => `<button data-sheet="${k}" class="${ui.sheet === k ? 'on' : ''}">${n}</button>`).join('')}</div>
-    <p class="hint">Walls are drawn from outside the building. Dashed lines show the part of each post in the ground.</p>
+    <p class="hint">Walls are drawn from outside the building. ${result.rules?.postEmbedmentIn === 0 ? 'The posts stand on brackets at floor level.' : 'Dashed lines show the part of each post in the ground.'}</p>
     <h2>Print</h2>
     <div class="seg stack"><button data-sheets="all">All Sheets</button><button data-sheets="cuts">Cut List Only</button><button data-checksheet>Delivery Check Sheet</button></div>
     <h2>For Your Engineer</h2>
@@ -948,7 +948,7 @@ function openEngineer() {
   const carriers = result.items.some((i) => i.name === 'Truss Carriers');
   const headerSizes = [...new Set(result.items.filter((i) => i.name === 'Headers').map((i) => i.size))];
   const members = [
-    ['Posts', r.postSize, `Every ${state.postSpacing} ft along each wall, ${posts.length} in all, set ${feetInches(r.postEmbedmentIn)} into the ground`],
+    ['Posts', r.postSize, `Every ${state.postSpacing} ft along each wall, ${posts.length} in all, ${r.postEmbedmentIn ? `set ${feetInches(r.postEmbedmentIn)} into the ground` : 'standing on bolt-down brackets on the concrete'}`],
     [{ gable: 'Trusses', mono: 'Single Slope Trusses', gambrel: 'Gambrel Trusses' }[b.roof], `${state.width} ft span, ${b.roof === 'gambrel' ? 'gambrel profile' : `${state.pitch} in 12`}`, `Every ${state.trussSpacing} ft, ${sum.trusses} in all`],
     ['Skirt Board', r.skirtSize, 'One row at the ground, all four walls'],
     ['Wall Girts', r.girtSize, `Every ${r.girtSpacingIn} in up the wall, on the outside face of the posts, joined on posts`],
@@ -968,7 +968,7 @@ function openEngineer() {
       ['Loft', `${feetInches(loftG.depthIn)} deep, ${state.width} ft wide`, `Across the ${loftG.end} end, top of floor ${feetInches(loftG.heightIn)} above the ground floor, ${feetInches(loftG.aboveIn)} clear to the truss bottom chords`],
       ['Loft Joists', loftG.joistSize, `Every ${r.loftJoistSpacingIn} in, ${loftG.joists.length} in all, running the long way of the building, hung between a ledger on the end wall posts and the loft beam`],
       ['Loft Beam', `Two ${r.loftBeamSize}`, `Under the open edge, one board each side of ${loftG.posts.length} posts spaced ${feetInches(state.width * 12 / (loftG.posts.length - 1))} apart`],
-      ['Loft Posts', r.postSize, `${loftG.posts.length} posts, set ${feetInches(r.postEmbedmentIn)} into the ground like the wall posts`],
+      ['Loft Posts', r.postSize, `${loftG.posts.length} posts, ${r.postEmbedmentIn ? `set ${feetInches(r.postEmbedmentIn)} into the ground` : 'on bolt-down brackets'} like the wall posts`],
       ['Loft Stair', `${r.stairStringers} stringers, ${r.stairStringerSize}`, `${loftG.stair.risers} risers of ${(loftG.stair.riseIn / loftG.stair.risers).toFixed(2)} in, ${loftG.stair.treads} treads of ${r.stairTreadIn} in, ${feetInches(loftG.stair.widthIn)} wide, along the front wall`],
     ] : []),
     ['Roof And Walls', 'Ribbed steel panel', `${r.panelCoverageIn} in coverage, screwed to the purlins and girts`],
@@ -989,6 +989,7 @@ function openEngineer() {
       <tbody>${members.map(([m, s, l]) => `<tr><td>${m}</td><td>${esc(s)}</td><td>${esc(l)}</td><td class="chg">&nbsp;</td></tr>`).join('')}</tbody></table>
     <h3>What We Need From You</h3>
     <p>The program that made this package lays out the frame and counts the material. It does not size anything for load. It has no footing design, no bracing, no truss design and no connection details. Any pads, collars or slab in the material list are counted from common sizes and are not sized for this site. Those are yours, along with any stamped drawings the permit office asks for.</p>
+    ${b.options.footing === 'bracket' ? `<p>The posts stand on bolt-down steel brackets, not in the ground. A buried post resists wind by its grip in the soil. A bracketed post gets that from the bracket, its anchors and the concrete under it, and from bracing in the frame. The bracket model, the anchors, the thickened edge or piers under them, and the bracing are all yours to specify. The list counts one bracket per post and nothing else.</p>` : ''}
     ${b.sheds.length ? `<p>Each lean-to and porch roof starts below the main eave, so its rafters and upper purlins have to carry snow that slides off the main roof and drifts against the wall above. The rafter, ledger and beam sizes shown are placeholders with no published table behind them.</p>` : ''}
     ${loftG ? `<p>The loft joist size comes from a house floor span table for a 40 lb per sq ft live load. Storage or shop use can call for more. The loft beam, its posts and the ledger fastening are placeholders with no table behind them. The loft adds floor load to the end wall posts and their footings, and its own posts need footings sized for it. The stair stringers are drawn in one length with no support under the middle, which notched stringers this long normally need.</p>` : ''}
     <h3>Doors And Windows</h3>

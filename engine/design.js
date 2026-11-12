@@ -20,9 +20,11 @@ const inchesToFt = (k) => k / 12;
 export const TRUSS_NAMES = { gable: 'Trusses', mono: 'Single Slope Trusses', gambrel: 'Gambrel Trusses' };
 
 export function design(input, ruleOverrides) {
-  const rules = resolveRules(ruleOverrides);
+  let rules = resolveRules(ruleOverrides);
   const { building: b, errors } = normalize(input);
   if (errors.length) return { ok: false, errors, warnings: [], items: [] };
+  // Posts on brackets stand on the concrete, so nothing goes in the ground.
+  if (b.options.footing === 'bracket') rules = { ...rules, postEmbedmentIn: 0 };
 
   const { posts, warnings, errors: postErrors } = placePosts(b, rules);
   if (postErrors.length) return { ok: false, errors: postErrors, warnings, items: [] };

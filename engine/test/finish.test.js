@@ -89,6 +89,17 @@ test('insulation', () => {
   assert.match(withOptions({ ceilingR: 38 }).errors[0], /needs a ceiling/);
 });
 
+test('posts on brackets', () => {
+  // No 4 ft in the ground: a 12 ft wall post comes from a 12 ft stick, not a 16.
+  const r = withOptions({ footing: 'bracket', slab: true });
+  assert.equal(r.ok, true);
+  assert.equal(qty(r, 'Post Brackets'), 20);
+  assert.equal(r.rules.postEmbedmentIn, 0);
+  assert.equal(qty(r, 'Posts', '16 ft') < qty(withOptions({ slab: true }), 'Posts', '16 ft'), true);
+  assert.equal(r.warnings.some((w) => w.code === 'bracket-no-concrete'), false);
+  assert.equal(withOptions({ footing: 'bracket' }).warnings.some((w) => w.code === 'bracket-no-concrete'), true);
+});
+
 test('footings and slab', () => {
   assert.equal(base.summary.posts, 20);
   assert.equal(qty(withOptions({ footing: 'pad' }), 'Footing Pads'), 20);

@@ -66,6 +66,7 @@ export const SAMPLE_CATALOG = {
     { item: 'Blown Ceiling Insulation', size: '', unit: 'each', price: 42 },
     { item: 'Footing Pads', size: '', unit: 'each', price: 12 },
     { item: 'Concrete Mix', size: '', unit: 'each', price: 6.5 },
+    { item: 'Post Brackets', size: '', unit: 'each', price: 85 },
     { item: 'Slab Concrete', size: '', unit: 'each', price: 165 },
     { item: 'Slab Vapor Barrier', size: '', unit: 'each', price: 320 },
     { item: 'Partition Bottom Plates', size: '', unit: 'ft', price: 0.9 },

@@ -194,6 +194,10 @@ export function finishParts(b, rules, { posts, trusses, sheds, wallTally, roofTa
     const holeCuFt = Math.PI * (rules.collarDiameterIn / 2) ** 2 * rules.collarDepthIn / 1728;
     items.push(line('Concrete', 'Concrete Mix', '80 lb bag', up(postCount * holeCuFt / rules.bagYieldCuFt)));
   }
+  if (o.footing === 'bracket') {
+    items.push(line('Concrete', 'Post Brackets', `Bolt-down, for ${rules.postSize} posts, with the maker's hardware`, postCount));
+    if (!o.slab) warnings.push({ code: 'bracket-no-concrete', text: 'Post brackets bolt down to concrete. No slab is turned on, so the piers or wall under the brackets are not on this list.' });
+  }
   let slabSqFt = 0;
   if (o.slab) {
     slabSqFt = floorSqFt + sheds.filter((s) => s.enclosed).reduce((sum, s) => sum + (s.lengthIn * s.depthIn) / 144, 0);

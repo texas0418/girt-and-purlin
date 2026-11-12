@@ -149,7 +149,7 @@ export function normalize(input) {
     roofInsulation: pick(o.roofInsulation, ['none', 'bubble', 'fiberglass'], 'Roof insulation'),
     wallInsulation: pick(o.wallInsulation, ['none', 'bubble', 'wrap', 'fiberglass'], 'Wall insulation'),
     ceilingR: pick(o.ceilingR, [0, 19, 30, 38, 49, 60], 'Ceiling insulation'),
-    footing: pick(o.footing, ['none', 'pad', 'collar'], 'Footing'),
+    footing: pick(o.footing, ['none', 'pad', 'collar', 'bracket'], 'Footing'),
     slab: !!o.slab,
     ridgeVent: !!o.ridgeVent,
     cupolas: !!o.cupolas,
