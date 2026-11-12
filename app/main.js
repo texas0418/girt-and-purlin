@@ -61,6 +61,8 @@ const $ = (id) => document.getElementById(id);
 const money = (n) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
+// A customer link carries the whole job after the # sign. Opening one shows a look-only page.
+const shared = readShare();
 let state = load();
 let result = design(state);
 if (!result.ok) { state = structuredClone(SAMPLE); result = design(state); }
@@ -69,7 +71,26 @@ let priced = priceJob(result, catalog, state.pricing);
 const ui = { delta: 0, notice: '', step: 'Size', view: 'finished', sheet: 'front', sel: null, opening: null, placing: null, changed: new Set(), last: '', problem: '', savedAt: null };
 const view = createView($('view'), $('stage'));
 
+function readShare() {
+  const packed = location.hash.match(/^#q=(.+)$/);
+  if (!packed) return null;
+  try {
+    const bytes = Uint8Array.from(atob(packed[1].replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
+    const job = JSON.parse(new TextDecoder().decode(bytes));
+    return job && job.width && job.price ? job : null;
+  } catch { return null; }
+}
+
+function shareLink() {
+  const { pricing, ...job } = state;
+  const price = { package: priced.materials + priced.markup, labor: priced.labor, tax: priced.tax, total: priced.total };
+  const bytes = new TextEncoder().encode(JSON.stringify({ ...job, price }));
+  const packed = btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return `${location.origin}${location.pathname}#q=${packed}`;
+}
+
 function load() {
+  if (shared) { const { price, ...job } = shared; return { ...structuredClone(SAMPLE), ...job }; }
   try {
     const saved = JSON.parse(localStorage.getItem(STORE));
     if (saved && saved.width) return { ...structuredClone(SAMPLE), ...saved };
@@ -107,6 +128,7 @@ function download(name, text) {
 }
 
 function save() {
+  if (shared) return;
   try { localStorage.setItem(STORE, JSON.stringify(state)); ui.savedAt = new Date(); } catch { ui.savedAt = null; }
 }
 
@@ -216,7 +238,40 @@ function leftPanel() {
     <p class="hint">The engineer handoff package is a later stage.</p>`;
 }
 
+function specRows() {
+  const colorName = (hex) => PALETTE.find((c) => c[1] === hex)?.[0] ?? hex;
+  const counts = {};
+  for (const o of state.openings) {
+    const k = `${TYPE_NAMES[o.type]}|${num(o.width)} x ${num(o.height)}`;
+    counts[k] = (counts[k] ?? 0) + 1;
+  }
+  const openings = Object.entries(counts).map(([k, n]) => `${n} ${esc(k.replace('|', n > 1 ? 's, ' : ', '))}`).join('<br>');
+  return [
+    ['Size', `${state.width} ft wide, ${state.length} ft long, ${state.eaveHeight} ft walls`],
+    ['Roof', `${state.pitch} in 12 pitch, ${state.overhang} in overhang`],
+    ['Frame', `Posts every ${state.postSpacing} ft, trusses every ${state.trussSpacing} ft`],
+    ['Doors And Windows', openings || 'None'],
+    ['Colors', `${colorName(state.colors.walls)} walls, ${colorName(state.colors.roof)} roof, ${colorName(state.colors.trim)} trim${state.colors.wainscotOn ? `, ${colorName(state.colors.wainscot)} wainscot` : ''}`],
+  ];
+}
+
+function paintShared() {
+  const p = shared.price;
+  const lines = [['Building Package', p.package], ['Labor', p.labor], ['Sales Tax', p.tax]].filter(([, v], i) => i === 0 || v > 0);
+  document.body.classList.add('shared');
+  document.title = `${state.job}, Girt And Purlin`;
+  $('views').innerHTML = [VIEWS[0], VIEWS[2]].map(([k, n]) => `<button data-view="${k}" class="${ui.view === k ? 'on' : ''}">${n}</button>`).join('');
+  $('readout').textContent = `${result.summary.floorSqFt.toLocaleString()} sq ft`;
+  $('plan').hidden = ui.view !== 'plan';
+  if (ui.view === 'plan') $('plan').innerHTML = floorPlan({ ...result, warnings: [] });
+  $('total').innerHTML = `<small>${esc(state.job)}</small><strong>${money(Number(p.total) || 0)}</strong><em>Drag the picture to look around your building.</em>`;
+  $('list').innerHTML = `<h2>Your Building</h2><dl class="spec">${specRows().map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>
+    <h2>Price</h2>${lines.map(([k, v]) => `<div class="sum"><span>${k}</span><span>${money(Number(v) || 0)}</span></div>`).join('')}
+    <div class="sum strong"><span>Total</span><span>${money(Number(p.total) || 0)}</span></div>`;
+}
+
 function paint() {
+  if (shared) return paintShared();
   $('nav').innerHTML = STEPS.map((s) => `<button data-nav="${s}" class="${ui.step === s ? 'on' : ''}">${s}</button>`).join('');
   $('views').innerHTML = VIEWS.map(([k, n]) => `<button data-view="${k}" class="${ui.view === k ? 'on' : ''}">${n}</button>`).join('');
   $('left').innerHTML = leftPanel();
@@ -280,6 +335,12 @@ document.addEventListener('click', (e) => {
   }
   if (d.sheet) { ui.sheet = d.sheet; return paint(); }
   if (d.sheets) return openSheets(d.sheets === 'all');
+  if ('send' in d) return openSend();
+  if ('copy' in d) {
+    const box = $('proposal').querySelector('input');
+    box.select();
+    return navigator.clipboard.writeText(box.value).then(() => { t.textContent = 'Copied'; }, () => { t.textContent = 'Press Copy On Your Keyboard'; });
+  }
   if ('proposal' in d) return openProposal();
   if ('print' in d) return window.print();
   if ('close' in d) { $('proposal').hidden = true; $('proposal').innerHTML = ''; return; }
@@ -350,21 +411,9 @@ $('pricefile').addEventListener('change', async (e) => {
 });
 
 function openProposal() {
-  const colorName = (hex) => PALETTE.find((c) => c[1] === hex)?.[0] ?? hex;
   if (ui.view !== 'finished') { ui.view = 'finished'; view.setMode('finished'); paint(); }
   const picture = view.snapshot();
-  const counts = {};
-  for (const o of state.openings) {
-    const k = `${TYPE_NAMES[o.type]}, ${num(o.width)} x ${num(o.height)}`;
-    counts[k] = (counts[k] ?? 0) + 1;
-  }
-  const spec = [
-    ['Size', `${state.width} ft wide, ${state.length} ft long, ${state.eaveHeight} ft walls`],
-    ['Roof', `${state.pitch} in 12 pitch, ${state.overhang} in overhang`],
-    ['Frame', `Posts every ${state.postSpacing} ft, trusses every ${state.trussSpacing} ft`],
-    ['Doors And Windows', Object.entries(counts).map(([k, n]) => `${n} ${k}`).join('<br>') || 'None'],
-    ['Colors', `${colorName(state.colors.walls)} walls, ${colorName(state.colors.roof)} roof, ${colorName(state.colors.trim)} trim${state.colors.wainscotOn ? `, ${colorName(state.colors.wainscot)} wainscot` : ''}`],
-  ];
+  const spec = specRows();
   const price = [['Building Package', priced.materials + priced.markup], ['Labor', priced.labor], ['Sales Tax', priced.tax]].filter(([, v], i) => i === 0 || v > 0);
   const groups = [...new Set(result.items.map((i) => i.group))];
   $('proposal').innerHTML = `
@@ -390,6 +439,18 @@ function openProposal() {
     </div>`;
   $('proposal').hidden = false;
   $('proposal').scrollTop = 0;
+}
+
+function openSend() {
+  const link = shareLink();
+  $('proposal').innerHTML = `<div class="bar"><span></span><button class="btn" data-close>Close</button></div>
+    <div class="send"><h2>Send To Customer</h2>
+      <p>This link opens a look-only page: the building in 3D, what is included, and the total of ${money(priced.total)}. Your costs, markup and material list are not in it.</p>
+      ${catalog.sample ? '<p class="warn">Sample prices are loaded. Load your own price list before sending this.</p>' : ''}
+      <input readonly value="${esc(link)}" aria-label="Customer link">
+      <div class="row"><button class="btn solid" data-copy>Copy Link</button><a class="btn" href="${esc(link)}" target="_blank" rel="noopener">See What They See</a></div>
+      <p class="fine">The link holds this job as it is right now. Change the job and you send a new link. Paste it into a text or an email yourself.</p></div>`;
+  $('proposal').hidden = false;
 }
 
 // Cut lengths are shown to the nearest eighth of an inch.
@@ -419,6 +480,8 @@ function openSheets(withDrawings) {
   $('proposal').hidden = false;
   $('proposal').scrollTop = 0;
 }
+
+window.addEventListener('hashchange', () => location.reload());
 
 $('job').value = state.job;
 $('job').addEventListener('change', (e) => { state = { ...state, job: e.target.value.trim() || SAMPLE.job }; save(); paint(); });
