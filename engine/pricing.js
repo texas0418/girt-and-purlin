@@ -132,6 +132,21 @@ export function priceJob(result, catalog, settings = {}) {
   };
 }
 
+// A payment schedule: each payment is a share of the job total, typed in by
+// the builder. Nothing is assumed, so a job with no payments has no schedule.
+// Shares short of 100% leave a balance line; the last line takes up the odd cent.
+export function paymentSchedule(total, payments = []) {
+  const rows = payments.map((p) => ({ name: String(p.name ?? '').trim() || 'Payment', pct: Math.max(0, Number(p.pct) || 0) })).filter((p) => p.pct > 0);
+  if (!rows.length) return { lines: [], problem: '' };
+  const pct = cents(rows.reduce((sum, r) => sum + r.pct, 0));
+  if (pct > 100) return { lines: [], problem: `The payments add up to ${pct}%. Bring them down to 100% or less.` };
+  const lines = rows.map((r) => ({ ...r, amount: cents(total * r.pct / 100) }));
+  if (pct < 100) lines.push({ name: 'Balance', pct: cents(100 - pct), amount: 0 });
+  const last = lines[lines.length - 1];
+  last.amount = cents(total - lines.slice(0, -1).reduce((sum, l) => sum + l.amount, 0));
+  return { lines, problem: '' };
+}
+
 function splitCsvLine(line) {
   const out = [];
   let cell = '', quoted = false;

@@ -2,7 +2,7 @@ import { design } from '../engine/design.js';
 import { feetInches } from '../engine/stock.js';
 import { dxf } from '../engine/dxf.js';
 import { edgeOverhangIn, eaveDropIn } from '../engine/building.js';
-import { priceJob, parsePriceList, priceListCsv, toCsv, invoiceCsv, SAMPLE_CATALOG } from '../engine/pricing.js';
+import { priceJob, paymentSchedule, parsePriceList, priceListCsv, toCsv, invoiceCsv, SAMPLE_CATALOG } from '../engine/pricing.js';
 import { createView } from './scene.js';
 import { jobs, templates, company, priceLists, newId, designOf, STARTING_POINTS } from './office.js';
 import { floorPlan } from './plan.js';
@@ -158,7 +158,7 @@ function readSent() {
 const designLink = () => `${location.origin}${location.pathname}#d=${pack(designOf(state))}`;
 
 function shareLink() {
-  const { pricing, id, alts, alt, ...job } = state;
+  const { pricing, id, alts, alt, signed, ...job } = state;
   const price = { lines: priceLines(priced), total: priced.total };
   const bytes = new TextEncoder().encode(JSON.stringify({ ...job, price }));
   const packed = btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -532,7 +532,7 @@ function leftPanel() {
       const on = l.supplier === catalog.supplier;
       return `<div class="op${on ? ' here' : ''}"><button data-list="${i}"><span>${esc(l.supplier)}<small>${l.rows.length} items${on ? ', in use' : ''}</small></span><em>${money(priceJob(result, l, state.pricing).total)}</em></button></div>`;
     }).join('');
-    const extras = state.pricing.extras ?? [];
+    const extras = state.pricing.extras ?? [], pays = state.pricing.payments ?? [], plan = paymentSchedule(priced.total, pays);
     const alts = state.alts ? eachAlt((a, i) => `<div class="op${i === state.alt ? ' open' : ''}"><button data-alt="${i}"><span>${esc(a.name)}<small>${i === state.alt ? 'Showing now' : 'Click to show'}</small></span><em>${money(priced.total)}</em></button>
       ${i === state.alt ? `${textIn(`data-altname="${i}"`, 'Name', a.name, 'Option name')}<button class="btn remove" data-altdel="${i}">Remove This Option</button>` : ''}</div>`).join('') : '';
     return `<h2>Price List</h2>
@@ -551,6 +551,14 @@ function leftPanel() {
         <button class="btn" data-xdel="${i}" aria-label="Remove this line">Remove</button></div>`).join('')}
       <div class="seg"><button data-xadd>Add A Line</button></div>
       <p class="hint">Flat dollar amounts, such as a permit or equipment rental. They are added after markup and sales tax is not figured on them.</p>
+      <h2>Payment Schedule</h2>
+      ${pays.map((e, i) => `<div class="pair"><input class="in" data-payname="${i}" value="${esc(e.name)}" placeholder="When it is due" aria-label="Payment name">
+        <input class="in" type="number" min="0" max="100" step="1" inputmode="decimal" data-paypct="${i}" value="${e.pct || ''}" placeholder="%" aria-label="Payment percent">
+        <button class="btn" data-paydel="${i}" aria-label="Remove this payment">Remove</button></div>`).join('')}
+      ${plan.problem ? `<p class="hint go">${plan.problem}</p>` : plan.lines.map((l) => row(`${esc(l.name)}, ${Math.round(l.pct * 100) / 100}%`, l.amount)).join('')}
+      <div class="seg"><button data-payadd>Add A Payment</button></div>
+      <p class="hint">Name each payment and type its share of the total, such as a deposit of so many percent. The proposal prints each one in dollars, and whatever is left prints as the balance.</p>
+      ${state.signed ? `<p class="hint${state.signed.total === priced.total ? '' : ' go'}">${signedNote()}</p>` : ''}
       <h2>This Job</h2>
       ${row('Materials', priced.materials)}${row('Markup', priced.markup)}${row('Sales Tax', priced.tax)}${row('Labor', priced.labor)}
       ${priced.freight ? row('Freight And Delivery', priced.freight) : ''}${priced.extraLines.map((e) => row(esc(e.name), e.amount)).join('')}${row('Total', priced.total, true)}
@@ -713,6 +721,13 @@ document.addEventListener('click', (e) => {
   if ('listdel' in d) { priceLists.remove(catalog.supplier); ui.notice = ''; return setPrices(SAMPLE_CATALOG); }
   if ('xadd' in d) return apply({ pricing: { ...state.pricing, extras: [...(state.pricing.extras ?? []), { name: '', amount: 0 }] } }, 'Extra line added');
   if (d.xdel) return apply({ pricing: { ...state.pricing, extras: state.pricing.extras.filter((_, i) => i !== Number(d.xdel)) } }, 'Extra line removed');
+  if ('payadd' in d) return apply({ pricing: { ...state.pricing, payments: [...(state.pricing.payments ?? []), { name: '', pct: 0 }] } }, 'Payment added');
+  if (d.paydel) return apply({ pricing: { ...state.pricing, payments: state.pricing.payments.filter((_, i) => i !== Number(d.paydel)) } }, 'Payment removed');
+  if ('signopen' in d) return openPad();
+  if ('signclear' in d) return padClear();
+  if ('signcancel' in d) return openProposal();
+  if ('signsave' in d) return padSave();
+  if ('signoff' in d) { state = { ...state, signed: null }; save(); return openProposal(); }
   if (d.jobrow) { ui.jobrow = ui.jobrow === d.jobrow ? null : d.jobrow; ui.confirm = null; return paint(); }
   if (d.jobopen) return openJob(jobs.all().find((j) => j.id === d.jobopen).job, 'Job opened');
   if (d.jobdel) {
@@ -720,7 +735,7 @@ document.addEventListener('click', (e) => {
     jobs.remove(d.jobdel); ui.confirm = null; ui.jobrow = null;
     return paint();
   }
-  if ('jobcopy' in d) return openJob({ ...state, id: newId(), job: `${state.job}, Copy` }, 'Copy made. You are in the copy now');
+  if ('jobcopy' in d) return openJob({ ...state, signed: null, id: newId(), job: `${state.job}, Copy` }, 'Copy made. You are in the copy now');
   if (d.start) { const t = STARTING_POINTS[Number(d.start)]; return startFrom(t.name, t.design); }
   if (d.tplrow) { ui.tplrow = ui.tplrow === Number(d.tplrow) ? null : Number(d.tplrow); return paint(); }
   if (d.tplstart) { const t = templates.all()[Number(d.tplstart)]; return startFrom(t.name, t.design); }
@@ -939,6 +954,8 @@ document.addEventListener('change', (e) => {
   if (d.num) return later({ pricing: { ...state.pricing, [d.num]: dollars } }, `Freight now ${money(dollars)}`);
   if (d.xname) return later({ pricing: { ...state.pricing, extras: state.pricing.extras.map((x, i) => (i === Number(d.xname) ? { ...x, name: v.trim() } : x)) } }, 'Extra line named');
   if (d.xamt) return later({ pricing: { ...state.pricing, extras: state.pricing.extras.map((x, i) => (i === Number(d.xamt) ? { ...x, amount: dollars } : x)) } }, `Extra line now ${money(dollars)}`);
+  if (d.payname) return later({ pricing: { ...state.pricing, payments: state.pricing.payments.map((x, i) => (i === Number(d.payname) ? { ...x, name: v.trim() } : x)) } }, 'Payment named');
+  if (d.paypct) return later({ pricing: { ...state.pricing, payments: state.pricing.payments.map((x, i) => (i === Number(d.paypct) ? { ...x, pct: Math.min(dollars, 100) } : x)) } }, 'Payment share updated');
   if (d.altname) return later({ alts: state.alts.map((a, i) => (i === Number(d.altname) ? { ...a, name: v.trim() || ALT_NAMES[i] } : a)) }, 'Option renamed');
 });
 
@@ -999,12 +1016,12 @@ function openProposal() {
   if (ui.view !== 'finished') { ui.view = 'finished'; view.setMode('finished'); paint(); }
   const picture = view.snapshot();
   const spec = specRows();
-  const price = priceLines(priced), co = company.get();
+  const price = priceLines(priced), co = company.get(), plan = paymentSchedule(priced.total, state.pricing.payments);
   const groups = [...new Set(result.items.map((i) => i.group))];
   $('proposal').innerHTML = `
     <div class="bar">
       <span>${catalog.sample ? '<b>Sample prices are loaded.</b> Load your own price list before sending this. ' : ''}Click any gray text on the page to type your own.</span>
-      <button class="btn" data-close>Close</button><button class="btn solid" data-print>Print Or Save As PDF</button>
+      <button class="btn" data-close>Close</button>${state.signed ? '<button class="btn" data-signoff>Clear Signature</button>' : '<button class="btn" data-signopen>Sign On Screen</button>'}<button class="btn solid" data-print>Print Or Save As PDF</button>
     </div>
     <div class="page">
       ${companyHead('Proposal')}
@@ -1014,7 +1031,8 @@ function openProposal() {
         <div class="price">${price.map(([k, v]) => `<div><span>${esc(k)}</span><span>${money(v)}</span></div>`).join('')}
           <div class="grand"><span>Total</span><span>${money(priced.total)}</span></div></div></div>
       <p class="terms" contenteditable spellcheck="false" data-co="terms" data-ph="Type your terms, payment schedule and how long this price holds.">${esc(co.terms || 'Type your terms, payment schedule and how long this price holds.')}</p>
-      <div class="sign"><span>Customer</span><span>Date</span></div>
+      ${plan.lines.length ? `<div class="pays"><h3>Payment Schedule</h3>${plan.lines.map((l) => `<div><span>${esc(l.name)}</span><span>${Math.round(l.pct * 100) / 100}%</span><span>${money(l.amount)}</span></div>`).join('')}</div>` : ''}
+      <div id="signhere">${signBlock()}</div>
     </div>
     ${optionPage()}
     <div class="page">
@@ -1024,6 +1042,45 @@ function openProposal() {
     </div>`;
   $('proposal').hidden = false;
   $('proposal').scrollTop = 0;
+}
+
+// The customer can sign with a finger or a pen on the screen. The drawing is
+// kept with the job, along with the total it was signed at.
+const signedOn = () => new Date(state.signed.at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+function signedNote() {
+  const g = state.signed, base = `Signed${g.name ? ` by ${esc(g.name)}` : ''} on ${signedOn()} at ${money(g.total)}.`;
+  return g.total === priced.total ? base : `${base} The total is now ${money(priced.total)}, so the signature no longer matches this price. Clear it on the proposal and have it signed again.`;
+}
+function signBlock() {
+  const g = state.signed;
+  if (!g) return '<div class="sign"><span>Customer</span><span>Date</span></div>';
+  return `<div class="sign signed"><span><img src="${g.image}" alt="Customer signature">Customer${g.name ? `, ${esc(g.name)}` : ''}</span><span><b>${signedOn()}</b>Date</span></div>
+    ${g.total === priced.total ? '' : `<p class="stale">${signedNote()}</p>`}`;
+}
+
+let pad = null;
+function openPad() {
+  $('signhere').innerHTML = `<div class="pad"><p>Sign in the box with a finger, a pen or the mouse.</p><canvas width="1200" height="320" aria-label="Signature box"></canvas>
+    <input class="in" id="signname" placeholder="Printed name" aria-label="Printed name" maxlength="80">
+    <div class="row"><button class="btn" data-signclear>Start Over</button><button class="btn" data-signcancel>Cancel</button><button class="btn solid" data-signsave>Save Signature</button></div>
+    <p class="fine">The signature is saved with this job on this device, beside the total it was signed at. Whether a signature drawn on a screen stands as a signed contract where you work is a question for your lawyer.</p></div>`;
+  const canvas = $('signhere').querySelector('canvas'), ctx = canvas.getContext('2d');
+  pad = { canvas, ctx, inked: false };
+  ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#111';
+  const at = (e) => { const r = canvas.getBoundingClientRect(); return [(e.clientX - r.left) * canvas.width / r.width, (e.clientY - r.top) * canvas.height / r.height]; };
+  let down = false;
+  canvas.addEventListener('pointerdown', (e) => { down = true; canvas.setPointerCapture(e.pointerId); ctx.beginPath(); ctx.moveTo(...at(e)); e.preventDefault(); });
+  canvas.addEventListener('pointermove', (e) => { if (!down) return; ctx.lineTo(...at(e)); ctx.stroke(); pad.inked = true; });
+  canvas.addEventListener('pointerup', () => { down = false; });
+  canvas.scrollIntoView({ block: 'center' });
+}
+function padClear() { pad.ctx.clearRect(0, 0, pad.canvas.width, pad.canvas.height); pad.inked = false; }
+function padSave() {
+  if (!pad?.inked) return;
+  state = { ...state, signed: { image: pad.canvas.toDataURL('image/png'), name: $('signname').value.trim(), at: Date.now(), total: priced.total } };
+  pad = null;
+  save();
+  openProposal();
 }
 
 function openSend() {

@@ -174,6 +174,24 @@ tr.new td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
 .page .terms { margin-top: 30px; min-height: 60px; }
 .page .sign { display: grid; grid-template-columns: 2fr 1fr; gap: 40px; margin-top: 60px; }
 .page .sign span { border-top: 1px solid #1a1a1a; padding-top: 6px; font-size: 12px; color: #777; }
+.page .sign.signed { margin-top: 20px; align-items: end; }
+.page .sign.signed span { border-top: 0; padding-top: 0; }
+.page .sign.signed img, .page .sign.signed b { display: block; border-bottom: 1px solid #1a1a1a; margin-bottom: 6px; }
+.page .sign.signed img { width: 100%; height: 80px; aspect-ratio: auto; object-fit: contain; object-position: left bottom; }
+.page .sign.signed b { font-size: 14px; font-weight: 400; color: #1a1a1a; padding-bottom: 6px; }
+.page .stale { color: #b3541e; margin-top: 10px; font-size: 12px; }
+.page .pays { margin-top: 20px; max-width: 420px; }
+.page .pays h3 { margin: 0 0 4px; }
+.page .pays div { display: grid; grid-template-columns: 1fr 60px 110px; padding: 5px 0; border-bottom: 1px solid #ddd; }
+.page .pays span + span { text-align: right; }
+.page .pad { margin-top: 30px; }
+.page .pad p { font-size: 12px; color: #777; margin-bottom: 6px; }
+.page .pad canvas { width: 100%; aspect-ratio: 1200 / 320; border: 1px solid #1a1a1a; border-radius: 4px; touch-action: none; cursor: crosshair; display: block; }
+.page .pad .in { margin-top: 8px; background: #fff; color: #1a1a1a; border: 1px solid #999; width: 100%; }
+.page .pad .row { display: flex; gap: 8px; margin-top: 8px; justify-content: flex-end; }
+.page .pad .btn { background: #e9e9e9; color: #1a1a1a; }
+.page .pad .btn.solid { background: #4772b3; color: #fff; }
+.page .pad .fine { margin-top: 10px; }
 .page h3 { font-size: 12px; font-weight: 600; color: #777; margin: 22px 0 4px; }
 .page td { padding: 4px 0; border-bottom: 1px solid #e4e4e4; background: none !important; }
 .page td.q { width: 50px; text-align: left; }
