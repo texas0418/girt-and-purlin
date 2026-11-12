@@ -455,7 +455,7 @@ function openProposal() {
     <div class="page">
       <h2>What Is Included</h2>
       ${groups.map((g) => `<h3>${g}</h3><table>${result.items.filter((i) => i.group === g).map((i) =>
-        `<tr><td class="q">${i.qty}</td><td>${i.name}</td><td>${esc([i.size, i.length].filter(Boolean).join(', '))}</td></tr>`).join('')}</table>`).join('')}
+        `<tr><td class="q">${i.qty}</td><td class="n">${i.name}</td><td>${esc([i.size, i.length].filter(Boolean).join(', '))}</td></tr>`).join('')}</table>`).join('')}
     </div>`;
   $('proposal').hidden = false;
   $('proposal').scrollTop = 0;

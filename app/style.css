@@ -169,6 +169,7 @@ tr.new td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
 .page h3 { font-size: 12px; font-weight: 600; color: #777; margin: 22px 0 4px; }
 .page td { padding: 4px 0; border-bottom: 1px solid #e4e4e4; background: none !important; }
 .page td.q { width: 50px; text-align: left; }
+.page td.n { width: 46%; }
 .views[hidden] { display: none; }
 a.btn { display: inline-flex; align-items: center; text-decoration: none; }
 .send { max-width: 560px; margin: 8vh auto 0; background: var(--area); border-radius: 6px; padding: 22px 24px; }

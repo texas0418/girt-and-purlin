@@ -107,8 +107,17 @@ function wallSheet(result, wall, c) {
   out.push(line(-unit, top, len + unit, top, 0.05, c.soft), text(len + unit * 2.2, top + unit * 0.3, 'Grade', 0.8, c.soft));
 
   const marks = [...new Set([0, len, ...stand.map((p) => u(p.atIn))].map((v) => Math.round(v * 1000) / 1000))].sort((p, q) => p - q);
-  const row1 = top + bury + unit * 2.2, row2 = row1 + unit * 2.4;
-  for (let i = 1; i < marks.length; i++) out.push(across(marks[i - 1], marks[i], row1, short((marks[i] - marks[i - 1]) * 12), 0.8));
+  // A length too wide for its own gap drops to a line below, so close posts never print over each other.
+  const row1 = top + bury + unit * 2.2;
+  const lastRight = [-Infinity];
+  for (let i = 1; i < marks.length; i++) {
+    const s = short((marks[i] - marks[i - 1]) * 12), mid = (marks[i - 1] + marks[i]) / 2, half = s.length * 0.28 * unit * 0.8 + unit * 0.2;
+    let tier = lastRight.findIndex((r) => r < mid - half);
+    if (tier < 0) tier = lastRight.push(-Infinity) - 1;
+    lastRight[tier] = mid + half;
+    out.push(across(marks[i - 1], marks[i], row1, '', 0.8), text(mid, row1 + unit * (tier ? 0.3 + tier * 0.95 : -0.35), s, 0.8));
+  }
+  const row2 = row1 + unit * (2.4 + Math.max(0, lastRight.length - 1) * 0.95);
   out.push(across(0, len, row2, `${short(len * 12)} overall`),
     text(len / 2, row1 - unit * 1.5, 'Post centers', 0.75, c.soft),
     upright(y(b.eaveIn), top, -unit * 2, `${short(b.eaveIn)} eave`));
