@@ -53,7 +53,7 @@ const SAMPLE = {
     { type: 'window', wall: 'front', offset: 34, width: 4, height: 3.5, sill: 3 },
     { type: 'window', wall: 'front', offset: 41, width: 4, height: 3.5, sill: 3 },
   ],
-  colors: { walls: '#8b908d', roof: '#2f3336', trim: '#e6e6e0', wainscot: '#2f3336', wainscotOn: true, gutters: false, truck: true },
+  colors: { walls: '#8b908d', roof: '#2f3336', trim: '#e6e6e0', wainscot: '#2f3336', wainscotOn: true, gutters: false, truck: false },
   pricing: { markupPct: 0, taxPct: 0, laborPerSqFt: 0 },
 };
 
