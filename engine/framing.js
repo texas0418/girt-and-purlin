@@ -57,6 +57,8 @@ export function placePosts(b, rules) {
           const what = o.type === 'window' ? 'window' : 'walk door';
           warnings.push({
             code: 'opening-on-post', wall, postAtIn: s, openingIndex: o.index, slideByIn: towardStart ? -slideIn : slideIn,
+            // The longer way round, for when the short slide would run into another opening.
+            otherSlideByIn: towardStart ? s - o.startIn : s - o.endIn,
             text: `The ${what} on the ${wall} wall lands on the post at ${feetInches(s)}. `
               + `Slide it ${feetInches(slideIn)} to clear the post, or move the post.`,
           });

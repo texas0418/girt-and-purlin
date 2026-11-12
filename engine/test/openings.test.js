@@ -59,3 +59,16 @@ test('bad input is refused with a reason', () => {
     { type: 'window', wall: 'front', offset: 12, width: 4, height: 3, sill: 3 });
   assert.match(two.errors[0], /overlaps another opening/);
 });
+
+test('a window on a post offers a second way to slide when the short way is blocked', () => {
+  const job = { width: 40, length: 32, eaveHeight: 12, postSpacing: 6, openings: [
+    { type: 'window', wall: 'front', offset: 4.5, width: 4, height: 3 },
+    { type: 'window', wall: 'front', offset: 9, width: 3, height: 3 },
+  ] };
+  const w = design(job).warnings[0];
+  const slid = (byIn) => design({ ...job, openings: job.openings.map((o, i) => (i === w.openingIndex ? { ...o, offset: o.offset + byIn / 12 } : o)) });
+  assert.equal(slid(w.slideByIn).ok, false);
+  const other = slid(w.otherSlideByIn);
+  assert.equal(other.ok, true);
+  assert.equal(other.warnings.some((x) => x.openingIndex === w.openingIndex), false);
+});

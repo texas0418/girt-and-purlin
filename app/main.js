@@ -396,7 +396,9 @@ document.addEventListener('click', (e) => {
   if ('dismiss' in d) { ui.problem = ''; ui.lead = ''; return paint(); }
   if ('fix' in d) {
     const w = result.warnings[0], o = state.openings[w.openingIndex];
-    return setOpening(w.openingIndex, { offset: o.offset + w.slideByIn / 12 }, `${TYPE_NAMES[o.type]} moved to ${w.code === 'door-edge-off-post' ? 'meet' : 'clear'} the post`);
+    const moved = (byIn) => state.openings.map((x, i) => (i === w.openingIndex ? { ...x, offset: o.offset + byIn / 12 } : x));
+    const fits = [w.slideByIn, w.otherSlideByIn].find((byIn) => byIn !== undefined && design({ ...state, openings: moved(byIn) }).ok);
+    return apply({ openings: moved(fits ?? w.slideByIn) }, `${TYPE_NAMES[o.type]} moved to ${w.code === 'door-edge-off-post' ? 'meet' : 'clear'} the post`);
   }
 });
 
