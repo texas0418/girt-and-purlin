@@ -45,6 +45,12 @@ export function normalize(input) {
     const w = input.walls?.[wall] ?? {};
     b.walls[wall] = { open: !!w.open, postSpacingIn: w.postSpacing == null ? b.postSpacingIn : num(w.postSpacing, `Post spacing on the ${wall} wall`, 4, 16) * 12 };
   }
+  // Site figures the builder gets from the permit office. Zero means not typed in.
+  const l = input.loads ?? {};
+  b.loads = {
+    snowPsf: num(l.snow ?? 0, 'Snow load', 0, 400), windMph: num(l.wind ?? 0, 'Wind speed', 0, 250),
+    frostIn: num(l.frost ?? 0, 'Frost depth', 0, 96), exposure: String(l.exposure ?? '').trim().slice(0, 40),
+  };
   b.roof = input.roof ?? 'gable';
   if (!ROOFS.includes(b.roof)) { errors.push('Roof shape is not one of the choices.'); b.roof = 'gable'; }
   b.line = roofLine(b);

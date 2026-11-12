@@ -25,11 +25,17 @@ export function design(input, ruleOverrides) {
   if (errors.length) return { ok: false, errors, warnings: [], items: [] };
   // Posts on brackets stand on the concrete, so nothing goes in the ground.
   if (b.options.footing === 'bracket') rules = { ...rules, postEmbedmentIn: 0 };
+  // The embedment rule is a minimum: where frost goes deeper, the posts go down to it.
+  const frostIn = Math.ceil(b.loads.frostIn - 0.001), shallowIn = rules.postEmbedmentIn;
+  if (shallowIn > 0 && frostIn > shallowIn) rules = { ...rules, postEmbedmentIn: frostIn };
 
   const { posts, warnings, errors: postErrors } = placePosts(b, rules);
   if (postErrors.length) return { ok: false, errors: postErrors, warnings, items: [] };
 
   const trusses = placeTrusses(b);
+  if (rules.postEmbedmentIn > shallowIn && shallowIn > 0) {
+    warnings.push({ code: 'frost-deep', text: `Frost here goes ${feetInches(frostIn)} deep, so the posts are set ${feetInches(frostIn)} into the ground, not the usual ${feetInches(shallowIn)}. The posts are longer to suit.` });
+  }
   if (b.roof !== 'gambrel' && b.pitch < rules.minPanelPitch - 0.01) {
     warnings.push({ code: 'roof-flat', text: `The roof is flatter than ${rules.minPanelPitch} in 12. Rib panels that flat need sealant in every lap, and most steel warranties do not cover them.` });
   }

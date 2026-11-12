@@ -94,6 +94,7 @@ const SAMPLE = {
   ],
   walls: {},
   site: {},
+  loads: {},
   things: [],
   sheds: [],
   partitions: [],
@@ -360,6 +361,19 @@ const choice = (key, options, unit) => `<div class="seg">${options.map((v) =>
   `<button data-choice="${key}" data-value="${v}" class="${state[key] === v ? 'on' : ''}">${v} ${unit}</button>`).join('')}</div>`;
 
 // The lot figures for the site plan. Nothing is filled in ahead of time: every lot and every county differs.
+// Figures the permit office gives out for the address. They print on the
+// engineer package; only frost depth changes the building.
+function loadsPanel() {
+  const l = state.loads ?? {}, deep = result.warnings.find((w) => w.code === 'frost-deep');
+  const num = (key, label) => `<label class="lab">${label}<input class="in" type="number" min="0" step="1" inputmode="decimal" data-load="${key}" value="${l[key] || ''}" placeholder="Not typed in"></label>`;
+  return `${num('snow', 'Ground Snow Load, Pounds Per Square Foot')}${num('wind', 'Design Wind Speed, Miles Per Hour')}
+    <label class="lab">Wind Exposure<input class="in" data-loadtext="exposure" value="${esc(l.exposure ?? '')}" placeholder="As the permit office names it" maxlength="40"></label>
+    ${num('frost', 'Frost Depth, Inches')}
+    ${deep ? `<p class="hint go">${deep.text}</p>` : ''}
+    <p class="hint">Ask your permit office for these. They print on the engineer package so the engineer starts with them. The program does not size framing from snow or wind. Frost depth is the one that changes the building: posts go at least ${feetInches(defaultEmbedIn())} into the ground, and deeper where frost does.</p>`;
+}
+const defaultEmbedIn = () => design({ ...state, loads: {}, options: { ...state.options, footing: undefined } }).rules?.postEmbedmentIn ?? 48;
+
 function sitePanel() {
   const site = state.site ?? {};
   const num = (key, label) => `<label class="lab">${label}<input class="in" type="number" min="0" step="0.5" inputmode="decimal" data-site="${key}" value="${site[key] || ''}" placeholder="0"></label>`;
@@ -436,6 +450,7 @@ function leftPanel() {
           <div class="seg">${[6, 8, 10, 12].map((v) => `<button data-sidepost="${v}" class="${wallOf(w).postSpacing === v ? 'on' : ''}">${v} ft</button>`).join('')}</div>
           <p class="hint">Posts on this wall alone. An open wall keeps its posts and roof and leaves off the boards and steel, the way a hay shed or equipment shelter is built.</p></div>`;
       }).join('')}
+      <h2>Site Conditions</h2>${loadsPanel()}
       <p class="hint">Drag the picture to look around the building. Scroll or pinch to move closer. The material list follows every change.</p>`;
   }
   if (ui.step === 'Roof') {
@@ -958,6 +973,8 @@ document.addEventListener('change', (e) => {
   if (d.company) { company.set({ [d.company]: v.trim() }); return d.company === 'designerEmail' || d.company === 'name' ? paint() : null; }
   if ('thingname' in d) return later({ things: things().map((t, i) => (i === ui.thing ? { ...t, name: v.trim() } : t)) }, 'Named');
   if (d.thingnum) return later({ things: things().map((t, i) => (i === ui.thing ? { ...t, [d.thingnum]: Math.min(Math.max(Number(v) || 0.5, 0.5), 200) } : t)) }, 'Size updated');
+  if (d.load) return later({ loads: { ...state.loads, [d.load]: dollars } }, 'Site conditions updated');
+  if (d.loadtext) return later({ loads: { ...state.loads, [d.loadtext]: v.trim() } }, 'Site conditions updated');
   if (d.site) return later({ site: { ...state.site, [d.site]: Math.min(dollars, 100000) } }, 'Site plan updated');
   if (d.num) return later({ pricing: { ...state.pricing, [d.num]: dollars } }, `Freight now ${money(dollars)}`);
   if (d.xname) return later({ pricing: { ...state.pricing, extras: state.pricing.extras.map((x, i) => (i === Number(d.xname) ? { ...x, name: v.trim() } : x)) } }, 'Extra line named');
@@ -1182,6 +1199,14 @@ function engineerData() {
   }, null, 2);
 }
 
+// What the builder was told by the permit office, for the engineer to confirm.
+function loadFacts() {
+  const l = result.geometry.building.loads;
+  const rows = [['Ground Snow Load', l.snowPsf ? `${l.snowPsf} lb per sq ft` : ''], ['Design Wind Speed', l.windMph ? `${l.windMph} mph` : ''], ['Wind Exposure', esc(l.exposure)], ['Frost Depth', l.frostIn ? `${l.frostIn} in` : '']].filter(([, v]) => v);
+  if (!rows.length) return '<dt>Snow, Wind And Soil Loads</dt><dd>Engineer to set for this site</dd>';
+  return `${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}<dt>Where These Came From</dt><dd>Typed in by the builder as given by the permit office. Engineer to confirm, and to set any load not listed.</dd>`;
+}
+
 function openEngineer() {
   if (ui.view !== 'finished') { ui.view = 'finished'; view.setMode('finished'); paint(); }
   const picture = view.snapshot();
@@ -1238,7 +1263,7 @@ function openEngineer() {
     <div class="cols even"><div><h3>The Building</h3><dl>${facts.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl></div>
       <div><h3>The Site</h3><dl>${blank('Site Address', 'Type the address')}${blank('County And State', 'Type the county and state')}${blank('Permit Office', 'Type who issues the permit')}
         ${blank('What The Building Is For', 'Type the use, such as equipment storage')}${blank('Heated', 'Type yes or no')}${blank('Soil', 'Type what you know, or leave for the engineer')}
-        <dt>Snow, Wind And Soil Loads</dt><dd>Engineer to set for this site</dd></dl></div></div>
+        ${loadFacts()}</dl></div></div>
   </div>`;
   const second = `<div class="page sheet eng">${sheetHead('Framing As Drawn')}
     <p class="fine">These are the sizes and spacings the drawings use. Write your change beside any line.</p>
