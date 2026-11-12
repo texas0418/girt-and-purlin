@@ -147,6 +147,17 @@ export function paymentSchedule(total, payments = []) {
   return { lines, problem: '' };
 }
 
+// A supplier's price list for one of its builders: every price moved up or
+// down by one percent figure. A negative figure is a discount.
+export function builderPriceList(catalog, builder, pct = 0) {
+  const by = Math.max(-100, Number(pct) || 0), name = String(builder ?? '').trim();
+  return {
+    supplier: name ? `${catalog.supplier} For ${name}` : catalog.supplier,
+    sample: false,
+    rows: catalog.rows.map((r) => ({ ...r, price: cents(r.price * (1 + by / 100)) })),
+  };
+}
+
 function splitCsvLine(line) {
   const out = [];
   let cell = '', quoted = false;

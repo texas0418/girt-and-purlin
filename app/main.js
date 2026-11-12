@@ -2,7 +2,7 @@ import { design } from '../engine/design.js';
 import { feetInches } from '../engine/stock.js';
 import { dxf } from '../engine/dxf.js';
 import { edgeOverhangIn, eaveDropIn } from '../engine/building.js';
-import { priceJob, paymentSchedule, parsePriceList, priceListCsv, toCsv, invoiceCsv, SAMPLE_CATALOG } from '../engine/pricing.js';
+import { priceJob, paymentSchedule, parsePriceList, priceListCsv, builderPriceList, toCsv, invoiceCsv, SAMPLE_CATALOG } from '../engine/pricing.js';
 import { createView } from './scene.js';
 import { jobs, templates, company, priceLists, newId, designOf, STARTING_POINTS } from './office.js';
 import { floorPlan } from './plan.js';
@@ -128,7 +128,7 @@ if (!state.id) { state.id = newId(); if (!shared) { try { localStorage.setItem(S
 let catalog = loadPrices();
 if (!shared && !designer && !catalog.sample && !priceLists.all().some((l) => l.supplier === catalog.supplier)) priceLists.put(catalog);
 let priced = priceJob(result, catalog, state.pricing);
-const ui = { delta: 0, notice: '', step: 'Size', view: 'finished', sheet: 'front', sel: null, opening: null, shed: null, part: null, thing: null, side: null, placing: null, jobrow: null, tplrow: null, confirm: null, changed: new Set(), last: '', problem: '', savedAt: null };
+const ui = { delta: 0, notice: '', step: 'Size', view: 'finished', sheet: 'front', sel: null, opening: null, shed: null, part: null, thing: null, side: null, placing: null, jobrow: null, tplrow: null, confirm: null, changed: new Set(), last: '', problem: '', savedAt: null, builder: { name: '', pct: 0 } };
 if (unopened) { ui.lead = 'Your saved job could not be opened.'; ui.problem = `${unopened} The sample building is showing instead.`; }
 const view = createView($('view'), $('stage'));
 
@@ -565,6 +565,12 @@ function leftPanel() {
       <div class="seg"><button data-import>Load A Price List</button><button data-export>Save This List</button></div>
       ${catalog.sample ? '' : '<div class="seg"><button data-listdel>Remove The List In Use</button></div>'}
       <p class="hint">A price list is a spreadsheet saved as CSV with four columns: Item, Size, Unit and Price. Save This List gives you one to fill in. Load one for each yard you buy from and the figure beside each is this job at that yard's prices.</p>
+      <h2>A Price List For One Of Your Builders</h2>
+      ${catalog.sample ? '<p class="hint">For a lumber yard or supplier who hands this program to the builders it sells to. Load your own price list first; the sample prices cannot be handed out.</p>' : `
+      ${textIn('data-builder="name"', 'Builder', ui.builder.name, 'Builder or company name')}
+      <label class="lab">Percent Up Or Down From ${esc(catalog.supplier)}<input class="in" type="number" min="-100" step="0.5" inputmode="decimal" data-builder="pct" value="${ui.builder.pct || ''}" placeholder="0"></label>
+      <div class="seg"><button data-builderlist>Save A List For This Builder</button></div>
+      <p class="hint">For a lumber yard or supplier who hands this program to the builders it sells to. Type a figure below zero for a discount, such as -10 for ten percent off every price, or above zero to raise them. The builder loads the saved file with Load A Price List and quotes from your prices at their level. Your own list is not changed.</p>`}
       <h2>Your Numbers</h2>
       ${Object.entries(PRICE_FIELDS).map(([k, f]) => stepper(`data-price="${k}"`, f.label, String(state.pricing[k]), f.unit, false)).join('')}
       <h2>Freight And Extras</h2>
@@ -740,6 +746,10 @@ document.addEventListener('click', (e) => {
   }
   if ('import' in d) return $('pricefile').click();
   if ('export' in d) return download('price-list.csv', priceListCsv(catalog));
+  if ('builderlist' in d) {
+    const made = builderPriceList(catalog, ui.builder.name, ui.builder.pct);
+    return download(`${(made.supplier.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'price-list')}.csv`, priceListCsv(made));
+  }
   if (d.list) { ui.notice = ''; return setPrices([SAMPLE_CATALOG, ...priceLists.all()][Number(d.list)]); }
   if ('listdel' in d) { priceLists.remove(catalog.supplier); ui.notice = ''; return setPrices(SAMPLE_CATALOG); }
   if ('xadd' in d) return apply({ pricing: { ...state.pricing, extras: [...(state.pricing.extras ?? []), { name: '', amount: 0 }] } }, 'Extra line added');
@@ -973,6 +983,7 @@ document.addEventListener('change', (e) => {
   if (d.company) { company.set({ [d.company]: v.trim() }); return d.company === 'designerEmail' || d.company === 'name' ? paint() : null; }
   if ('thingname' in d) return later({ things: things().map((t, i) => (i === ui.thing ? { ...t, name: v.trim() } : t)) }, 'Named');
   if (d.thingnum) return later({ things: things().map((t, i) => (i === ui.thing ? { ...t, [d.thingnum]: Math.min(Math.max(Number(v) || 0.5, 0.5), 200) } : t)) }, 'Size updated');
+  if (d.builder) { ui.builder[d.builder] = d.builder === 'pct' ? Math.max(-100, Number(v) || 0) : v.trim(); return; }
   if (d.load) return later({ loads: { ...state.loads, [d.load]: dollars } }, 'Site conditions updated');
   if (d.loadtext) return later({ loads: { ...state.loads, [d.loadtext]: v.trim() } }, 'Site conditions updated');
   if (d.site) return later({ site: { ...state.site, [d.site]: Math.min(dollars, 100000) } }, 'Site plan updated');
