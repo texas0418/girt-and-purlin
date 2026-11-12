@@ -213,6 +213,8 @@ a.btn { display: inline-flex; align-items: center; text-decoration: none; }
   /* 850 px at 96% is the full width of a letter sheet, so a page prints as it looks on screen. */
   .page, .page.sheet { margin: 0; width: 850px; zoom: .96; min-height: 0; padding-top: 0; padding-bottom: 0; break-after: page; }
   .page tr, .page .sign { break-inside: avoid; }
+  .page .terms { margin-top: 18px; min-height: 40px; }
+  .page .sign { margin-top: 34px; }
   .page.sheet svg { max-height: 400px; }
   .page.eng tbody { break-inside: auto; }
   .page [contenteditable] { color: #1a1a1a; }

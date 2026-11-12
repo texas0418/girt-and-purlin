@@ -18,6 +18,9 @@ export const SAMPLE_CATALOG = {
     { item: 'Wall Girts', size: '2x6', unit: 'ft', price: 0.95 },
     { item: 'Roof Purlins', size: '2x4', unit: 'ft', price: 0.6 },
     { item: 'Truss Carriers', size: '2x12', unit: 'ft', price: 2.3 },
+    { item: 'Rafter Ledgers', size: '', unit: 'ft', price: 1.5 },
+    { item: 'Eave Beams', size: '', unit: 'ft', price: 2.3 },
+    { item: 'Rafters', size: '', unit: 'ft', price: 1.5 },
     { item: 'Headers', size: '2x10', unit: 'ft', price: 1.8 },
     { item: 'Headers', size: '2x12', unit: 'ft', price: 2.3 },
     { item: 'Opening Blocking', size: '2x6', unit: 'ft', price: 0.95 },
@@ -28,6 +31,8 @@ export const SAMPLE_CATALOG = {
     { item: 'Rake Trim', size: '', unit: 'each', price: 22 },
     { item: 'Corner Trim', size: '', unit: 'each', price: 24 },
     { item: 'Base Trim', size: '', unit: 'each', price: 16 },
+    { item: 'Endwall Flashing', size: '', unit: 'each', price: 24 },
+    { item: 'Inside Corner Trim', size: '', unit: 'each', price: 20 },
     { item: 'Inside Closures', size: '', unit: 'each', price: 1.5 },
     { item: 'Outside Closures', size: '', unit: 'each', price: 1.5 },
     { item: 'Panel Screws', size: '', unit: 'each', price: 28 },
@@ -63,7 +68,7 @@ export function priceJob(result, catalog, settings = {}) {
   const materials = cents(lines.reduce((sum, l) => sum + (l.cost ?? 0), 0));
   const markup = cents(materials * markupPct / 100);
   const tax = cents((materials + markup) * taxPct / 100);
-  const labor = cents((result.summary?.floorSqFt ?? 0) * laborPerSqFt);
+  const labor = cents(((result.summary?.floorSqFt ?? 0) + (result.summary?.shedSqFt ?? 0)) * laborPerSqFt);
   return {
     lines, materials, markup, tax, labor,
     total: cents(materials + markup + tax + labor),

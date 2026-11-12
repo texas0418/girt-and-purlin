@@ -119,7 +119,7 @@ out('index.html', page('index.html', 'Girt And Purlin, Pole Barn Design Software
   <section>
     <div class="two">
       <div><h3>No Charge For Shops Of Ten Or Fewer</h3><p>Builders and yards with ten people or fewer use the whole program without paying. Larger companies buy a license. The code is public for anyone to read, which makes it source-available.</p><a href="license.html">Read The License</a></div>
-      <div><h3>Where It Stands Today</h3><p>Version 1 draws plain rectangular buildings with a gable roof. Its framing rules are still being checked against published builder guides, and the drawings say so until that is done.</p><a href="what-it-does.html#notyet">See What Is Not In It Yet</a></div>
+      <div><h3>Where It Stands Today</h3><p>Version 1 draws rectangular buildings with a gable roof, with lean-tos and porches on any wall. Its framing rules are still being checked against published builder guides, and the drawings say so until that is done.</p><a href="what-it-does.html#notyet">See What Is Not In It Yet</a></div>
     </div>
   </section>
 </div>`));
@@ -178,7 +178,7 @@ ${head('What It Does', 'Everything on this page was made by the program from one
   </section>
 
   <div id="notyet">${notYet([
-    'Any shape other than a plain rectangle with a gable roof. No lean-tos, porches or hip roofs.',
+    'Any main roof other than a gable. Lean-tos and porches are in, each on one wall with a single-slope roof; porches that wrap a corner and hip roofs are not.',
     'Buildings that need a post longer than 24 feet. With 12 foot walls and a 4/12 roof, 50 feet wide works and 60 feet wide is turned away with a reason. So are walls over 20 feet tall.',
     'Engineering of any kind. Snow, wind and soil are your engineer\'s call.',
     'Panel counts that subtract door and window openings. Today the walls are counted solid.',

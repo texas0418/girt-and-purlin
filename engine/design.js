@@ -5,8 +5,9 @@ import { placePosts, placeTrusses } from './framing.js';
 import { lumberRuns, girtRowCount, purlinRowsPerSide } from './runs.js';
 import { wallLengthIn, isGable, WALLS } from './building.js';
 import { roofPanels, wallPanels, trim, closures, screws, areas } from './metal.js';
-import { feetInches } from './stock.js';
+import { feetInches, add } from './stock.js';
 import { cutList } from './cutlist.js';
+import { placeSheds, shedRuns, shedMetal } from './sheds.js';
 
 // ft and sqFt are the numbers a price list multiplies by.
 function lines(group, name, size, tally, label = (k) => `${k} ft`, ft = (k) => k) {
@@ -24,8 +25,14 @@ export function design(input, ruleOverrides) {
   if (postErrors.length) return { ok: false, errors: postErrors, warnings, items: [] };
 
   const trusses = placeTrusses(b);
-  const runs = lumberRuns(b, rules, posts, trusses);
-  const fasteners = screws(b, rules);
+  const { sheds, errors: shedErrors, warnings: shedWarnings } = placeSheds(b, rules);
+  warnings.push(...shedWarnings);
+  if (shedErrors.length) return { ok: false, errors: shedErrors, warnings, items: [] };
+  const shedPosts = sheds.flatMap((s) => s.posts);
+  const runs = [...lumberRuns(b, rules, posts, trusses), ...shedRuns(b, rules, sheds, posts)];
+  const extra = shedMetal(b, rules, sheds);
+  const fasteners = screws(b, rules, extra);
+  const merged = (base, more) => { for (const [k, n] of Object.entries(more)) add(base, k, n); return base; };
 
   // Boards counted by part, then size, then stock length.
   const tally = {};
@@ -50,7 +57,7 @@ export function design(input, ruleOverrides) {
   }
 
   const postTally = {};
-  for (const p of posts) postTally[p.stockFt] = (postTally[p.stockFt] ?? 0) + 1;
+  for (const p of [...posts, ...shedPosts]) postTally[p.stockFt] = (postTally[p.stockFt] ?? 0) + 1;
 
   const items = [
     ...lines('Framing', 'Posts', rules.postSize, postTally),
@@ -59,12 +66,15 @@ export function design(input, ruleOverrides) {
     ...lumber('Wall Girts'),
     ...lumber('Roof Purlins'),
     ...lumber('Truss Carriers'),
+    ...lumber('Rafter Ledgers'),
+    ...lumber('Eave Beams'),
+    ...lumber('Rafters'),
     ...lumber('Headers'),
     ...lumber('Opening Blocking'),
-    ...lines('Metal', 'Roof Panels', '', roofPanels(b, rules), feetInches, inchesToFt),
-    ...lines('Metal', 'Wall Panels', '', wallPanels(b, rules), feetInches, inchesToFt),
-    ...Object.entries(trim(b, rules)).map(([name, qty]) => ({ group: 'Metal', name, size: '', length: feetInches(rules.trimPieceIn), qty, ft: rules.trimPieceIn / 12 })),
-    ...Object.entries(closures(b, rules)).map(([name, qty]) => ({ group: 'Metal', name, size: '', length: feetInches(rules.closureStripIn), qty })),
+    ...lines('Metal', 'Roof Panels', '', merged(roofPanels(b, rules), extra.roof), feetInches, inchesToFt),
+    ...lines('Metal', 'Wall Panels', '', merged(wallPanels(b, rules), extra.wall), feetInches, inchesToFt),
+    ...Object.entries(merged(trim(b, rules), extra.trim)).map(([name, qty]) => ({ group: 'Metal', name, size: '', length: feetInches(rules.trimPieceIn), qty, ft: rules.trimPieceIn / 12 })),
+    ...Object.entries(merged(closures(b, rules), extra.closures)).map(([name, qty]) => ({ group: 'Metal', name, size: '', length: feetInches(rules.closureStripIn), qty })),
     { group: 'Metal', name: 'Panel Screws', size: `bag of ${rules.screwsPerBag}`, length: '', qty: fasteners.bags },
     ...b.openings.map((o) => ({
       group: 'Doors And Windows',
@@ -77,12 +87,13 @@ export function design(input, ruleOverrides) {
     ok: true, errors: [], warnings, items,
     summary: {
       floorSqFt: (b.widthIn * b.lengthIn) / 144,
-      posts: posts.length, trusses: trusses.length,
+      shedSqFt: sheds.reduce((sum, s) => sum + (s.lengthIn * s.depthIn) / 144, 0),
+      posts: posts.length + shedPosts.length, trusses: trusses.length,
       girtRowsPerWall: girtRowCount(b, rules), purlinRowsPerSide: purlinRowsPerSide(b, rules),
-      screws: fasteners.count, ...areas(b),
+      screws: fasteners.count, roofSqFt: areas(b).roofSqFt + extra.roofSqFt, wallSqFt: areas(b).wallSqFt + extra.wallSqFt,
     },
-    geometry: { building: b, posts, trusses, girtRows, purlinRowLengthIn: b.lengthIn + 2 * b.overhangIn },
-    cuts: cutList(rules, posts, runs),
+    geometry: { building: b, posts, trusses, girtRows, sheds, purlinRowLengthIn: b.lengthIn + 2 * b.overhangIn },
+    cuts: cutList(rules, [...posts, ...sheds.flatMap((sh) => sh.posts.map((p) => ({ ...p, where: sh.label, sloped: p.line !== 'outer' })))], runs),
     rules,
     unverifiedRules: unverifiedRules(),
   };

@@ -3,11 +3,11 @@ import { feetInches } from '../engine/stock.js';
 import { priceJob, parsePriceList, priceListCsv, toCsv, SAMPLE_CATALOG } from '../engine/pricing.js';
 import { createView } from './scene.js';
 import { floorPlan } from './plan.js';
-import { drawing, SHEETS } from './drawings.js';
+import { drawing, sheetList } from './drawings.js';
 
 const STORE = 'girt-and-purlin.job.v1';
 const PRICE_STORE = 'girt-and-purlin.prices.v1';
-const STEPS = ['Size', 'Roof', 'Doors And Windows', 'Colors', 'Price', 'Drawings'];
+const STEPS = ['Size', 'Roof', 'Doors And Windows', 'Lean-Tos And Porches', 'Colors', 'Price', 'Drawings'];
 const VIEWS = [['finished', 'Finished'], ['framing', 'Framing'], ['plan', 'Floor Plan']];
 const WALL_NAMES = { front: 'Front', back: 'Back', left: 'Left End', right: 'Right End' };
 const TYPE_NAMES = { slider: 'Sliding Door', overhead: 'Overhead Door', walk: 'Walk Door', window: 'Window' };
@@ -29,6 +29,15 @@ const PRICE_FIELDS = {
   markupPct: { label: 'Markup', unit: '%', step: 1 },
   taxPct: { label: 'Sales Tax', unit: '%', step: 0.25 },
   laborPerSqFt: { label: 'Labor', unit: '$/sq ft', step: 0.25 },
+};
+const SHED_NAMES = { leanto: 'Lean-To', porch: 'Porch' };
+const NEW_SHED = { leanto: { depth: 12, pitch: 3, drop: 0, enclosed: false }, porch: { depth: 8, pitch: 3, drop: 0, enclosed: false } };
+const SHED_FIELDS = {
+  depth: { label: 'Depth', step: 1, min: 4 },
+  length: { label: 'Length', step: 1, min: 4 },
+  start: { label: 'Starts At', step: 1, min: 0 },
+  pitch: { label: 'Roof Pitch', step: 1, min: 1 },
+  drop: { label: 'Below Main Eave', step: 0.5, min: 0 },
 };
 const OPENING_FIELDS = {
   offset: { label: 'Position', step: 0.5 },
@@ -53,6 +62,7 @@ const SAMPLE = {
     { type: 'window', wall: 'front', offset: 34, width: 4, height: 3.5, sill: 3 },
     { type: 'window', wall: 'front', offset: 41, width: 4, height: 3.5, sill: 3 },
   ],
+  sheds: [],
   colors: { walls: '#8b908d', roof: '#2f3336', trim: '#e6e6e0', wainscot: '#2f3336', wainscotOn: true, gutters: false, truck: false },
   pricing: { markupPct: 0, taxPct: 0, laborPerSqFt: 0 },
 };
@@ -70,7 +80,7 @@ let unopened = '';
 if (!result.ok) { unopened = result.errors[0]; state = structuredClone(SAMPLE); result = design(state); }
 let catalog = loadPrices();
 let priced = priceJob(result, catalog, state.pricing);
-const ui = { delta: 0, notice: '', step: 'Size', view: 'finished', sheet: 'front', sel: null, opening: null, placing: null, changed: new Set(), last: '', problem: '', savedAt: null };
+const ui = { delta: 0, notice: '', step: 'Size', view: 'finished', sheet: 'front', sel: null, opening: null, shed: null, placing: null, changed: new Set(), last: '', problem: '', savedAt: null };
 if (unopened) { ui.lead = 'Your saved job could not be opened.'; ui.problem = `${unopened} The sample building is showing instead.`; }
 const view = createView($('view'), $('stage'));
 
@@ -166,6 +176,10 @@ function setOpening(index, change, note) {
   apply({ openings: state.openings.map((o, i) => (i === index ? { ...o, ...change } : o)) }, note);
 }
 
+function setShed(index, change, note) {
+  apply({ sheds: state.sheds.map((s, i) => (i === index ? { ...s, ...change } : s)) }, note);
+}
+
 const num = (v) => (Number.isInteger(v) ? String(v) : feetInches(v * 12));
 
 function stepper(attrs, label, value, unit, selected) {
@@ -190,7 +204,7 @@ function leftPanel() {
   if (ui.step === 'Roof') {
     return `<h2>Roof</h2>${['pitch', 'overhang'].map(field).join('')}
       <h2>Truss Spacing</h2>${choice('trussSpacing', [2, 4, 8], 'ft')}
-      <p class="hint">Version 1 draws a plain gable roof. Other roof shapes come later.</p>`;
+      <p class="hint">The main roof is a gable. Lean-tos and porches are on their own step.</p>`;
   }
   if (ui.step === 'Doors And Windows') {
     const rows = state.openings.map((o, i) => {
@@ -210,6 +224,22 @@ function leftPanel() {
       <p class="hint${ui.placing ? ' go' : ''}">${ui.placing
         ? `Now click a wall in the picture where the ${TYPE_NAMES[ui.placing].toLowerCase()} goes.`
         : 'Pick a type, then click a wall in the picture to place it.'}</p>
+      <h2>On This Building</h2>${rows || '<p class="hint">Nothing yet.</p>'}`;
+  }
+  if (ui.step === 'Lean-Tos And Porches') {
+    const rows = state.sheds.map((s, i) => {
+      const head = `<button data-shedopen="${i}"><span>${SHED_NAMES[s.kind]}<small>${WALL_NAMES[s.wall]} wall, ${s.kind === 'leanto' && s.enclosed ? 'enclosed' : 'open'}</small></span><em>${num(s.depth)} x ${num(s.length)}</em></button>`;
+      if (ui.shed !== i) return `<div class="op">${head}</div>`;
+      return `<div class="op open">${head}
+        <div class="seg">${Object.entries(WALL_NAMES).map(([w, name]) =>
+          `<button data-shedwall="${w}" class="${s.wall === w ? 'on' : ''}">${name.replace(' End', '')}</button>`).join('')}</div>
+        ${Object.entries(SHED_FIELDS).map(([k, f]) => stepper(`data-shedfield="${k}"`, f.label, k === 'pitch' ? String(s[k]) : feetInches(s[k] * 12), k === 'pitch' ? '/12' : '', false)).join('')}
+        ${s.kind === 'leanto' ? `<div class="seg"><button data-shedenc="0" class="${s.enclosed ? '' : 'on'}">Open Sides</button><button data-shedenc="1" class="${s.enclosed ? 'on' : ''}">Enclosed</button></div>` : ''}
+        <button class="btn remove" data-shedremove="${i}">Remove</button></div>`;
+    }).join('');
+    return `<h2>Add One</h2>
+      <div class="seg stack">${Object.entries(SHED_NAMES).map(([k, name]) => `<button data-shedadd="${k}">${name}</button>`).join('')}</div>
+      <p class="hint">A lean-to or porch is a single-slope roof on one wall of the building, held up along its outer edge by its own row of posts. A lean-to can be closed in with walls. A porch stays open.</p>
       <h2>On This Building</h2>${rows || '<p class="hint">Nothing yet.</p>'}`;
   }
   if (ui.step === 'Colors') {
@@ -240,7 +270,7 @@ function leftPanel() {
       ${priced.unpriced ? `<p class="hint go">${priced.unpriced} ${priced.unpriced === 1 ? 'line has' : 'lines have'} no price in this list and count as zero.</p>` : ''}`;
   }
   return `<h2>Drawings</h2>
-    <div class="seg stack">${SHEETS.map(([k, n]) => `<button data-sheet="${k}" class="${ui.sheet === k ? 'on' : ''}">${n}</button>`).join('')}</div>
+    <div class="seg stack">${sheetList(result).map(([k, n]) => `<button data-sheet="${k}" class="${ui.sheet === k ? 'on' : ''}">${n}</button>`).join('')}</div>
     <p class="hint">Walls are drawn from outside the building. Dashed lines show the part of each post in the ground.</p>
     <h2>Print</h2>
     <div class="seg stack"><button data-sheets="all">All Sheets</button><button data-sheets="cuts">Cut List Only</button></div>
@@ -262,6 +292,7 @@ function specRows() {
     ['Roof', `${state.pitch} in 12 pitch, ${state.overhang} in overhang`],
     ['Frame', `Posts every ${state.postSpacing} ft, trusses every ${state.trussSpacing} ft`],
     ['Doors And Windows', openings || 'None'],
+    ...(state.sheds.length ? [['Lean-Tos And Porches', state.sheds.map((s) => `${SHED_NAMES[s.kind]}, ${WALL_NAMES[s.wall].toLowerCase()} wall, ${num(s.depth)} x ${num(s.length)} ft${s.kind === 'leanto' && s.enclosed ? ', enclosed' : ''}`).join('<br>')]] : []),
     ['Colors', `${colorName(state.colors.walls)} walls, ${colorName(state.colors.roof)} roof, ${colorName(state.colors.trim)} trim${state.colors.wainscotOn ? `, ${colorName(state.colors.wainscot)} wainscot` : ''}`],
   ];
 }
@@ -298,6 +329,7 @@ function paint() {
   const sheet = ui.step === 'Drawings', plan = ui.view === 'plan';
   $('views').hidden = sheet;
   $('plan').hidden = !plan && !sheet;
+  if (sheet && !sheetList(result).some(([k]) => k === ui.sheet)) ui.sheet = 'front';
   if (sheet) $('plan').innerHTML = drawing(result, ui.sheet);
   else if (plan) $('plan').innerHTML = floorPlan(result);
 
@@ -381,6 +413,37 @@ document.addEventListener('click', (e) => {
     const o = state.openings[Number(d.remove)];
     ui.opening = null;
     return apply({ openings: state.openings.filter((_, i) => i !== Number(d.remove)) }, `${TYPE_NAMES[o.type]} removed`);
+  }
+  if (d.shedadd) {
+    const taken = new Set(state.sheds.map((s) => s.wall));
+    const wall = ['back', 'front', 'left', 'right'].find((w) => !taken.has(w));
+    if (!wall) { ui.lead = ''; ui.problem = 'Every wall already has a lean-to or porch. Remove one first, or shorten one to make room.'; return paint(); }
+    const length = wall === 'front' || wall === 'back' ? state.length : state.width;
+    ui.shed = state.sheds.length;
+    const drop = state.overhang > 0 ? Math.ceil((state.overhang * state.pitch / 12 + 6) / 6) / 2 : 0;
+    apply({ sheds: [...state.sheds, { kind: d.shedadd, wall, start: 0, length, ...NEW_SHED[d.shedadd], drop }] }, `${SHED_NAMES[d.shedadd]} added to the ${WALL_NAMES[wall].toLowerCase()} wall`);
+    if (ui.problem) ui.shed = null;
+    return paint();
+  }
+  if (d.shedopen) { ui.shed = ui.shed === Number(d.shedopen) ? null : Number(d.shedopen); return paint(); }
+  if (d.shedwall) {
+    const s = state.sheds[ui.shed];
+    const length = d.shedwall === 'front' || d.shedwall === 'back' ? state.length : state.width;
+    return setShed(ui.shed, { wall: d.shedwall, start: 0, length }, `${SHED_NAMES[s.kind]} moved to the ${WALL_NAMES[d.shedwall].toLowerCase()} wall`);
+  }
+  if (d.shedfield) {
+    const s = state.sheds[ui.shed], f = SHED_FIELDS[d.shedfield];
+    const to = Math.max(f.min, s[d.shedfield] + f.step * Number(d.dir));
+    const shown = d.shedfield === 'pitch' ? `${to} in 12` : feetInches(to * 12);
+    return setShed(ui.shed, { [d.shedfield]: to }, `${SHED_NAMES[s.kind]} ${f.label.toLowerCase()} now ${shown}`);
+  }
+  if (d.shedenc) {
+    return setShed(ui.shed, { enclosed: d.shedenc === '1' }, `Lean-to ${d.shedenc === '1' ? 'enclosed' : 'opened up'}`);
+  }
+  if (d.shedremove) {
+    const s = state.sheds[Number(d.shedremove)];
+    ui.shed = null;
+    return apply({ sheds: state.sheds.filter((_, i) => i !== Number(d.shedremove)) }, `${SHED_NAMES[s.kind]} removed`);
   }
   if (d.color) {
     const title = COLOR_PARTS.find((p) => p[0] === d.color)[1];
@@ -488,9 +551,12 @@ function sheetHead(title) {
 }
 
 function drawingPages() {
-  const names = Object.fromEntries(SHEETS);
-  return [['front', 'back'], ['left', 'right'], ['roof']].map((set) => `<div class="page sheet">${sheetHead('Framing Drawings')}
-    ${set.map((k) => `<h3>${names[k]}${k === 'roof' ? ', seen from above' : ', seen from outside'}</h3>${drawing(result, k, true)}`).join('')}
+  const names = Object.fromEntries(sheetList(result));
+  const sheds = result.geometry.sheds.map((s) => `shed${s.index}`);
+  const pairs = sheds.flatMap((k, i) => (i % 2 ? [] : [sheds.slice(i, i + 2)]));
+  const how = (k) => (k === 'roof' ? ', seen from above' : k.startsWith('shed') ? ', cut through looking along the main wall' : ', seen from outside');
+  return [['front', 'back'], ['left', 'right'], ['roof'], ...pairs].map((set) => `<div class="page sheet">${sheetHead('Framing Drawings')}
+    ${set.map((k) => `<h3>${names[k]}${how(k)}</h3>${drawing(result, k, true)}`).join('')}
     <p class="fine">Built from framing rules that have not been checked against a builder's guide yet. Not an engineered drawing.</p></div>`).join('');
 }
 
@@ -502,7 +568,7 @@ function engineerData() {
     madeWith: 'Girt And Purlin',
     note: 'A description of the building as drawn. Not an engineered design. No loads were calculated. Lengths are in inches, measured along each wall from the front-left corner (front and back walls) or from the front wall (end walls).',
     job: state.job, date: new Date().toISOString().slice(0, 10),
-    building: g.building, posts: g.posts, trusses: g.trusses, girtRows: g.girtRows, purlinRowLengthIn: g.purlinRowLengthIn,
+    building: g.building, posts: g.posts, leanTosAndPorches: g.sheds, trusses: g.trusses, girtRows: g.girtRows, purlinRowLengthIn: g.purlinRowLengthIn,
     framingAsDrawn: result.rules, summary: result.summary,
   }, null, 2);
 }
@@ -514,7 +580,7 @@ function openEngineer() {
   const r = result.rules, sum = result.summary;
   const blank = (label, hint) => `<dt>${label}</dt><dd contenteditable spellcheck="false">${hint}</dd>`;
   const facts = [
-    ['Shape', 'Rectangle with a gable roof, ridge running the long way'],
+    ['Shape', `Rectangle with a gable roof, ridge running the long way${b.sheds.length ? `, plus ${b.sheds.length} single-slope ${b.sheds.length === 1 ? 'addition' : 'additions'}` : ''}`],
     ['Width', `${state.width} ft`], ['Length', `${state.length} ft`],
     ['Wall Height', `${state.eaveHeight} ft, ground to eave`],
     ['Peak Height', `${feetInches(b.eaveIn + b.riseIn)}, ground to ridge`],
@@ -531,6 +597,13 @@ function openEngineer() {
     ['Roof Purlins', r.purlinSize, `Every ${r.purlinSpacingIn} in up the slope, ${sum.purlinRowsPerSide} rows each side, joined on trusses`],
     ...(carriers ? [['Truss Carriers', r.trussCarrierSize, 'Two boards along the top of each long wall, under the trusses that land between posts, joined on posts']] : []),
     ...(headerSizes.length ? [['Headers', headerSizes.join(' and '), `Two boards over each door and window${headerSizes.length > 1 ? `, the larger size over openings wider than ${r.wideHeaderOverFt} ft` : ''}`]] : []),
+    ...result.geometry.sheds.flatMap((s) => {
+      const name = s.label[0].toUpperCase() + s.label.slice(1);
+      return [
+        [`${name}`, `${feetInches(s.depthIn)} deep, ${feetInches(s.lengthIn)} long`, `Single slope at ${s.pitch} in 12, ${feetInches(s.highIn)} at the main wall down to ${feetInches(s.lowIn)} at its posts, ${s.enclosed ? 'walls closed in' : 'sides open'}`],
+        [`${name} Rafters`, r.rafterSize, `${s.rafters.length} rafters about every ${r.rafterSpacingIn} in, from a ${r.shedLedgerSize} ledger on the main wall posts to a beam of two ${r.shedBeamSize} boards on ${s.outer.length} posts`],
+      ];
+    }),
     ['Roof And Walls', 'Ribbed steel panel', `${r.panelCoverageIn} in coverage, screwed to the purlins and girts`],
   ];
   const first = `<div class="page sheet eng">
@@ -550,6 +623,7 @@ function openEngineer() {
       <tbody>${members.map(([m, s, l]) => `<tr><td>${m}</td><td>${esc(s)}</td><td>${esc(l)}</td><td class="chg">&nbsp;</td></tr>`).join('')}</tbody></table>
     <h3>What We Need From You</h3>
     <p>The program that made this package lays out the frame and counts the material. It does not size anything for load. It has no footings, no bracing, no truss design and no connection details. Those are yours, along with any stamped drawings the permit office asks for.</p>
+    ${b.sheds.length ? `<p>Each lean-to and porch roof starts below the main eave, so its rafters and upper purlins have to carry snow that slides off the main roof and drifts against the wall above. The rafter, ledger and beam sizes shown are placeholders with no published table behind them.</p>` : ''}
     <h3>Doors And Windows</h3>
     ${b.openings.length ? `<table class="cuts"><thead><tr><th>Opening</th><th>Wall</th><th>Starts At</th><th>Width</th><th>Height</th><th>Sill</th></tr></thead>
       <tbody>${b.openings.map((o) => `<tr><td>${TYPE_NAMES[o.type]}</td><td>${WALL_NAMES[o.wall]}</td><td>${feetInches(o.startIn)}</td><td>${feetInches(o.widthIn)}</td><td>${feetInches(o.heightIn)}</td><td>${o.toGround ? 'At the ground' : feetInches(o.sillIn)}</td></tr>`).join('')}</tbody></table>` : '<p>None.</p>'}
@@ -558,7 +632,8 @@ function openEngineer() {
   const third = `<div class="page sheet eng">${sheetHead('Post Layout')}
     <h3>Seen from above, front wall at the bottom</h3>${floorPlan(result, true)}
     <table class="cuts posts"><thead><tr><th>Wall</th><th>At</th><th>Top Above Ground</th><th>Post Length</th></tr></thead>
-      <tbody>${posts.map((p) => `<tr><td>${WALL_NAMES[p.wall]}</td><td>${feetInches(p.atIn)}</td><td>${feetInches(p.topIn)}</td><td>${p.stockFt} ft</td></tr>`).join('')}</tbody></table>
+      <tbody>${posts.map((p) => `<tr><td>${WALL_NAMES[p.wall]}</td><td>${feetInches(p.atIn)}</td><td>${feetInches(p.topIn)}</td><td>${p.stockFt} ft</td></tr>`).join('')}
+      ${result.geometry.sheds.flatMap((s) => s.posts.map((p) => `<tr><td>${s.label[0].toUpperCase() + s.label.slice(1)}</td><td>${feetInches(p.atIn)} along, ${feetInches(p.outIn)} out</td><td>${feetInches(p.topIn)}</td><td>${p.stockFt} ft</td></tr>`)).join('')}</tbody></table>
   </div>`;
   $('proposal').innerHTML = `<div class="bar"><span>Click any gray text on the first page to type your own. The data file is the same building as numbers, for the engineer's own software.</span>
     <button class="btn" data-close>Close</button><button class="btn" data-engdata>Save Data File</button><button class="btn solid" data-print>Print Or Save As PDF</button></div>${first}${second}${third}${drawingPages()}`;

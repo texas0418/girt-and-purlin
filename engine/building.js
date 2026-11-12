@@ -5,9 +5,12 @@
 // An opening's offset is measured along its wall from the front-left corner
 // (front and back walls) or from the front wall (left and right walls).
 
+// The lowest a lean-to or porch roof may come: a walk door still fits under it.
+export const MIN_SHED_LOW_IN = 84;
 export const WALLS = ['front', 'back', 'left', 'right'];
 const GROUND_DOORS = new Set(['slider', 'walk', 'overhead']);
 const TYPES = new Set([...GROUND_DOORS, 'window']);
+const SHEDS = { leanto: 'lean-to', porch: 'porch' };
 const NAMES = { slider: 'sliding door', walk: 'walk door', overhead: 'overhead door', window: 'window' };
 
 export function normalize(input) {
@@ -27,6 +30,7 @@ export function normalize(input) {
     postSpacingIn: num(input.postSpacing ?? 8, 'Post spacing', 4, 16) * 12,
     trussSpacingIn: num(input.trussSpacing ?? 4, 'Truss spacing', 2, 16) * 12,
     openings: [],
+    sheds: [],
   };
   b.riseIn = (b.widthIn / 2) * b.pitch / 12;
 
@@ -54,6 +58,39 @@ export function normalize(input) {
       }
     }
     b.openings.push(op);
+  });
+
+  // Lean-tos and porches. The roof starts dropIn below the main eave and falls away from the wall.
+  (input.sheds ?? []).forEach((s, i) => {
+    if (!(s.kind in SHEDS)) { errors.push(`Addition ${i + 1} has an unknown type.`); return; }
+    if (!WALLS.includes(s.wall)) { errors.push(`Addition ${i + 1} is not on a wall.`); return; }
+    const name = `The ${SHEDS[s.kind]} on the ${s.wall} wall`;
+    const wallLen = wallLengthIn(b, s.wall);
+    const sh = {
+      kind: s.kind, wall: s.wall,
+      depthIn: num(s.depth, `${name} depth`, 4, 40) * 12,
+      pitch: num(s.pitch ?? 3, `${name} roof pitch`, 1, 12),
+      dropIn: num(s.drop ?? 0, `${name} drop below the eave`, 0, 12) * 12,
+      startIn: num(s.start ?? 0, `${name} position`, 0, 400) * 12,
+      enclosed: s.kind === 'leanto' && !!s.enclosed,
+    };
+    sh.lengthIn = s.length == null ? wallLen - sh.startIn : num(s.length, `${name} length`, 4, 400) * 12;
+    sh.endIn = sh.startIn + sh.lengthIn;
+    sh.highIn = b.eaveIn - sh.dropIn;
+    sh.lowIn = sh.highIn - sh.depthIn * sh.pitch / 12;
+    if (sh.lengthIn < 48 - 0.01 || sh.endIn > wallLen + 0.01) errors.push(`${name} runs past the end of the wall.`);
+    else if (sh.lowIn < MIN_SHED_LOW_IN - 0.01) {
+      errors.push(`${name} would be only ${Math.floor(sh.lowIn / 12)} ft ${Math.round(sh.lowIn % 12)} in high at its low side. Make it shallower or flatter, or raise the wall.`);
+    }
+    // The roof has to tuck under the main roof's overhang and its fascia.
+    const clearIn = b.overhangIn > 0 ? (isGable(sh.wall) ? 0 : b.overhangIn * b.pitch / 12) + 6 : 0;
+    if (sh.dropIn < clearIn - 0.01) {
+      errors.push(`${name} would run into the main roof's overhang. Set it at least ${Math.ceil(clearIn)} in below the main eave.`);
+    }
+    if (b.sheds.some((other) => other.wall === sh.wall && sh.startIn < other.endIn - 0.01 && other.startIn < sh.endIn - 0.01)) {
+      errors.push(`${name} overlaps another addition on that wall.`);
+    }
+    b.sheds.push(sh);
   });
 
   return { building: b, errors };

@@ -319,7 +319,7 @@ export function createView(canvas, stage) {
   const gravelMap = speckle([150, 146, 138], 0.4, 40);
   gravelMap.repeat.set(1 / 7, 1 / 7);
   const mats = {
-    wall: metal(ribs), wainscot: metal(ribs), roof: metal(roofRibs), trim: metal(),
+    wall: metal(ribs), wainscot: metal(ribs), roof: metal(roofRibs), shedRoof: metal(ribs), trim: metal(),
     door: new THREE.MeshStandardMaterial({ color: 0xe9e9e4, roughness: 0.55, metalness: 0.1 }),
     glass: new THREE.MeshStandardMaterial({ color: 0x1a232b, roughness: 0.05, metalness: 0.9, envMapIntensity: 1.7 }),
     dark: new THREE.MeshStandardMaterial({ color: 0x1c1d1f, roughness: 0.5, metalness: 0.4 }),
@@ -373,16 +373,114 @@ export function createView(canvas, stage) {
     group.clear();
   }
 
-  function buildWall(b, wall, hasWainscot) {
-    const L = b.lengthIn / 12, W = b.widthIn / 12, H = b.eaveIn / 12, rise = b.riseIn / 12;
-    const gable = wall === 'left' || wall === 'right';
-    const Lw = gable ? W : L;
-    const flip = wall === 'back' || wall === 'left';
+  // A group whose x runs along a wall as seen from outside, y up, z out from the wall.
+  function wallGroup(b, wall) {
+    const L = b.lengthIn / 12, W = b.widthIn / 12;
     const g = new THREE.Group();
     if (wall === 'front') g.position.set(-L / 2, 0, W / 2);
     if (wall === 'back') { g.position.set(L / 2, 0, -W / 2); g.rotation.y = Math.PI; }
     if (wall === 'left') { g.position.set(-L / 2, 0, -W / 2); g.rotation.y = -Math.PI / 2; }
     if (wall === 'right') { g.position.set(L / 2, 0, W / 2); g.rotation.y = Math.PI / 2; }
+    return g;
+  }
+
+  // A lean-to or porch. The frame shows in the framing view, and under the
+  // roof of an open one in the finished view.
+  function buildShed(b, s) {
+    const gable = s.wall === 'left' || s.wall === 'right';
+    const Lw = (gable ? b.widthIn : b.lengthIn) / 12;
+    const flip = s.wall === 'back' || s.wall === 'left';
+    const at = (inches) => (flip ? Lw - inches / 12 : inches / 12);
+    const u0 = Math.min(at(s.startIn), at(s.endIn)), u1 = Math.max(at(s.startIn), at(s.endIn));
+    const len = u1 - u0, uc = (u0 + u1) / 2, D = s.depthIn / 12, hi = s.highIn / 12, lo = s.lowIn / 12, oh = b.overhangIn / 12;
+    const a = Math.atan(s.pitch / 12), slope = s.slopeIn / 12, tan = Math.tan(a);
+    const top = (z) => hi - z * tan;
+
+    const fg = wallGroup(b, s.wall);
+    const frame = (g) => {
+      for (const p of s.posts) {
+        const z = p.outIn / 12, u = Math.min(u1 - 0.23, Math.max(u0 + 0.23, at(p.atIn)));
+        const h = top(z) - (p.line === 'outer' ? 0.8 : 0.2);
+        box(g, mats.treated, 0.46, h, 0.46, u, h / 2, z - (p.line === 'outer' ? 0.23 : 0));
+      }
+      // Beam on the outer posts, ledger on the main wall, rafters between, purlins on top.
+      box(g, mats.wood, len, 0.94, 0.25, uc, lo - 0.8 - 0.1, D - 0.23 + 0.36);
+      box(g, mats.wood, len, 0.6, 0.125, uc, hi - 0.55, 0.07);
+      for (const r of s.rafters) {
+        const u = Math.min(u1 - 0.07, Math.max(u0 + 0.07, at(r)));
+        box(g, mats.wood, 0.125, 0.6, slope, u, top((D + oh) / 2) - 0.47, (D + oh) / 2, a);
+      }
+      if (s.enclosed && g === fg) {
+        box(g, mats.treated, len, 0.6, 0.125, uc, 0.3, D + 0.07);
+        for (let h = 2.6; h < lo - 0.3; h += 2) box(g, mats.wood, len, 0.46, 0.125, uc, h, D + 0.07);
+      }
+      for (let i = 0; i < s.purlinRows; i++) {
+        const along = 0.15 + (slope - 0.3) * i / (s.purlinRows - 1);
+        box(g, mats.wood, len + 2 * oh, 0.125, 0.29, uc, hi - along * Math.sin(a) - 0.08, along * Math.cos(a), a);
+      }
+    };
+
+    frame(fg);
+    framing.add(fg);
+
+    const g = wallGroup(b, s.wall);
+    const lift = 0.02;
+    const roof = sheet();
+    roof.quad(u0 - oh, 0, u1 + oh, slope);
+    const rm = new THREE.Mesh(roof.build(), mats.shedRoof);
+    rm.rotation.x = a - Math.PI / 2;
+    rm.position.set(0, top(D + oh) + lift, D + oh);
+    rm.castShadow = rm.receiveShadow = true;
+    g.add(rm);
+    // Flashing against the main wall, fascia at the low eave, and a rake down each side.
+    box(g, mats.trim, len + 2 * oh, 0.4, 0.06, uc, hi + lift + 0.17, 0.04);
+    box(g, mats.trim, len + 2 * oh + 0.2, 0.6, 0.12, uc, top(D + oh) + lift - 0.24, D + oh + 0.04);
+    for (const u of [u0 - oh - 0.05, u1 + oh + 0.05]) {
+      box(g, mats.trim, 0.12, 0.6, slope, u, top((D + oh) / 2) + lift - 0.22, (D + oh) / 2, a);
+    }
+    if (!s.enclosed) frame(g);
+    else {
+      const add = (part, parent) => {
+        const m = new THREE.Mesh(part.build(), mats.wall);
+        m.castShadow = m.receiveShadow = true;
+        parent.add(m);
+      };
+      const outer = sheet();
+      outer.quad(u0, 0, u1, lo, D);
+      add(outer, g);
+      box(g, mats.trim, len, 0.34, 0.1, uc, 0.17, D + 0.05);
+      for (const u of [u0 + 0.2, u1 - 0.2]) box(g, mats.trim, 0.42, lo, 0.1, u, lo / 2, D + 0.05);
+      // Each side wall is a group of its own, turned to face away from the lean-to.
+      for (const near of [true, false]) {
+        const side = new THREE.Group();
+        side.position.set(near ? u0 : u1, 0, near ? 0 : D);
+        side.rotation.y = near ? -Math.PI / 2 : Math.PI / 2;
+        const wall = sheet();
+        wall.quad(0, 0, D, lo);
+        wall.tri([0, lo], [D, lo], [near ? 0 : D, hi]);
+        add(wall, side);
+        box(side, mats.trim, D, 0.34, 0.1, D / 2, 0.17, 0.05);
+        box(side, mats.trim, 0.42, lo, 0.1, near ? D - 0.2 : 0.2, lo / 2, 0.05);
+        g.add(side);
+      }
+    }
+    finished.add(g);
+    const ground = pad(site, mats.gravel, len + 4, D + 2, 0.05);
+    ground.position.copy(g.localToWorld(new THREE.Vector3(uc, 0.05, D / 2 + 1)));
+    ground.rotation.y = g.rotation.y;
+    if (s.enclosed) {
+      const slab = box(site, mats.slab, len - 0.1, 0.3, D - 0.1, 0, 0, 0);
+      slab.position.copy(g.localToWorld(new THREE.Vector3(uc, 0.15, D / 2)));
+      slab.rotation.y = g.rotation.y;
+    }
+  }
+
+  function buildWall(b, wall, hasWainscot) {
+    const L = b.lengthIn / 12, W = b.widthIn / 12, H = b.eaveIn / 12, rise = b.riseIn / 12;
+    const gable = wall === 'left' || wall === 'right';
+    const Lw = gable ? W : L;
+    const flip = wall === 'back' || wall === 'left';
+    const g = wallGroup(b, wall);
 
     const ops = b.openings.filter((o) => o.wall === wall).map((o) => {
       const s = o.startIn / 12, e = o.endIn / 12;
@@ -636,7 +734,7 @@ export function createView(canvas, stage) {
       camera.position.copy(new THREE.Vector3(0.7, 0.045, 1).normalize().multiplyScalar(reach)).add(controls.target);
       fitted = true;
     }
-    const span = Math.max(L, W) * 0.8 + H * 2 + 34;
+    const span = Math.max(L, W) * 0.8 + H * 2 + 34 + Math.max(0, ...b.sheds.map((s) => s.depthIn / 12));
     sun.position.copy(sunDir).multiplyScalar(260);
     Object.assign(sun.shadow.camera, { left: -span, right: span, top: span, bottom: -span, near: 20, far: 600 });
     sun.shadow.camera.updateProjectionMatrix();
@@ -650,6 +748,8 @@ export function createView(canvas, stage) {
     bigDoors = [];
     mats.wall.color.set(colors.walls);
     mats.roof.color.set(colors.roof);
+    mats.shedRoof.color.set(colors.roof);
+    mats.shedRoof.side = THREE.DoubleSide;
     mats.trim.color.set(colors.trim);
     mats.wainscot.color.set(colors.wainscot);
 
@@ -663,6 +763,7 @@ export function createView(canvas, stage) {
     }
     buildRoof(b, colors.gutters);
     buildFraming(result);
+    for (const s of result.geometry.sheds) buildShed(b, s);
     if (settingKey !== `${L}x${W}`) {
       settingKey = `${L}x${W}`;
       buildContact(L, W);

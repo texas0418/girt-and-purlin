@@ -15,8 +15,8 @@ export function cutList(rules, posts, runs) {
   };
 
   for (const p of posts) {
-    put('Posts', rules.postSize, WALL_NAMES[p.wall], { stockFt: p.stockFt, cutIn: p.topIn + rules.postEmbedmentIn },
-      isGable(p.wall) ? 'Top cut to the roof slope' : '');
+    put('Posts', rules.postSize, p.where ?? WALL_NAMES[p.wall], { stockFt: p.stockFt, cutIn: p.topIn + rules.postEmbedmentIn },
+      (p.where ? p.sloped : isGable(p.wall)) ? 'Top cut to the roof slope' : '');
   }
   for (const r of runs) for (const piece of r.pieces) put(r.part, r.size, r.where, piece, r.note);
   return [...rows.values()];

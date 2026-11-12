@@ -67,8 +67,9 @@ function perSquare(table, spacingIn) {
   return table[rows.find((r) => r <= spacingIn + EPS) ?? rows[rows.length - 1]];
 }
 
-export function screws(b, rules) {
-  const { roofSqFt, wallSqFt } = areas(b);
+export function screws(b, rules, extra = { roofSqFt: 0, wallSqFt: 0 }) {
+  const main = areas(b);
+  const roofSqFt = main.roofSqFt + extra.roofSqFt, wallSqFt = main.wallSqFt + extra.wallSqFt;
   const count = Math.ceil(
     (roofSqFt * perSquare(rules.screwsPerSquare, rules.purlinSpacingIn) + wallSqFt * perSquare(rules.screwsPerSquare, rules.girtSpacingIn)) / 100 - EPS,
   );

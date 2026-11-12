@@ -150,7 +150,76 @@ function roofSheet(result, c) {
   return `<svg viewBox="${-left} ${-over - unit * 4.5} ${L + left + over + unit * 2} ${row2 + over + unit * 7}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Roof framing">${out.join('')}</svg>`;
 }
 
+// A cut through a lean-to or porch, looking along the main wall.
+function shedSheet(result, s, c) {
+  const { building: b } = result.geometry;
+  const rules = result.rules;
+  const D = s.depthIn / 12, over = b.overhangIn / 12, hi = s.highIn / 12, lo = s.lowIn / 12, eave = b.eaveIn / 12;
+  const top = eave + 1.5;
+  const unit = Math.max(D + over, top * 1.6) * 0.02 + 0.2;
+  const { line, text, across, upright } = pen(c, unit);
+  const y = (ft) => top - ft;
+  const fall = (x) => hi - x * s.pitch / 12;
+  const bury = rules.postEmbedmentIn / 12;
+  const post = (x, h, fill) => `<rect x="${x}" y="${y(h)}" width="0.46" height="${h}" fill="${fill}" stroke="${c.ink}" stroke-width="0.05"/>`
+    + `<rect x="${x}" y="${top}" width="0.46" height="${bury}" fill="none" stroke="${c.soft}" stroke-width="0.05" stroke-dasharray="0.3 0.2"/>`;
+  const deep = 0.6;
+  const out = [
+    post(-0.46, eave, c.wood),
+    line(-0.46, y(eave), -0.46 - 1.2, y(eave + 1.2 * b.pitch / 12), 0.12),
+    line(-0.46, y(eave), over, y(eave - over * b.pitch / 12), 0.12),
+    text(-0.23, y(eave) - unit * 2.6, 'Main wall', 0.75, c.soft),
+    post(D - 0.46, lo - 0.9, c.wood),
+    `<rect x="${D - 0.46 - 0.13}" y="${y(lo - 0.12)}" width="0.25" height="0.94" fill="${c.paper}" stroke="${c.ink}" stroke-width="0.05"/>`,
+    `<rect x="0" y="${y(hi - 0.15)}" width="0.13" height="${deep}" fill="${c.paper}" stroke="${c.ink}" stroke-width="0.05"/>`,
+    `<path d="M 0.13 ${y(fall(0.13) - 0.15)} L ${D + over} ${y(fall(D + over) - 0.15)} L ${D + over} ${y(fall(D + over) - 0.15 - deep)} L 0.13 ${y(fall(0.13) - 0.15 - deep)} Z" fill="${c.wood}" stroke="${c.ink}" stroke-width="0.05"/>`,
+    line(0, y(hi), D + over, y(fall(D + over)), 0.12),
+  ];
+  const run = Math.hypot(1, s.pitch / 12);
+  for (let i = 0; i < s.purlinRows; i++) {
+    const x = 0.15 + (D + over - 0.3) * i / (s.purlinRows - 1);
+    out.push(`<rect x="${x - 0.15}" y="${y(fall(x) - 0.02)}" width="0.29" height="0.125" fill="${c.paper}" stroke="${c.ink}" stroke-width="0.04" transform="rotate(${Math.atan(s.pitch / 12) * 180 / Math.PI} ${x} ${y(fall(x))})"/>`);
+  }
+  if (s.enclosed) {
+    const rows = Math.ceil((s.lowIn - rules.skirtHeightIn) / rules.girtSpacingIn - 0.01);
+    for (let i = 1; i <= rows; i++) {
+      const h = Math.min(rules.skirtHeightIn + i * rules.girtSpacingIn, s.lowIn - 12) / 12;
+      out.push(`<rect x="${D}" y="${y(h + 0.23)}" width="0.125" height="0.46" fill="${c.paper}" stroke="${c.ink}" stroke-width="0.04"/>`);
+    }
+    out.push(`<rect x="${D}" y="${y(rules.skirtHeightIn / 12)}" width="0.125" height="${rules.skirtHeightIn / 12}" fill="${c.paper}" stroke="${c.ink}" stroke-width="0.04"/>`);
+  }
+  const row1 = top + bury + unit * 2.2;
+  const note = (x, yy, t) => text(x, yy, t, 0.75, c.soft, 'text-anchor="start"').replace('text-anchor="middle" ', '');
+  const nx = D + over + unit * 4.6;
+  out.push(
+    line(-2, top, D + over + unit, top, 0.05, c.soft), text(D + over + unit * 2.4, top + unit * 0.3, 'Grade', 0.8, c.soft),
+    across(0, D, row1, `${short(s.depthIn)} wall to post line`),
+    upright(y(hi), top, -unit * 3.2, `${short(s.highIn)} at the wall`),
+    upright(y(lo), top, D + over + unit * 2.6, `${short(s.lowIn)} at the posts`),
+    text((D + over) / 2, y(fall((D + over) / 2)) - unit * 1.2, `${s.pitch} in 12`, 0.9, c.ink, `transform="rotate(${Math.atan(s.pitch / 12) * 180 / Math.PI} ${(D + over) / 2} ${y(fall((D + over) / 2)) - unit * 1.2})"`),
+    note(nx, y(hi), `Rafters ${rules.rafterSize}, ${short(s.slopeIn)} long`),
+    note(nx, y(hi) + unit * 1.3, `${s.rafters.length} rafters along ${short(s.lengthIn)}`),
+    note(nx, y(hi) + unit * 2.6, `Ledger ${rules.shedLedgerSize} on the main posts`),
+    note(nx, y(hi) + unit * 3.9, `Beam two ${rules.shedBeamSize} on ${s.outer.length} posts`),
+    note(nx, y(hi) + unit * 5.2, `${s.purlinRows} purlin rows, ${rules.purlinSize}`),
+    note(nx, y(hi) + unit * 6.5, s.enclosed ? 'Walls closed in' : 'Sides open'),
+  );
+  const left = unit * 6.5 + 2, right = unit * 22;
+  return `<svg viewBox="${-left} ${-unit * 2} ${D + over + left + right} ${row1 + unit * 3.5}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Section through the ${s.label.toLowerCase()}">${out.join('')}</svg>`;
+}
+
+const title = (t) => t.replace(/(^|[\s-])([a-z])/g, (m, a, ch) => a + ch.toUpperCase());
+
+// The fixed sheets plus one section for every lean-to and porch.
+export function sheetList(result) {
+  return [...SHEETS, ...result.geometry.sheds.map((s) => [`shed${s.index}`, title(s.label)])];
+}
+
 export function drawing(result, sheet, light = false) {
   const c = light ? LIGHT : DARK;
+  if (sheet.startsWith('shed')) {
+    const s = result.geometry.sheds[Number(sheet.slice(4))];
+    return s ? shedSheet(result, s, c) : wallSheet(result, 'front', c);
+  }
   return sheet === 'roof' ? roofSheet(result, c) : wallSheet(result, sheet, c);
 }

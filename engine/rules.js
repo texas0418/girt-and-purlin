@@ -21,6 +21,14 @@ export const defaultRules = {
   wideHeaderOverFt:  { value: 12,   verified: false },
   trussCarrierSize:  { value: '2x12', verified: true, note: 'Two boards along each long wall when trusses land between posts', source: 'USDA NRCS PA-12 (2-ply 2x12 roof girders); Bannock County ID post-frame guide; APM Buildings' },
 
+  rafterSize:        { value: '2x8',  verified: false, note: 'Lean-to and porch rafters. No published size table exists: Hansen Pole Buildings publishes only the bending and deflection check, so the engineer sets the real size from span and snow load' },
+  rafterSpacingIn:   { value: 48,   verified: false, note: 'On center, along the lean-to. Hansen Pole Buildings instead fastens a rafter to each side of every post and hangs the purlins between them' },
+  rafterStockFt:     { value: [8, 10, 12, 14, 16, 18, 20], verified: false, note: 'Rafter lengths a yard stocks' },
+  shedLedgerSize:    { value: '2x8',  verified: false, note: 'One board across the main wall posts under the high ends of the rafters. No post-frame source gives a ledger size, and Hansen Pole Buildings advises fastening rafters straight to the posts instead' },
+  shedBeamSize:      { value: '2x12', verified: false, note: 'Two boards along the outer posts under the low ends of the rafters. Clermont County OH lists two 2x10 or two 2x12 for bearing headers by building width; the engineer sets the real size' },
+  shedRafterMaxFt:   { value: 24,   verified: true, note: 'Deeper lean-tos move from rafters to single-slope trusses', source: 'FBi Buildings (rafters up to 24 ft wide, wider is most likely a mono truss)' },
+  minPanelPitch:     { value: 3,    verified: true, note: 'Flattest roof for screw-down rib panels without sealant in the laps', source: 'IRC R905.10.2 (3 in 12 without lap sealant, down to 1/2 in 12 with it); Metal Sales Classic Rib guide (minimum 3:12); Hansen Pole Buildings' },
+
   panelCoverageIn:   { value: 36,   verified: true, note: 'Width one metal panel covers', source: 'Fabral Grandrib 3 guide p.8; Metal Sales Classic Rib; A.B. Martin ABM Panel; Everlast II' },
   roofPanelExtraIn:  { value: 2,    verified: true, note: 'Panel hang past the eave', source: 'Central States Panel-Loc Plus guide and A.B. Martin guide give 2 in; Fabral Standard Details p.2 gives 1 to 2 in' },
   trimPieceIn:       { value: 126,  verified: true, note: 'Trim comes in 10 ft 6 in pieces', source: 'Fabral guide p.11; Metal Sales trim sheet' },
