@@ -194,6 +194,7 @@ a.btn { display: inline-flex; align-items: center; text-decoration: none; }
 .shared .right { grid-template-rows: auto 1fr; }
 .page.sheet { padding: 48px 56px; }
 .page.sheet svg { width: 100%; display: block; margin: 4px 0 18px; max-height: 420px; }
+.page.sheet.site svg { max-height: 640px; }
 .page.sheet .top { margin-bottom: 14px; }
 .page .fine { font-size: 12px; color: #777; margin: 10px 0; }
 .page th { text-align: left; font-size: 12px; font-weight: 600; color: #777; padding: 4px 0; border-bottom: 2px solid #1a1a1a; }
@@ -231,6 +232,7 @@ a.btn { display: inline-flex; align-items: center; text-decoration: none; }
   .page .terms { margin-top: 18px; min-height: 40px; }
   .page .sign { margin-top: 34px; }
   .page.sheet svg { max-height: 400px; }
+  .page.sheet.site svg { max-height: 600px; }
   .page.eng tbody { break-inside: auto; }
   .page [contenteditable] { color: #1a1a1a; }
 }

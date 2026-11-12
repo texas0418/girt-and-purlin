@@ -7,6 +7,7 @@ import { createView } from './scene.js';
 import { jobs, templates, company, priceLists, newId, designOf, STARTING_POINTS } from './office.js';
 import { floorPlan } from './plan.js';
 import { drawing, sheetList } from './drawings.js';
+import { placeOnLot, feet, FACINGS } from '../engine/site.js';
 
 const STORE = 'girt-and-purlin.job.v1';
 const PRICE_STORE = 'girt-and-purlin.prices.v1';
@@ -90,6 +91,7 @@ const SAMPLE = {
     { type: 'window', wall: 'front', offset: 41, width: 4, height: 3.5, sill: 3 },
   ],
   walls: {},
+  site: {},
   sheds: [],
   partitions: [],
   loft: null,
@@ -320,6 +322,28 @@ const field = (key) => stepper(`data-field="${key}"`, FIELDS[key].label, String(
 const choice = (key, options, unit) => `<div class="seg">${options.map((v) =>
   `<button data-choice="${key}" data-value="${v}" class="${state[key] === v ? 'on' : ''}">${v} ${unit}</button>`).join('')}</div>`;
 
+// The lot figures for the site plan. Nothing is filled in ahead of time: every lot and every county differs.
+function sitePanel() {
+  const site = state.site ?? {};
+  const num = (key, label) => `<label class="lab">${label}<input class="in" type="number" min="0" step="0.5" inputmode="decimal" data-site="${key}" value="${site[key] || ''}" placeholder="0"></label>`;
+  const placed = placeOnLot(result.geometry, site);
+  const facing = site.facing ?? 'front', north = site.north ?? '';
+  return `<h2>The Lot</h2>
+    ${num('lotWidth', 'Lot Width Along The Front, Feet')}${num('lotDepth', 'Lot Depth, Front To Back, Feet')}
+    <h2>Where The Building Sits</h2>
+    ${num('fromFront', 'From The Front Lot Line, Feet')}${num('fromLeft', 'From The Left Lot Line, Feet')}
+    <p class="hint">Left and right as you stand at the front lot line looking in. Distances run to the nearest wall or lean-to post, not the roof edge.</p>
+    <h2>Front Wall Faces</h2>
+    <div class="seg stack">${Object.entries(FACINGS).map(([k, n]) => `<button data-sitefacing="${k}" class="${facing === k ? 'on' : ''}">${n}</button>`).join('')}</div>
+    <h2>Setbacks</h2>
+    ${num('setFront', 'Front Setback, Feet')}${num('setSide', 'Side Setback, Feet')}${num('setBack', 'Back Setback, Feet')}
+    <p class="hint">Setbacks come from your county or town, so ask the permit office for yours and whether they measure to the wall or the roof edge. Leave a box empty to leave that line off.</p>
+    <h2>North Points</h2>
+    <div class="seg">${[['up', 'Up'], ['right', 'Right'], ['down', 'Down'], ['left', 'Left'], ['', 'Off']].map(([k, n]) => `<button data-sitenorth="${k || 'off'}" class="${north === k ? 'on' : ''}">${n}</button>`).join('')}</div>
+    <p class="hint">Which way north points on the page, with the front lot line at the bottom.</p>
+    ${placed.ready && placed.problems.length ? `<p class="hint" style="color:var(--signal)">${placed.problems.map(esc).join("<br>")}</p>` : ''}`;
+}
+
 const textIn = (attrs, label, value, hint) => `<label class="lab">${label}<input class="in" ${attrs} value="${esc(value)}" placeholder="${hint}" spellcheck="false"></label>`;
 
 function jobsPanel() {
@@ -511,7 +535,7 @@ function leftPanel() {
   }
   return `<h2>Drawings</h2>
     <div class="seg stack">${sheetList(result).map(([k, n]) => `<button data-sheet="${k}" class="${ui.sheet === k ? 'on' : ''}">${n}</button>`).join('')}</div>
-    <p class="hint">Walls are drawn from outside the building. ${result.rules?.postEmbedmentIn === 0 ? 'The posts stand on brackets at floor level.' : 'Dashed lines show the part of each post in the ground.'}</p>
+    ${ui.sheet === 'site' ? sitePanel() : `<p class="hint">Walls are drawn from outside the building. ${result.rules?.postEmbedmentIn === 0 ? 'The posts stand on brackets at floor level.' : 'Dashed lines show the part of each post in the ground.'}</p>`}
     <h2>Print</h2>
     <div class="seg stack"><button data-sheets="all">All Sheets</button><button data-sheets="cuts">Cut List Only</button><button data-checksheet>Delivery Check Sheet</button></div>
     <h2>For CAD</h2>
@@ -607,7 +631,7 @@ function paint() {
   $('views').hidden = sheet;
   $('plan').hidden = !plan && !sheet;
   if (sheet && !sheetList(result).some(([k]) => k === ui.sheet)) ui.sheet = 'front';
-  if (sheet) $('plan').innerHTML = drawing(result, ui.sheet);
+  if (sheet) $('plan').innerHTML = drawing(result, ui.sheet, false, state.site);
   else if (plan) $('plan').innerHTML = floorPlan(result);
 
   const check = $('check');
@@ -691,6 +715,8 @@ document.addEventListener('click', (e) => {
       ...priced.lines.map((l) => [l.qty, l.name, l.size, l.length, l.each ?? '', l.cost ?? ''])]));
   }
   if (d.sheet) { ui.sheet = d.sheet; return paint(); }
+  if (d.sitefacing) return apply({ site: { ...state.site, facing: d.sitefacing } }, `Front wall now faces ${FACINGS[d.sitefacing].toLowerCase()}`);
+  if (d.sitenorth) return apply({ site: { ...state.site, north: d.sitenorth === 'off' ? '' : d.sitenorth } }, d.sitenorth === 'off' ? 'North arrow off' : `North now points ${d.sitenorth}`);
   if (d.sheets) return openSheets(d.sheets === 'all');
   if ('engineer' in d) return openEngineer();
   const fileStem = state.job.replace(/[^\w]+/g, '-').replace(/^-|-$/g, '').toLowerCase() || 'building';
@@ -864,6 +890,7 @@ document.addEventListener('change', (e) => {
   const later = (change, note) => setTimeout(() => apply(change, note), 200);
   const dollars = Math.max(0, Number(v) || 0);
   if (d.company) { company.set({ [d.company]: v.trim() }); return d.company === 'designerEmail' || d.company === 'name' ? paint() : null; }
+  if (d.site) return later({ site: { ...state.site, [d.site]: Math.min(dollars, 100000) } }, 'Site plan updated');
   if (d.num) return later({ pricing: { ...state.pricing, [d.num]: dollars } }, `Freight now ${money(dollars)}`);
   if (d.xname) return later({ pricing: { ...state.pricing, extras: state.pricing.extras.map((x, i) => (i === Number(d.xname) ? { ...x, name: v.trim() } : x)) } }, 'Extra line named');
   if (d.xamt) return later({ pricing: { ...state.pricing, extras: state.pricing.extras.map((x, i) => (i === Number(d.xamt) ? { ...x, amount: dollars } : x)) } }, `Extra line now ${money(dollars)}`);
@@ -995,6 +1022,24 @@ function sheetHead(title) {
     <div class="when">${state.width} x ${state.length} x ${state.eaveHeight} ft<br>${today()}</div></div>`;
 }
 
+// The site plan prints only once the lot has been typed in.
+function sitePage() {
+  const placed = placeOnLot(result.geometry, state.site);
+  if (!placed.ready) return '';
+  const ft = feet;
+  const set = (v) => (v > 0 ? ft(v) : 'Not given');
+  const { site, clear } = placed;
+  return `<div class="page sheet site">${sheetHead('Site Plan')}
+    <h3>The lot from above, front lot line at the bottom</h3>${drawing(result, 'site', true, state.site)}
+    <table class="cuts"><thead><tr><th>Lot Line</th><th>Distance To The Building</th><th>Setback Typed In</th></tr></thead><tbody>
+    <tr><td>Front</td><td>${ft(clear.front)}</td><td>${set(site.setFront)}</td></tr>
+    <tr><td>Left</td><td>${ft(clear.left)}</td><td>${set(site.setSide)}</td></tr>
+    <tr><td>Right</td><td>${ft(clear.right)}</td><td>${set(site.setSide)}</td></tr>
+    <tr><td>Back</td><td>${ft(clear.back)}</td><td>${set(site.setBack)}</td></tr></tbody></table>
+    ${placed.problems.length ? `<p class="fine">${placed.problems.map(esc).join(' ')}</p>` : ''}
+    <p class="fine">Lot ${ft(site.lotWidth)} wide by ${ft(site.lotDepth)} deep, taken as a rectangle. Distances run to the nearest wall or lean-to post. Drawn from figures typed in by the builder, not from a survey. Check setbacks with the permit office.</p></div>`;
+}
+
 function drawingPages() {
   const names = Object.fromEntries(sheetList(result));
   const sheds = result.geometry.sheds.map((s) => `shed${s.index}`);
@@ -1003,6 +1048,7 @@ function drawingPages() {
   return [['front', 'back'], ['left', 'right'], ['roof'], ...pairs].map((set) => `<div class="page sheet">${sheetHead('Framing Drawings')}
     ${set.map((k) => `<h3>${names[k]}${how(k)}</h3>${drawing(result, k, true)}`).join('')}
     <p class="fine">Built from framing rules that have not been checked against a builder's guide yet. Not an engineered drawing.</p></div>`).join('')
+    + sitePage()
     + (result.geometry.loft || result.geometry.partitions?.length ? `<div class="page sheet">${sheetHead('Inside Layout')}
     <h3>Interior walls and loft, seen from above, front wall at the bottom</h3>${floorPlan(result, true)}
     <table class="cuts"><thead><tr><th>Part</th><th>Where</th><th>Size</th></tr></thead><tbody>

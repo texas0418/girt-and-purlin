@@ -1,6 +1,7 @@
 // Framing drawings: one view of each wall from outside, and the roof from above.
 import { wallLengthIn, wallTopIn, edgeOverhangIn, isGable } from '../engine/building.js';
 import { spans, feetInches } from '../engine/stock.js';
+import { placeOnLot, feet } from '../engine/site.js';
 
 export const SHEETS = [['front', 'Front Wall'], ['back', 'Back Wall'], ['left', 'Left End'], ['right', 'Right End'], ['roof', 'Roof Framing']];
 const DARK = { ink: '#dcdcdc', soft: '#8f8f8f', paper: '#262626', wood: '#3a3a3a' };
@@ -233,15 +234,84 @@ function shedSheet(result, s, c) {
   return `<svg viewBox="${-left} ${-unit * 2} ${D + over + left + right} ${row1 + unit * 3.5}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Section through the ${s.label.toLowerCase()}">${out.join('')}</svg>`;
 }
 
+// The lot from above with the front lot line at the bottom: the building, its
+// distance to each lot line, and any setbacks the builder typed in.
+function siteSheet(result, input, c) {
+  const p = placeOnLot(result.geometry, input);
+  const { lotWidth: LW, lotDepth: LD } = p.site;
+  if (!p.ready) {
+    return `<svg viewBox="0 0 100 40" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Site plan"><text x="50" y="20" font-size="3" ${FONT} fill="${c.soft}" text-anchor="middle">Type in the lot width and depth to draw the site plan.</text></svg>`;
+  }
+  const unit = Math.max(LW, LD) * 0.022 + 0.3;
+  const { line, text, across, upright } = pen(c, unit);
+  const w = unit * 0.07;
+  // Text that starts or ends at a point instead of sitting centered on it.
+  const label = (x, yy, t, size, color, anchor) => `<text x="${x}" y="${yy}" font-size="${unit * size}" ${FONT} fill="${color}" text-anchor="${anchor}">${t}</text>`;
+  const y = (ft) => LD - ft;
+  const out = [`<rect x="0" y="0" width="${LW}" height="${LD}" fill="none" stroke="${c.ink}" stroke-width="${w * 2}" stroke-dasharray="${unit * 1.2} ${unit * 0.4} ${unit * 0.25} ${unit * 0.4}"/>`];
+
+  // Setback lines, only where a figure was typed.
+  const dash = `stroke-dasharray="${unit * 0.5} ${unit * 0.4}"`;
+  const { setFront: sf, setSide: ss, setBack: sb } = p.site;
+  if (sf > 0) out.push(line(0, y(sf), LW, y(sf), w, c.soft, dash), label(LW - unit * 0.4, y(sf) - unit * 0.3, `${feet(sf)} setback`, 0.8, c.soft, 'end'));
+  if (sb > 0) out.push(line(0, y(LD - sb), LW, y(LD - sb), w, c.soft, dash), label(LW - unit * 0.4, y(LD - sb) + unit * 1, `${feet(sb)} setback`, 0.8, c.soft, 'end'));
+  if (ss > 0) {
+    out.push(line(ss, 0, ss, LD, w, c.soft, dash), line(LW - ss, 0, LW - ss, LD, w, c.soft, dash));
+    out.push(label(ss + unit * 0.4, unit * 1.1, `${feet(ss)} setback`, 0.8, c.soft, 'start'));
+  }
+
+  for (const part of p.parts) {
+    const [x0, y0, x1, y1] = part.box;
+    out.push(`<rect x="${x0}" y="${y(y1)}" width="${x1 - x0}" height="${y1 - y0}" fill="${part.main ? c.wood : 'none'}" stroke="${c.ink}" stroke-width="${part.main ? w * 1.6 : w}" ${part.main || !part.open ? '' : dash}/>`);
+  }
+  const main = p.parts[0].box, [fx0, fy0, fx1, fy1] = p.footprint;
+  const mw = main[2] - main[0], md = main[3] - main[1];
+  const mx = (main[0] + main[2]) / 2, my = (main[1] + main[3]) / 2;
+  const fits = Math.min(mw, md) > unit * 3.2;
+  out.push(text(mx, y(my) + (fits ? -unit * 0.1 : unit * 0.3), fits ? 'Building' : '', 1));
+  if (fits) out.push(text(mx, y(my) + unit * 1.1, `${feet(mw)} x ${feet(md)}`, 0.85, c.soft));
+
+  // A mark on the front wall, pointing the way it faces.
+  const [ax, ay] = p.frontWallAt;
+  const [ox, oy] = { front: [0, -1], back: [0, 1], left: [-1, 0], right: [1, 0] }[p.site.facing] ?? [0, -1];
+  const t = unit * 0.9, tx = ax + ox * t, ty = ay + oy * t;
+  out.push(`<polygon points="${tx},${y(ty)} ${ax - oy * t * 0.6},${y(ay + ox * t * 0.6)} ${ax + oy * t * 0.6},${y(ay - ox * t * 0.6)}" fill="${c.ink}"/>`);
+  out.push(label(ax + ox * t * 1.5, y(ay + oy * t * 2.2) + unit * 0.3, 'Front', 0.8, c.ink, ox ? (ox < 0 ? 'end' : 'start') : 'middle'));
+
+  // Distance from the footprint to each lot line, drawn clear of the front mark.
+  const cx = fx0 + (fx1 - fx0) * 0.25, cy = fy0 + (fy1 - fy0) * 0.25;
+  if (p.clear.front > 0) out.push(upright(y(0), y(fy0), cx, feet(p.clear.front), 0.85));
+  if (p.clear.back > 0) out.push(upright(y(fy1), y(LD), cx, feet(p.clear.back), 0.85));
+  if (p.clear.left > 0) out.push(across(0, fx0, y(cy), feet(p.clear.left), 0.85));
+  if (p.clear.right > 0) out.push(across(fx1, LW, y(cy), feet(p.clear.right), 0.85));
+
+  // Lot size outside the lines.
+  out.push(across(0, LW, LD + unit * 3.4, feet(LW)), upright(0, LD, -unit * 2.2, feet(LD)));
+  out.push(text(LW / 2, LD + unit * 1.3, 'Front Lot Line', 0.9, c.soft), text(LW / 2, -unit * 0.6, 'Back Lot Line', 0.9, c.soft));
+
+  // North arrow in the top right corner, outside the lot.
+  const turn = { up: 0, right: 90, down: 180, left: 270 }[p.site.north];
+  if (turn !== undefined) {
+    const nx = LW + unit * 3.2, ny = unit * 2.5, r = unit * 1.6;
+    out.push(`<g transform="rotate(${turn} ${nx} ${ny})"><line x1="${nx}" y1="${ny + r}" x2="${nx}" y2="${ny - r}" stroke="${c.ink}" stroke-width="${w * 1.5}"/><polygon points="${nx},${ny - r - unit * 0.7} ${nx - unit * 0.5},${ny - r + unit * 0.3} ${nx + unit * 0.5},${ny - r + unit * 0.3}" fill="${c.ink}"/></g>`);
+    const [lx, ly] = { 0: [0, -1], 90: [1, 0], 180: [0, 1], 270: [-1, 0] }[turn];
+    out.push(text(nx + lx * (r + unit * 1.6), ny + ly * (r + unit * 1.6) + unit * 0.35, 'N', 1.1));
+  }
+  out.push(text(LW / 2, LD + unit * 5.3, 'Drawn from the figures typed in. Not a survey.', 0.8, c.soft));
+  const left = unit * 4.5, right = unit * 6.5;
+  return `<svg viewBox="${-left} ${-unit * 2.2} ${LW + left + right} ${LD + unit * 8.4}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Site plan">${out.join('')}</svg>`;
+}
+
 const title = (t) => t.replace(/(^|[\s-])([a-z])/g, (m, a, ch) => a + ch.toUpperCase());
 
 // The fixed sheets plus one section for every lean-to and porch.
 export function sheetList(result) {
-  return [...SHEETS, ...result.geometry.sheds.map((s) => [`shed${s.index}`, title(s.label)])];
+  return [...SHEETS, ...result.geometry.sheds.map((s) => [`shed${s.index}`, title(s.label)]), ['site', 'Site Plan']];
 }
 
-export function drawing(result, sheet, light = false) {
+export function drawing(result, sheet, light = false, site = {}) {
   const c = light ? LIGHT : DARK;
+  if (sheet === 'site') return siteSheet(result, site, c);
   if (sheet.startsWith('shed')) {
     const s = result.geometry.sheds[Number(sheet.slice(4))];
     return s ? shedSheet(result, s, c) : wallSheet(result, 'front', c);
