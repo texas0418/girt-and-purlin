@@ -28,6 +28,16 @@ export function floorPlan(result, light = false) {
   }
   out.push(`<rect x="0" y="0" width="${L}" height="${W}" fill="${PAPER}" stroke="${INK}" stroke-width="0.3"/>`);
 
+  // An open wall shows as a thin dashed line between its posts.
+  for (const [wall, x1, y1, x2, y2] of [['front', 0, W, L, W], ['back', 0, 0, L, 0], ['left', 0, 0, 0, W], ['right', L, 0, L, W]]) {
+    if (!b.walls?.[wall]?.open) continue;
+    const side = wall === 'front' || wall === 'back', t = 0.15;
+    // The cover stops short of the corners so the closed walls beside it keep their full thickness.
+    const ax = side ? x1 + t : x1, ay = side ? y1 : y1 + t, bx = side ? x2 - t : x2, by = side ? y2 : y2 - t;
+    out.push(`<line x1="${ax}" y1="${ay}" x2="${bx}" y2="${by}" stroke="${PAPER}" stroke-width="0.5"/>`,
+      `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${INK}" stroke-width="0.08" stroke-dasharray="0.6 0.4"/>`);
+  }
+
   for (const o of b.openings) {
     const s = o.startIn / 12, e = o.endIn / 12;
     const side = o.wall === 'front' || o.wall === 'back';

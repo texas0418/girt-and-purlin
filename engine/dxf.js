@@ -4,7 +4,7 @@
 // The file is a DXF with an ENTITIES section only. The AutoCAD DXF reference
 // allows the header to be left out, and a file that small opens in every CAD
 // program. A header-less file cannot name its units, so the screen says inches.
-import { WALLS, isGable, wallLengthIn, wallTopIn, roofSpanAbove } from './building.js';
+import { WALLS, isGable, isOpen, wallLengthIn, wallTopIn, roofSpanAbove } from './building.js';
 import { WALL_NAMES } from './runs.js';
 
 const POST_IN = 5.5;
@@ -23,11 +23,13 @@ export function dxf(result) {
   const inside = (v, max) => Math.min(Math.max(v, POST_IN / 2), max - POST_IN / 2);
 
   // Floor plan. x runs along the length from the left end, y from the front wall to the back.
+  // An open wall goes on its own layer so the CAD user can show it dashed.
   const wallLine = (wall, a, c) => {
-    if (wall === 'front') line('PLAN-WALLS', a, 0, c, 0);
-    else if (wall === 'back') line('PLAN-WALLS', a, W, c, W);
-    else if (wall === 'left') line('PLAN-WALLS', 0, a, 0, c);
-    else line('PLAN-WALLS', L, a, L, c);
+    const layer = isOpen(b, wall) ? 'PLAN-OPEN-WALLS' : 'PLAN-WALLS';
+    if (wall === 'front') line(layer, a, 0, c, 0);
+    else if (wall === 'back') line(layer, a, W, c, W);
+    else if (wall === 'left') line(layer, 0, a, 0, c);
+    else line(layer, L, a, L, c);
   };
   const tick = (wall, at) => {
     if (wall === 'front') line('PLAN-OPENINGS', at, -6, at, 6);
@@ -99,7 +101,7 @@ export function dxf(result) {
     for (const o of b.openings.filter((o) => o.wall === wall)) {
       rect('ELEV-OPENINGS', u(o.startIn), baseY + o.sillIn, u(o.endIn), baseY + o.sillIn + o.heightIn);
     }
-    text('TEXT', x0, baseY - 30, 8, `${WALL_NAMES[wall]}, from outside`);
+    text('TEXT', x0, baseY - 30, 8, `${WALL_NAMES[wall]}, from outside${isOpen(b, wall) ? ', open wall: posts only' : ''}`);
     x0 += len + GAP_IN;
   }
 

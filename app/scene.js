@@ -720,26 +720,33 @@ export function createView(canvas, stage) {
     }
   }
 
-  function buildFraming(result) {
+  // The frame. It fills the framing view, and when a wall is open a second copy
+  // stands inside the finished building, pulled in so nothing shares a face with the steel.
+  function buildFraming(result, group = framing, inside = false) {
     const { building: b, posts, trusses, girtRows, planes } = result.geometry;
     const L = b.lengthIn / 12, W = b.widthIn / 12, H = b.eaveIn / 12;
     const zOf = (yIn) => W / 2 - yIn / 12;
+    const isOpen = (wall) => !!b.walls?.[wall]?.open;
+    const set = inside ? 0.3 : 0.23, off = inside ? -0.07 : 0.06, drop = inside ? 0.3 : 0;
     for (const p of posts) {
-      const inset = { front: [0, -0.23], back: [0, 0.23], left: [0.23, 0], right: [-0.23, 0] }[p.wall];
-      box(framing, mats.treated, 0.46, p.topIn / 12, 0.46, p.x / 12 - L / 2 + inset[0], p.topIn / 24, W / 2 - p.y / 12 + inset[1]);
+      const inset = { front: [0, -set], back: [0, set], left: [set, 0], right: [-set, 0] }[p.wall];
+      box(group, mats.treated, 0.46, p.topIn / 12, 0.46, p.x / 12 - L / 2 + inset[0], p.topIn / 24, W / 2 - p.y / 12 + inset[1]);
     }
-    const along = (wall, len, y, tall, mat, centered = 0) => {
-      if (wall === 'front' || wall === 'back') box(framing, mat, len, tall, 0.125, centered, y, (wall === 'front' ? 1 : -1) * (W / 2 + 0.06));
-      else box(framing, mat, 0.125, tall, len, (wall === 'right' ? 1 : -1) * (L / 2 + 0.06), y, centered);
+    const along = (wall, len, y, tall, mat, centered = 0, thick = 0.125, at = off) => {
+      if (wall === 'front' || wall === 'back') box(group, mat, len, tall, thick, centered, y, (wall === 'front' ? 1 : -1) * (W / 2 + at));
+      else box(group, mat, thick, tall, len, (wall === 'right' ? 1 : -1) * (L / 2 + at), y, centered);
     };
     for (const wall of ['front', 'back', 'left', 'right']) {
-      along(wall, wall === 'front' || wall === 'back' ? L : W, 0.3, 0.6, mats.treated);
+      const side = wall === 'front' || wall === 'back';
+      if (!isOpen(wall)) along(wall, (side ? L : W) - (inside ? 0.3 : 0), 0.3, 0.6, mats.treated);
+      // The beam that ties the posts of an open side wall together.
+      else if (side) along(wall, L, (wall === 'front' ? b.line[0].h : b.line[b.line.length - 1].h) / 12 - 0.47, 0.94, mats.wood, 0, 0.25, -set);
     }
     for (const row of girtRows) {
-      const full = row.wall === 'front' || row.wall === 'back' ? L : W;
+      const full = (row.wall === 'front' || row.wall === 'back' ? L : W) - (inside ? 0.3 : 0);
       // Rows above the eave on an end wall stop where they meet the roof.
       const centered = row.lengthIn ? zOf(row.startIn + row.lengthIn / 2) : 0;
-      along(row.wall, row.lengthIn ? row.lengthIn / 12 : full, row.heightIn / 12 - 0.23, 0.46, mats.wood, centered);
+      along(row.wall, row.lengthIn ? row.lengthIn / 12 - (inside ? 0.6 : 0) : full, row.heightIn / 12 - 0.23, 0.46, mats.wood, centered);
     }
     const shapes = planes.map((p) => ({ ...planeShape(b, p), p }));
     // Uprights inside the truss: one under each break or peak, and one between.
@@ -751,20 +758,20 @@ export function createView(canvas, stage) {
     }
     if (b.roof === 'mono') webs.push([b.widthIn - 3, b.line[1].h]);
     for (const tr of trusses) {
-      const x = tr.x / 12 - L / 2;
-      box(framing, mats.wood, 0.125, 0.46, W, x, H + 0.23, 0);
-      for (const s of shapes) box(framing, mats.wood, 0.125, 0.46, s.slope, x, s.midH - 0.1, s.midZ, s.dir * s.a);
+      const x = inside ? Math.min(Math.max(tr.x / 12 - L / 2, -L / 2 + 0.3), L / 2 - 0.3) : tr.x / 12 - L / 2;
+      box(group, mats.wood, 0.125, 0.46, W - (inside ? 0.4 : 0), x, H + 0.23, 0);
+      for (const s of shapes) box(group, mats.wood, 0.125, 0.46, s.slope, x, s.midH - 0.1 - drop, s.midZ, s.dir * s.a);
       for (const [y, h] of webs) {
-        const tall = h / 12 - H;
-        if (tall > 0.5) box(framing, mats.wood, 0.125, tall, 0.3, x, H + tall / 2, zOf(y));
+        const tall = h / 12 - H - drop;
+        if (tall > 0.5) box(group, mats.wood, 0.125, tall, 0.3, x, H + tall / 2, zOf(y));
       }
     }
-    const rowLen = result.geometry.purlinRowLengthIn / 12;
+    const rowLen = inside ? L - 0.3 : result.geometry.purlinRowLengthIn / 12;
     for (const s of shapes) {
       const rows = s.p.purlinRows;
       for (let i = 0; i < rows; i++) {
         const k = rows > 1 ? i / (rows - 1) : 0.5;
-        box(framing, mats.wood, rowLen, 0.125, 0.29, 0, s.highH + (s.lowH - s.highH) * k + 0.2, s.highZ + (s.lowZ - s.highZ) * k, s.dir * s.a);
+        box(group, mats.wood, rowLen, 0.125, 0.29, 0, s.highH + (s.lowH - s.highH) * k + 0.2 - drop, s.highZ + (s.lowZ - s.highZ) * k, s.dir * s.a);
       }
     }
   }
@@ -911,13 +918,23 @@ export function createView(canvas, stage) {
     const L = b.lengthIn / 12, W = b.widthIn / 12;
     pad(site, mats.gravel, L + 4, W + 4, 0.05);
     if (b.options?.slab) box(site, mats.slab, L - 0.1, 0.3, W - 0.1, 0, 0.15, 0);
+    // With a wall open the inside shows, so the steel is seen from both faces and the frame stands inside it.
+    const anyOpen = ['front', 'back', 'left', 'right'].some((wall) => b.walls?.[wall]?.open);
+    for (const m of [mats.wall, mats.wainscot]) {
+      const side = anyOpen ? THREE.DoubleSide : THREE.FrontSide;
+      if (m.side !== side) { m.side = side; m.needsUpdate = true; }
+    }
+    const frontRef = wallGroup(b, 'front');
+    frontRef.updateMatrixWorld(true);
     for (const wall of ['front', 'back', 'left', 'right']) {
+      if (b.walls?.[wall]?.open) continue;
       const g = buildWall(b, wall, colors.wainscotOn);
       g.updateMatrixWorld(true);
       finished.add(g);
     }
     buildRoof(b, colors.gutters, result.geometry.cupolas ?? []);
     buildFraming(result);
+    if (anyOpen) buildFraming(result, finished, true);
     buildInterior(result);
     for (const s of result.geometry.sheds) buildShed(b, s);
     if (settingKey !== `${L}x${W}`) {
@@ -935,7 +952,7 @@ export function createView(canvas, stage) {
     }
     truck.visible = !!colors.truck;
     if (truck.visible) {
-      const g = main ? main.g : finished.children[0];
+      const g = main ? main.g : frontRef;
       const beside = main ? (main.uc - main.w / 2 - 8 > 2 ? main.uc - main.w / 2 - 8 : main.uc + main.w / 2 + 8) : L * 0.25;
       truck.position.copy(g.localToWorld(new THREE.Vector3(beside, 0.07, 15)));
       truck.rotation.y = g.rotation.y + Math.PI / 2 - 0.3;

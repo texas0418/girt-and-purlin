@@ -1,7 +1,8 @@
 // Everything past the bare shell: wainscot, gutters, the steel liner,
 // insulation, footings, the slab, ridge vent and skylight panels. Each part
 // is counted only when the job turns it on in its options.
-import { wallLengthIn, wallTopIn, gableAreaIn, WALLS } from './building.js';
+import { wallLengthIn, isOpen, closedWalls, CORNERS } from './building.js';
+import { wallAreaIn } from './metal.js';
 import { add, fitStock, spans, feetInches } from './stock.js';
 import { boards, openSpans, WALL_NAMES } from './runs.js';
 
@@ -10,7 +11,7 @@ const up = (n) => Math.ceil(n - EPS);
 
 // Wall runs that carry base trim: each wall less its ground-level doors, then the walls of enclosed lean-tos.
 export function baseRuns(b, sheds = []) {
-  const runs = WALLS.map((wall) => wallLengthIn(b, wall)
+  const runs = closedWalls(b).map((wall) => wallLengthIn(b, wall)
     - b.openings.filter((o) => o.wall === wall && o.toGround).reduce((sum, o) => sum + o.widthIn, 0));
   for (const s of sheds) if (s.enclosed) runs.push(s.lengthIn, s.depthIn, s.depthIn);
   return runs;
@@ -22,7 +23,7 @@ export function finishRuns(b, rules, posts, trusses, sheds) {
   const o = b.options, stock = rules.lumberStockFt;
   const put = (part, size, where, pieces, note = '') => runs.push({ part, size, where, note, pieces });
 
-  for (const wall of WALLS) {
+  for (const wall of closedWalls(b)) {
     const len = wallLengthIn(b, wall);
     const supports = [0, len, ...posts.filter((p) => p.wall === wall).map((p) => p.atIn)];
     if (o.wainscotIn) {
@@ -85,6 +86,7 @@ export function finishParts(b, rules, { posts, trusses, sheds, wallTally, roofTa
   let screws = 0;
   const floorSqFt = (b.widthIn * b.lengthIn) / 144;
   const perimeterIn = 2 * (b.widthIn + b.lengthIn);
+  const closedIn = closedWalls(b).reduce((sum, wall) => sum + wallLengthIn(b, wall), 0);
   const roofRunIn = b.lengthIn + 2 * b.overhangIn;
 
   // Wainscot: every wall panel is cut in two, with Z trim over the joint. Z trim butts end to end.
@@ -157,22 +159,24 @@ export function finishParts(b, rules, { posts, trusses, sheds, wallTally, roofTa
   const liner = {};
   let linerSqFt = 0;
   if (o.linerWalls) {
-    for (const wall of WALLS) add(liner, up(b.eaveIn), up(wallLengthIn(b, wall) / rules.panelCoverageIn));
-    linerSqFt += (perimeterIn * b.eaveIn) / 144;
-    add(trim, 'Inside Corner Trim', pieces(b.eaveIn) * 4);
+    for (const wall of closedWalls(b)) add(liner, up(b.eaveIn), up(wallLengthIn(b, wall) / rules.panelCoverageIn));
+    linerSqFt += (closedIn * b.eaveIn) / 144;
+    // Liner turns an inside corner only where two closed walls meet.
+    const corners = CORNERS.filter((pair) => !pair.some((wall) => isOpen(b, wall))).length;
+    if (corners) add(trim, 'Inside Corner Trim', pieces(b.eaveIn) * corners);
   }
   if (o.linerCeiling) {
     for (const [k, n] of Object.entries(ceilingPanels(b, rules, trusses))) add(liner, Number(k), n);
     linerSqFt += floorSqFt;
   }
   if (o.linerWalls || o.linerCeiling) {
-    add(trim, 'J-Channel', pieces(perimeterIn));
+    add(trim, 'J-Channel', pieces(o.linerCeiling ? perimeterIn : closedIn));
     screws += up(linerSqFt * rules.linerScrewsPerSquare / 100);
   }
 
   // Insulation is measured over the building itself, not the overhangs or lean-tos.
   const roofSqFt = b.planes.reduce((sum, p) => sum + p.bareSlopeIn, 0) * b.lengthIn / 144;
-  const wallSqFt = (b.lengthIn * (wallTopIn(b, 'front', 0) + wallTopIn(b, 'back', 0)) + 2 * gableAreaIn(b)) / 144;
+  const wallSqFt = wallAreaIn(b) / 144;
   const rolls = (sqFt, widthIn, lengthFt, lapIn) => up(sqFt / ((widthIn - lapIn) / 12 * lengthFt));
   for (const [where, kind, sqFt] of [['Roof', o.roofInsulation, roofSqFt], ['Wall', o.wallInsulation, wallSqFt]]) {
     if (kind === 'bubble') {

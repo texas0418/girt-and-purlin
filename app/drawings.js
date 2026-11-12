@@ -58,7 +58,9 @@ function wallSheet(result, wall, c) {
     const a = u(fromIn), z = u(fromIn + runIn);
     return `<rect x="${Math.min(a, z)}" y="${y(heightIn + deepIn / 2)}" width="${Math.abs(z - a)}" height="${deepIn / 12}" fill="${c.paper}" stroke="${c.ink}" stroke-width="0.04"/>`;
   };
-  for (const [from, to] of spans(len * 12, gaps(0, true))) out.push(board(from, to - from, rules.skirtHeightIn / 2, rules.skirtHeightIn));
+  const open = !!b.walls?.[wall]?.open;
+  if (open) out.push(text(len / 2, y(wallIn / 2), 'Open Wall', 1.1, c.ink), text(len / 2, y(wallIn / 2) + unit * 1.4, 'Posts only: no skirt board, girts or steel', 0.8, c.soft));
+  else for (const [from, to] of spans(len * 12, gaps(0, true))) out.push(board(from, to - from, rules.skirtHeightIn / 2, rules.skirtHeightIn));
   const heights = [];
   for (const row of girtRows.filter((r) => r.wall === wall)) {
     if (row.lengthIn) {
@@ -114,7 +116,7 @@ function wallSheet(result, wall, c) {
   for (const h of [...new Set(heights)].filter((v) => v <= wallIn)) {
     out.push(line(len + unit * 0.4, y(h), len + unit * 1.1, y(h)), text(len + unit * 1.4, y(h) + unit * 0.3, short(h), 0.75, c.soft, 'text-anchor="start"').replace('text-anchor="middle" ', ''));
   }
-  out.push(text(len + unit * 1.4, y(wallIn) - unit * 1.2, 'Girt heights', 0.75, c.soft, 'text-anchor="start"').replace('text-anchor="middle" ', ''));
+  if (!open) out.push(text(len + unit * 1.4, y(wallIn) - unit * 1.2, 'Girt heights', 0.75, c.soft, 'text-anchor="start"').replace('text-anchor="middle" ', ''));
 
   const left = unit * 6.5, right = unit * 8;
   return `<svg viewBox="${-left} ${-unit * 2} ${len + left + right} ${row2 + unit * 3.5}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Wall framing">${out.join('')}</svg>`;

@@ -37,6 +37,12 @@ export function normalize(input) {
     openings: [],
     sheds: [],
   };
+  // Wall by wall: a wall can be left open, with no girts or steel, and can carry its own post spacing.
+  b.walls = {};
+  for (const wall of WALLS) {
+    const w = input.walls?.[wall] ?? {};
+    b.walls[wall] = { open: !!w.open, postSpacingIn: w.postSpacing == null ? b.postSpacingIn : num(w.postSpacing, `Post spacing on the ${wall} wall`, 4, 16) * 12 };
+  }
   b.roof = input.roof ?? 'gable';
   if (!ROOFS.includes(b.roof)) { errors.push('Roof shape is not one of the choices.'); b.roof = 'gable'; }
   b.line = roofLine(b);
@@ -58,6 +64,7 @@ export function normalize(input) {
     };
     op.endIn = op.startIn + op.widthIn;
     const wallLen = wallLengthIn(b, op.wall);
+    if (b.walls[op.wall].open) errors.push(`${name} sits on an open wall. Take it off, or close the wall in.`);
     if (op.endIn > wallLen + 0.01) errors.push(`${name} runs past the end of the wall.`);
     if (op.sillIn + op.heightIn > (isGable(op.wall) ? b.eaveIn : wallTopIn(b, op.wall, 0)) + 0.01) errors.push(`${name} is taller than the wall.`);
     for (const other of b.openings) {
@@ -165,6 +172,10 @@ export function wallLengthIn(b, wall) {
 }
 
 export function isGable(wall) { return wall === 'left' || wall === 'right'; }
+export const isOpen = (b, wall) => !!b.walls?.[wall]?.open;
+export const closedWalls = (b) => WALLS.filter((wall) => !isOpen(b, wall));
+// The two walls that meet at each corner, with the wall whose top sets the corner's height first.
+export const CORNERS = [['front', 'left'], ['front', 'right'], ['back', 'left'], ['back', 'right']];
 
 // The roof seen from a gable end: points across the width from the front wall
 // (y = 0) to the back wall, each with its height above grade. A single slope

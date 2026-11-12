@@ -2,8 +2,8 @@
 import { normalize } from './building.js';
 import { resolveRules, unverifiedRules } from './rules.js';
 import { placePosts, placeTrusses } from './framing.js';
-import { lumberRuns, girtRowCount, girtTopIn, gableGirtRows, purlinRowsPerSide, purlinRows, planePurlinRows } from './runs.js';
-import { isGable, WALLS, GAMBREL } from './building.js';
+import { WALL_NAMES, lumberRuns, girtRowCount, girtTopIn, gableGirtRows, purlinRowsPerSide, purlinRows, planePurlinRows } from './runs.js';
+import { isGable, isOpen, closedWalls, GAMBREL } from './building.js';
 import { roofPanels, wallPanels, trim, closures, screws, areas } from './metal.js';
 import { feetInches, add } from './stock.js';
 import { cutList } from './cutlist.js';
@@ -36,6 +36,11 @@ export function design(input, ruleOverrides) {
   if (b.roof === 'mono' && b.riseIn > rules.monoTrussMaxRiseFt * 12 + 0.01) {
     warnings.push({ code: 'mono-tall', text: `The single-slope trusses would stand ${feetInches(b.riseIn)} tall. Past ${rules.monoTrussMaxRiseFt} ft a truss this shape is hard to build and haul, so lower the pitch or narrow the building.` });
   }
+  const openNames = ['front', 'back', 'left', 'right'].filter((wall) => isOpen(b, wall));
+  if (openNames.length) {
+    const list = openNames.map((wall) => WALL_NAMES[wall].toLowerCase()).join(', ').replace(/, ([^,]*)$/, ' and $1');
+    warnings.push({ code: 'open-wall', text: `The ${list} ${openNames.length === 1 ? 'is' : 'are'} open. An open wall has no girts or steel to brace the frame, so the engineer has to size the beam over those posts and the bracing that takes the wall's place.` });
+  }
   const { sheds, errors: shedErrors, warnings: shedWarnings } = placeSheds(b, rules);
   warnings.push(...shedWarnings);
   if (shedErrors.length) return { ok: false, errors: shedErrors, warnings, items: [] };
@@ -66,7 +71,7 @@ export function design(input, ruleOverrides) {
 
   // Where each girt row sits, for the picture and the drawings.
   const girtRows = [];
-  for (const wall of WALLS) {
+  for (const wall of closedWalls(b)) {
     for (let i = 0; i < girtRowCount(b, rules, wall); i++) {
       girtRows.push({ wall, heightIn: Math.min(rules.skirtHeightIn + (i + 1) * rules.girtSpacingIn, girtTopIn(b, wall)) });
     }

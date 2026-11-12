@@ -25,7 +25,7 @@ export function placePosts(b, rules) {
 
   for (const wall of WALLS) {
     const len = wallLengthIn(b, wall);
-    let spots = evenSpots(len, b.postSpacingIn);
+    let spots = evenSpots(len, b.walls[wall].postSpacingIn);
     // Corner posts belong to the long walls, so gable ends skip them.
     if (isGable(wall)) spots = spots.slice(1, -1);
 

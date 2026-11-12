@@ -2,7 +2,7 @@
 // The material count and the cut list both read this, so they always agree.
 // A joint between two boards lands on a post (walls) or a truss (roof), and
 // the joints step over from one row to the next so they never line up.
-import { wallLengthIn, wallTopIn, roofSpanAbove, isGable, WALLS } from './building.js';
+import { wallLengthIn, wallTopIn, roofSpanAbove, isGable, isOpen, WALLS } from './building.js';
 import { fitStock, spans } from './stock.js';
 
 const EPS = 0.01;
@@ -79,26 +79,28 @@ export function lumberRuns(b, rules, posts, trusses) {
     const len = wallLengthIn(b, wall);
     // Corner posts belong to the long walls but the end wall boards land on them too.
     const supports = [0, len, ...posts.filter((p) => p.wall === wall).map((p) => p.atIn)];
-    for (const [s, e] of spans(len, openSpans(b, wall, 0, true))) {
+    // An open wall has posts and nothing between them but the beam along the top of a side wall.
+    const open = isOpen(b, wall);
+    for (const [s, e] of open ? [] : spans(len, openSpans(b, wall, 0, true))) {
       put('Skirt Boards', rules.skirtSize, WALL_NAMES[wall], boards(s, e, supports, stock));
     }
     let row = 0;
-    const rowCount = girtRowCount(b, rules, wall), topIn = girtTopIn(b, wall);
+    const rowCount = open ? 0 : girtRowCount(b, rules, wall), topIn = girtTopIn(b, wall);
     for (; row < rowCount; row++) {
       const h = Math.min(rules.skirtHeightIn + (row + 1) * rules.girtSpacingIn, topIn);
       for (const [s, e] of spans(len, openSpans(b, wall, h))) {
         put('Wall Girts', rules.girtSize, WALL_NAMES[wall], boards(s, e, supports, stock, row % 2 === 1));
       }
     }
-    if (isGable(wall)) {
+    if (isGable(wall) && !open) {
       // Rows keep going up the gable triangle, each one shorter than the last.
       for (const g of gableGirtRows(b, rules)) {
         put('Wall Girts', rules.girtSize, `${WALL_NAMES[wall]}, gable`, boards(g.startIn, g.endIn, supports, stock, row++ % 2 === 1), 'Ends cut to the roof slope');
       }
     }
-    if (!isGable(wall) && needsCarrier(wall, posts, trusses)) {
+    if (!isGable(wall) && (open || needsCarrier(wall, posts, trusses))) {
       for (let ply = 0; ply < 2; ply++) {
-        put('Truss Carriers', rules.trussCarrierSize, WALL_NAMES[wall], boards(0, len, supports, stock, ply === 1), 'Two boards side by side at the top of the posts');
+        put('Truss Carriers', rules.trussCarrierSize, WALL_NAMES[wall], boards(0, len, supports, stock, ply === 1), open ? 'Two boards side by side at the top of the posts, the only tie along the open wall' : 'Two boards side by side at the top of the posts');
       }
     }
   }

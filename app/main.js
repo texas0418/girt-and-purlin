@@ -89,6 +89,7 @@ const SAMPLE = {
     { type: 'window', wall: 'front', offset: 34, width: 4, height: 3.5, sill: 3 },
     { type: 'window', wall: 'front', offset: 41, width: 4, height: 3.5, sill: 3 },
   ],
+  walls: {},
   sheds: [],
   partitions: [],
   loft: null,
@@ -121,7 +122,7 @@ if (!state.id) { state.id = newId(); if (!shared) { try { localStorage.setItem(S
 let catalog = loadPrices();
 if (!shared && !designer && !catalog.sample && !priceLists.all().some((l) => l.supplier === catalog.supplier)) priceLists.put(catalog);
 let priced = priceJob(result, catalog, state.pricing);
-const ui = { delta: 0, notice: '', step: 'Size', view: 'finished', sheet: 'front', sel: null, opening: null, shed: null, part: null, placing: null, jobrow: null, tplrow: null, confirm: null, changed: new Set(), last: '', problem: '', savedAt: null };
+const ui = { delta: 0, notice: '', step: 'Size', view: 'finished', sheet: 'front', sel: null, opening: null, shed: null, part: null, side: null, placing: null, jobrow: null, tplrow: null, confirm: null, changed: new Set(), last: '', problem: '', savedAt: null };
 if (unopened) { ui.lead = 'Your saved job could not be opened.'; ui.problem = `${unopened} The sample building is showing instead.`; }
 const view = createView($('view'), $('stage'));
 
@@ -218,7 +219,7 @@ function openJob(job, note) {
   state = next;
   result = tried;
   priced = priceJob(result, catalog, state.pricing);
-  Object.assign(ui, { changed: new Set(), last: note, delta: 0, problem: '', lead: '', opening: null, shed: null, placing: null, jobrow: null, tplrow: null, confirm: null });
+  Object.assign(ui, { changed: new Set(), last: note, delta: 0, problem: '', lead: '', opening: null, shed: null, side: null, placing: null, jobrow: null, tplrow: null, confirm: null });
   $('job').value = state.job;
   save();
   view.update(result, state.colors);
@@ -312,6 +313,9 @@ const optName = (key) => OPTION_SETS[key][1].find(([v]) => v === opt(key))[1];
 const optionRow = (key, stack) => `<h2>${OPTION_SETS[key][0]}</h2><div class="seg${stack ? ' stack' : ''}">${OPTION_SETS[key][1].map(([v, name]) =>
   `<button data-opt="${key}" data-val='${JSON.stringify(v)}' class="${opt(key) === v ? 'on' : ''}">${name}</button>`).join('')}</div>`;
 
+// One wall's own settings, falling back to the building's.
+const wallOf = (w) => ({ open: !!state.walls?.[w]?.open, postSpacing: state.walls?.[w]?.postSpacing ?? state.postSpacing });
+const sideName = (w) => `${WALL_NAMES[w]}${w === 'front' || w === 'back' ? ' wall' : ''}`;
 const field = (key) => stepper(`data-field="${key}"`, FIELDS[key].label, String(state[key]), FIELDS[key].unit, ui.sel === key);
 const choice = (key, options, unit) => `<div class="seg">${options.map((v) =>
   `<button data-choice="${key}" data-value="${v}" class="${state[key] === v ? 'on' : ''}">${v} ${unit}</button>`).join('')}</div>`;
@@ -363,6 +367,14 @@ function leftPanel() {
     return `<h2>Building Size</h2>${['width', 'length', 'eaveHeight', ...(roofOf() === 'gambrel' ? [] : ['pitch']), 'overhang'].map(field).join('')}
       <h2>Post Spacing</h2>${choice('postSpacing', [6, 8, 10, 12], 'ft')}
       <h2>Truss Spacing</h2>${choice('trussSpacing', [2, 4, 8], 'ft')}
+      <h2>Wall By Wall</h2>${Object.entries(WALL_NAMES).map(([w, name]) => {
+        const head = `<button data-side="${w}"><span>${name}${name.endsWith('End') ? '' : ' Wall'}<small>${wallOf(w).open ? 'Open, posts only' : 'Closed in'}</small></span><em>${wallOf(w).postSpacing} ft</em></button>`;
+        if (ui.side !== w) return `<div class="op">${head}</div>`;
+        return `<div class="op open">${head}
+          <div class="seg"><button data-sideopen="0" class="${wallOf(w).open ? '' : 'on'}">Closed In</button><button data-sideopen="1" class="${wallOf(w).open ? 'on' : ''}">Open</button></div>
+          <div class="seg">${[6, 8, 10, 12].map((v) => `<button data-sidepost="${v}" class="${wallOf(w).postSpacing === v ? 'on' : ''}">${v} ft</button>`).join('')}</div>
+          <p class="hint">Posts on this wall alone. An open wall keeps its posts and roof and leaves off the boards and steel, the way a hay shed or equipment shelter is built.</p></div>`;
+      }).join('')}
       <p class="hint">Drag the picture to look around the building. Scroll or pinch to move closer. The material list follows every change.</p>`;
   }
   if (ui.step === 'Roof') {
@@ -535,6 +547,9 @@ function finishRows() {
   return rows;
 }
 
+const openSides = () => Object.keys(WALL_NAMES).filter((w) => wallOf(w).open);
+const ownSpacing = () => Object.keys(WALL_NAMES).filter((w) => wallOf(w).postSpacing !== state.postSpacing);
+
 function specRows() {
   const colorName = (hex) => PALETTE.find((c) => c[1] === hex)?.[0] ?? hex;
   const counts = {};
@@ -546,7 +561,8 @@ function specRows() {
   return [
     ['Size', `${state.width} ft wide, ${state.length} ft long, ${state.eaveHeight} ft walls`],
     ['Roof', `${ROOF_NAMES[roofOf()]}, ${roofOf() === 'gambrel' ? `${result.rules.gambrelLowerPitch} in 12 and ${result.rules.gambrelUpperPitch} in 12 slopes` : `${state.pitch} in 12 pitch`}, ${state.overhang} in overhang`],
-    ['Frame', `Posts every ${state.postSpacing} ft, trusses every ${state.trussSpacing} ft`],
+    ['Frame', `Posts every ${state.postSpacing} ft${ownSpacing().length ? ` (${ownSpacing().map((w) => `${wallOf(w).postSpacing} ft on the ${sideName(w).toLowerCase()}`).join(', ')})` : ''}, trusses every ${state.trussSpacing} ft`],
+    ...(openSides().length ? [['Open Walls', `${openSides().map((w) => sideName(w)).join(', ')}: posts and roof only, no steel`]] : []),
     ['Doors And Windows', openings || 'None'],
     ...(state.sheds.length ? [['Lean-Tos And Porches', state.sheds.map((s) => `${SHED_NAMES[s.kind]}, ${WALL_NAMES[s.wall].toLowerCase()} wall, ${num(s.depth)} x ${num(s.length)} ft${s.kind === 'leanto' && s.enclosed ? ', enclosed' : ''}`).join('<br>')]] : []),
     ...(finishRows().length ? [['Inside And Finish', finishRows().join('<br>')]] : []),
@@ -702,6 +718,15 @@ document.addEventListener('click', (e) => {
   if (d.choice) {
     const label = d.choice === 'postSpacing' ? 'Post spacing' : 'Truss spacing';
     return apply({ [d.choice]: Number(d.value) }, `${label} ${state[d.choice]} to ${d.value} ft`);
+  }
+  if (d.side) { ui.side = ui.side === d.side ? null : d.side; return paint(); }
+  if (d.sideopen || d.sidepost) {
+    const w = ui.side, own = { ...(state.walls?.[w] ?? {}) };
+    if (d.sideopen) { if (d.sideopen === '1') own.open = true; else delete own.open; }
+    else if (Number(d.sidepost) === state.postSpacing) delete own.postSpacing; else own.postSpacing = Number(d.sidepost);
+    const walls = { ...(state.walls ?? {}), [w]: own };
+    if (!Object.keys(own).length) delete walls[w];
+    return apply({ walls }, d.sideopen ? `${sideName(w)} now ${own.open ? 'open' : 'closed in'}` : `${sideName(w)} posts now every ${d.sidepost} ft`);
   }
   if (d.place) {
     ui.placing = ui.placing === d.place ? null : d.place;
@@ -1023,12 +1048,13 @@ function openEngineer() {
   const carriers = result.items.some((i) => i.name === 'Truss Carriers');
   const headerSizes = [...new Set(result.items.filter((i) => i.name === 'Headers').map((i) => i.size))];
   const members = [
-    ['Posts', r.postSize, `Every ${state.postSpacing} ft along each wall, ${posts.length} in all, ${r.postEmbedmentIn ? `set ${feetInches(r.postEmbedmentIn)} into the ground` : 'standing on bolt-down brackets on the concrete'}`],
+    ['Posts', r.postSize, `Every ${state.postSpacing} ft along each wall${ownSpacing().map((w) => `, ${wallOf(w).postSpacing} ft on the ${sideName(w).toLowerCase()}`).join('')}, ${posts.length} in all, ${r.postEmbedmentIn ? `set ${feetInches(r.postEmbedmentIn)} into the ground` : 'standing on bolt-down brackets on the concrete'}`],
     [{ gable: 'Trusses', mono: 'Single Slope Trusses', gambrel: 'Gambrel Trusses' }[b.roof], `${state.width} ft span, ${b.roof === 'gambrel' ? 'gambrel profile' : `${state.pitch} in 12`}`, `Every ${state.trussSpacing} ft, ${sum.trusses} in all`],
-    ['Skirt Board', r.skirtSize, 'One row at the ground, all four walls'],
+    ['Skirt Board', r.skirtSize, openSides().length ? 'One row at the ground on each closed wall' : 'One row at the ground, all four walls'],
+    ...(openSides().length ? [['Open Walls', openSides().map((w) => sideName(w)).join(', '), 'Posts only: no skirt board, girts or steel. Bracing for these walls is not designed here']] : []),
     ['Wall Girts', r.girtSize, `Every ${r.girtSpacingIn} in up the wall, on the outside face of the posts, joined on posts`],
     ['Roof Purlins', r.purlinSize, `Every ${r.purlinSpacingIn} in up the slope, ${purlinText}, joined on trusses`],
-    ...(carriers ? [['Truss Carriers', r.trussCarrierSize, 'Two boards along the top of each long wall, under the trusses that land between posts, joined on posts']] : []),
+    ...(carriers ? [['Truss Carriers', r.trussCarrierSize, `Two boards along the top of the ${[...new Set(result.cuts.filter((c) => c.part === 'Truss Carriers').map((c) => c.where.toLowerCase()))].join(' and ')}, under the trusses, joined on posts${openSides().length ? '. On an open wall this beam is the only tie between the posts and its size is not checked here' : ''}`]] : []),
     ...(headerSizes.length ? [['Headers', headerSizes.join(' and '), `Two boards over each door and window${headerSizes.length > 1 ? `, the larger size over openings wider than ${r.wideHeaderOverFt} ft` : ''}`]] : []),
     ...result.geometry.sheds.flatMap((s) => {
       const name = s.label[0].toUpperCase() + s.label.slice(1);

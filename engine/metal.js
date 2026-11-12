@@ -1,5 +1,5 @@
 // Counts the steel: roof and wall panels, trim, and screws.
-import { wallLengthIn, wallTopIn, gableAreaIn, isGable, WALLS } from './building.js';
+import { wallLengthIn, wallTopIn, gableAreaIn, isGable, isOpen, closedWalls, CORNERS } from './building.js';
 import { add } from './stock.js';
 
 const EPS = 0.01;
@@ -15,7 +15,7 @@ export function roofPanels(b, rules) {
 // to the roof line on site.
 export function wallPanels(b, rules) {
   const tally = {};
-  for (const wall of WALLS) {
+  for (const wall of closedWalls(b)) {
     const len = wallLengthIn(b, wall);
     const count = Math.ceil(len / rules.panelCoverageIn - EPS);
     for (let i = 0; i < count; i++) {
@@ -35,7 +35,7 @@ export function trim(b, rules) {
   const pieces = (runIn) => Math.ceil(runIn / covers - EPS);
   const roofRun = b.lengthIn + 2 * b.overhangIn;
   let base = 0;
-  for (const wall of WALLS) {
+  for (const wall of closedWalls(b)) {
     const doors = b.openings.filter((o) => o.wall === wall && o.toGround).reduce((sum, o) => sum + o.widthIn, 0);
     base += pieces(wallLengthIn(b, wall) - doors);
   }
@@ -47,15 +47,20 @@ export function trim(b, rules) {
   out['Eave Trim'] = pieces(roofRun) * edges('eave');
   // Each plane gets its own rake piece at both ends of the building.
   out['Rake Trim'] = b.planes.reduce((n, p) => n + pieces(p.slopeIn) * 2, 0);
-  out['Corner Trim'] = (pieces(wallTopIn(b, 'front', 0)) + pieces(wallTopIn(b, 'back', 0))) * 2;
+  // A corner keeps its trim while either wall that meets there is closed.
+  out['Corner Trim'] = CORNERS.filter((pair) => !pair.every((wall) => isOpen(b, wall))).reduce((n, [side]) => n + pieces(wallTopIn(b, side, 0)), 0);
   out['Base Trim'] = base;
   return out;
 }
 
+// Area of the closed walls, in square inches.
+export function wallAreaIn(b) {
+  return closedWalls(b).reduce((sum, wall) => sum + (isGable(wall) ? gableAreaIn(b) : b.lengthIn * wallTopIn(b, wall, 0)), 0);
+}
+
 export function areas(b) {
   const roofSqFt = b.planes.reduce((sum, p) => sum + p.slopeIn, 0) * (b.lengthIn + 2 * b.overhangIn) / 144;
-  const wallSqFt = (b.lengthIn * (wallTopIn(b, 'front', 0) + wallTopIn(b, 'back', 0)) + 2 * gableAreaIn(b)) / 144;
-  return { roofSqFt, wallSqFt };
+  return { roofSqFt, wallSqFt: wallAreaIn(b) / 144 };
 }
 
 // Foam strips that seal the panel ribs: inside closures under the bottom edge
