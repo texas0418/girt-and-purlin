@@ -36,7 +36,7 @@ export function boards(startIn, endIn, supports, stockFt, stagger = false) {
   return out;
 }
 
-function openSpans(b, wall, heightIn, groundOnly = false) {
+export function openSpans(b, wall, heightIn, groundOnly = false) {
   return b.openings
     .filter((o) => o.wall === wall && (groundOnly ? o.toGround : heightIn > o.sillIn + EPS && heightIn < o.sillIn + o.heightIn - EPS))
     .map((o) => [o.startIn, o.endIn]);

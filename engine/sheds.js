@@ -51,10 +51,10 @@ export function placeSheds(b, rules) {
     for (const outIn of sideOuts) { post('start', s.startIn, outIn); post('end', s.endIn, outIn); }
 
     if (s.pitch < rules.minPanelPitch - EPS) {
-      warnings.push(`${name} is flatter than ${rules.minPanelPitch} in 12. Rib panels that flat need sealant in every lap, and most steel warranties do not cover them.`);
+      warnings.push({ code: 'shed-flat', shedIndex: index, text: `${name} is flatter than ${rules.minPanelPitch} in 12. Rib panels that flat need sealant in every lap, and most steel warranties do not cover them.` });
     }
     if (s.depthIn > rules.shedRafterMaxFt * 12 + EPS) {
-      warnings.push(`${name} is deeper than ${rules.shedRafterMaxFt} ft. Roofs that deep are normally framed with single-slope trusses, not rafters.`);
+      warnings.push({ code: 'shed-deep', shedIndex: index, text: `${name} is deeper than ${rules.shedRafterMaxFt} ft. Roofs that deep are normally framed with single-slope trusses, not rafters.` });
     }
     const slope = shedSlopeIn(b, s);
     const rafterStockFt = fitStock(slope, rules.rafterStockFt);

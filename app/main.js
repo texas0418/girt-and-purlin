@@ -7,7 +7,7 @@ import { drawing, sheetList } from './drawings.js';
 
 const STORE = 'girt-and-purlin.job.v1';
 const PRICE_STORE = 'girt-and-purlin.prices.v1';
-const STEPS = ['Size', 'Roof', 'Doors And Windows', 'Lean-Tos And Porches', 'Colors', 'Price', 'Drawings'];
+const STEPS = ['Size', 'Roof', 'Doors And Windows', 'Lean-Tos And Porches', 'Inside And Finish', 'Colors', 'Price', 'Drawings'];
 const VIEWS = [['finished', 'Finished'], ['framing', 'Framing'], ['plan', 'Floor Plan']];
 const WALL_NAMES = { front: 'Front', back: 'Back', left: 'Left End', right: 'Right End' };
 const TYPE_NAMES = { slider: 'Sliding Door', overhead: 'Overhead Door', walk: 'Walk Door', window: 'Window' };
@@ -39,6 +39,19 @@ const SHED_FIELDS = {
   pitch: { label: 'Roof Pitch', step: 1, min: 1 },
   drop: { label: 'Below Main Eave', step: 0.5, min: 0 },
 };
+// Finish choices. Each row is a title, the key in state.options, and the values with their button names.
+const OPTION_SETS = {
+  wainscotIn: ['Wainscot Height', [[36, '3 ft'], [48, '4 ft']]],
+  linerWalls: ['Wall Liner', [[false, 'None'], [true, 'Steel Liner']]],
+  linerCeiling: ['Ceiling Liner', [[false, 'None'], [true, 'Steel Liner']]],
+  roofInsulation: ['Roof Insulation', [['none', 'None'], ['bubble', 'Bubble'], ['fiberglass', 'Fiberglass']]],
+  wallInsulation: ['Wall Insulation', [['none', 'None'], ['wrap', 'House Wrap'], ['bubble', 'Bubble'], ['fiberglass', 'Fiberglass']]],
+  ceilingR: ['Blown Ceiling Insulation', [[0, 'None'], [19, 'R-19'], [30, 'R-30'], [38, 'R-38'], [49, 'R-49'], [60, 'R-60']]],
+  footing: ['Under Each Post', [['none', 'Not Listed'], ['pad', 'Concrete Pad'], ['collar', 'Poured Collar']]],
+  slab: ['Concrete Floor', [[false, 'None'], [true, '4 in Slab']]],
+  ridgeVent: ['Ridge Vent', [[false, 'None'], [true, 'Vented Ridge']]],
+};
+const OPTION_DEFAULTS = { wainscotIn: 36, linerWalls: false, linerCeiling: false, roofInsulation: 'none', wallInsulation: 'none', ceilingR: 0, footing: 'none', slab: false, ridgeVent: false, skylights: 0 };
 const OPENING_FIELDS = {
   offset: { label: 'Position', step: 0.5 },
   width: { label: 'Width', step: 0.5 },
@@ -63,6 +76,7 @@ const SAMPLE = {
     { type: 'window', wall: 'front', offset: 41, width: 4, height: 3.5, sill: 3 },
   ],
   sheds: [],
+  options: {},
   colors: { walls: '#8b908d', roof: '#2f3336', trim: '#e6e6e0', wainscot: '#2f3336', wainscotOn: true, gutters: false, truck: false },
   pricing: { markupPct: 0, taxPct: 0, laborPerSqFt: 0 },
 };
@@ -190,6 +204,11 @@ function stepper(attrs, label, value, unit, selected) {
     <button ${attrs} data-dir="1" aria-label="More ${label}">&rsaquo;</button></div></div>`;
 }
 
+const opt = (key) => state.options[key] ?? OPTION_DEFAULTS[key];
+const optName = (key) => OPTION_SETS[key][1].find(([v]) => v === opt(key))[1];
+const optionRow = (key, stack) => `<h2>${OPTION_SETS[key][0]}</h2><div class="seg${stack ? ' stack' : ''}">${OPTION_SETS[key][1].map(([v, name]) =>
+  `<button data-opt="${key}" data-val='${JSON.stringify(v)}' class="${opt(key) === v ? 'on' : ''}">${name}</button>`).join('')}</div>`;
+
 const field = (key) => stepper(`data-field="${key}"`, FIELDS[key].label, String(state[key]), FIELDS[key].unit, ui.sel === key);
 const choice = (key, options, unit) => `<div class="seg">${options.map((v) =>
   `<button data-choice="${key}" data-value="${v}" class="${state[key] === v ? 'on' : ''}">${v} ${unit}</button>`).join('')}</div>`;
@@ -242,6 +261,19 @@ function leftPanel() {
       <p class="hint">A lean-to or porch is a single-slope roof on one wall of the building, held up along its outer edge by its own row of posts. A lean-to can be closed in with walls. A porch stays open.</p>
       <h2>On This Building</h2>${rows || '<p class="hint">Nothing yet.</p>'}`;
   }
+  if (ui.step === 'Inside And Finish') {
+    return `${optionRow('linerWalls')}${optionRow('linerCeiling')}
+      <p class="hint">A steel liner is the bright panel on the inside of the walls or under the trusses. The list adds its panels, trim, screws and the framing it fastens to.</p>
+      ${optionRow('roofInsulation')}${optionRow('wallInsulation', true)}${optionRow('ceilingR', true)}
+      <p class="hint">Bubble is a thin foil roll that stops dripping under a steel roof. Blown insulation lies on top of a ceiling liner, so picking it turns the ceiling liner on.</p>
+      ${optionRow('footing', true)}${optionRow('slab')}
+      <p class="hint">The slab is counted at 4 in thick with a plastic sheet under it. No mesh, bar or thickened edge is counted. That is your concrete man's call.</p>
+      ${optionRow('ridgeVent')}
+      <h2>Skylight Panels</h2>${stepper('data-optstep="skylights"', 'Clear Roof Panels', String(opt('skylights')), '', false)}
+      <p class="hint">Each skylight panel takes the place of one steel roof panel, eave to ridge.</p>
+      ${state.colors.wainscotOn ? optionRow('wainscotIn') : ''}
+      <p class="hint">Wainscot and gutters are switched on the Colors step.</p>`;
+  }
   if (ui.step === 'Colors') {
     const name = (hex) => PALETTE.find((p) => p[1] === hex)?.[0] ?? hex;
     return COLOR_PARTS.map(([part, title]) => `<h2>${title}</h2>
@@ -251,7 +283,7 @@ function leftPanel() {
       ${part === 'wainscot' ? `<div class="seg"><button data-wainscot="1" class="${state.colors.wainscotOn ? 'on' : ''}">Wainscot On</button><button data-wainscot="0" class="${state.colors.wainscotOn ? '' : 'on'}">Wainscot Off</button></div>` : ''}`).join('')
       + '<h2>Extras</h2>' + [['gutters', 'Gutters'], ['truck', 'Pickup']].map(([key, title]) =>
         `<div class="seg"><button data-extra="${key}" data-on="1" class="${state.colors[key] ? 'on' : ''}">${title} On</button><button data-extra="${key}" data-on="0" class="${state.colors[key] ? '' : 'on'}">${title} Off</button></div>`).join('')
-      + '<p class="hint">Gutters are in the picture only for now. They are not in the material list or the price. The pickup is there for scale.</p>'
+      + '<p class="hint">Gutters add the troughs, downspouts and hangers to the material list. The pickup is there for scale and is not in the list.</p>'
       + '<p class="hint">Sample colors. Each supplier\'s own color chart comes with its catalog.</p>';
   }
   if (ui.step === 'Price') {
@@ -279,6 +311,23 @@ function leftPanel() {
     <p class="hint">Everything an engineer needs to start on this building: the size, the framing as drawn, where every post and opening sits, and the drawings. This program does not do the engineering.</p>`;
 }
 
+// The finish choices that are switched on, in plain words.
+function finishRows() {
+  const rows = [];
+  if (state.colors.wainscotOn) rows.push(`${optName('wainscotIn')} wainscot`);
+  const liner = [opt('linerWalls') && 'walls', opt('linerCeiling') && 'ceiling'].filter(Boolean);
+  if (liner.length) rows.push(`Steel liner on the ${liner.join(' and ')}`);
+  if (opt('roofInsulation') !== 'none') rows.push(`${optName('roofInsulation')} insulation under the roof`);
+  if (opt('wallInsulation') !== 'none') rows.push(opt('wallInsulation') === 'wrap' ? 'House wrap on the walls' : `${optName('wallInsulation')} insulation in the walls`);
+  if (opt('ceilingR')) rows.push(`${optName('ceilingR')} blown insulation over the ceiling`);
+  if (opt('footing') !== 'none') rows.push(`${optName('footing')} under each post`);
+  if (opt('slab')) rows.push('4 in concrete floor');
+  if (opt('ridgeVent')) rows.push('Vented ridge');
+  if (opt('skylights')) rows.push(`${opt('skylights')} clear skylight ${opt('skylights') === 1 ? 'panel' : 'panels'}`);
+  if (state.colors.gutters) rows.push('Gutters and downspouts');
+  return rows;
+}
+
 function specRows() {
   const colorName = (hex) => PALETTE.find((c) => c[1] === hex)?.[0] ?? hex;
   const counts = {};
@@ -293,6 +342,7 @@ function specRows() {
     ['Frame', `Posts every ${state.postSpacing} ft, trusses every ${state.trussSpacing} ft`],
     ['Doors And Windows', openings || 'None'],
     ...(state.sheds.length ? [['Lean-Tos And Porches', state.sheds.map((s) => `${SHED_NAMES[s.kind]}, ${WALL_NAMES[s.wall].toLowerCase()} wall, ${num(s.depth)} x ${num(s.length)} ft${s.kind === 'leanto' && s.enclosed ? ', enclosed' : ''}`).join('<br>')]] : []),
+    ...(finishRows().length ? [['Inside And Finish', finishRows().join('<br>')]] : []),
     ['Colors', `${colorName(state.colors.walls)} walls, ${colorName(state.colors.roof)} roof, ${colorName(state.colors.trim)} trim${state.colors.wainscotOn ? `, ${colorName(state.colors.wainscot)} wainscot` : ''}`],
   ];
 }
@@ -312,6 +362,9 @@ function paintShared() {
     <h2>Price</h2>${lines.map(([k, v]) => `<div class="sum"><span>${k}</span><span>${money(Number(v) || 0)}</span></div>`).join('')}
     <div class="sum strong"><span>Total</span><span>${money(Number(p.total) || 0)}</span></div>`;
 }
+
+// Warnings the program can fix by itself come first; the rest are notes.
+const firstWarning = () => result.warnings.find((w) => w.openingIndex !== undefined) || result.warnings[0];
 
 function paint() {
   if (shared) return paintShared();
@@ -334,14 +387,14 @@ function paint() {
   else if (plan) $('plan').innerHTML = floorPlan(result);
 
   const check = $('check');
-  const warning = result.warnings[0];
+  const warning = firstWarning();
   check.hidden = !ui.problem && !warning;
   check.innerHTML = '';
   if (ui.problem) {
     check.innerHTML = `<span><b>${ui.lead || 'That will not fit.'}</b> ${esc(ui.problem)}</span><button data-dismiss>OK</button>`;
   } else if (warning) {
     const more = result.warnings.length > 1 ? ` (1 of ${result.warnings.length})` : '';
-    check.innerHTML = `<span><b>Check this${more}.</b> ${esc(warning.text)}</span><button data-fix>Fix It For Me</button>`;
+    check.innerHTML = `<span><b>Check this${more}.</b> ${esc(warning.text)}</span>${warning.openingIndex === undefined ? '' : '<button data-fix>Fix It For Me</button>'}`;
   }
 
   const changed = ui.changed.size;
@@ -449,6 +502,17 @@ document.addEventListener('click', (e) => {
     const title = COLOR_PARTS.find((p) => p[0] === d.color)[1];
     return apply({ colors: { ...state.colors, [d.color]: d.hex } }, `${title} color now ${t.title}`);
   }
+  if (d.opt) {
+    const value = JSON.parse(d.val), change = { [d.opt]: value };
+    // Blown insulation needs a ceiling under it, so the two switch together.
+    if (d.opt === 'ceilingR' && value && !opt('linerCeiling')) change.linerCeiling = true;
+    if (d.opt === 'linerCeiling' && !value) change.ceilingR = 0;
+    return apply({ options: { ...state.options, ...change } }, `${OPTION_SETS[d.opt][0]} now ${OPTION_SETS[d.opt][1].find(([v]) => v === value)[1].toLowerCase()}`);
+  }
+  if (d.optstep) {
+    const to = Math.max(0, opt('skylights') + Number(d.dir));
+    return apply({ options: { ...state.options, skylights: to } }, `Skylight panels now ${to}`);
+  }
   if (d.wainscot) {
     return apply({ colors: { ...state.colors, wainscotOn: d.wainscot === '1' } }, `Wainscot ${d.wainscot === '1' ? 'on' : 'off'}`);
   }
@@ -458,7 +522,7 @@ document.addEventListener('click', (e) => {
   }
   if ('dismiss' in d) { ui.problem = ''; ui.lead = ''; return paint(); }
   if ('fix' in d) {
-    const w = result.warnings[0], o = state.openings[w.openingIndex];
+    const w = firstWarning(), o = state.openings[w.openingIndex];
     const moved = (byIn) => state.openings.map((x, i) => (i === w.openingIndex ? { ...x, offset: o.offset + byIn / 12 } : x));
     const fits = [w.slideByIn, w.otherSlideByIn].find((byIn) => byIn !== undefined && design({ ...state, openings: moved(byIn) }).ok);
     return apply({ openings: moved(fits ?? w.slideByIn) }, `${TYPE_NAMES[o.type]} moved to ${w.code === 'door-edge-off-post' ? 'meet' : 'clear'} the post`);
@@ -586,6 +650,7 @@ function openEngineer() {
     ['Peak Height', `${feetInches(b.eaveIn + b.riseIn)}, ground to ridge`],
     ['Roof Pitch', `${state.pitch} in 12`], ['Overhang', `${state.overhang} in, all four sides`],
     ['Floor Area', `${Math.round(sum.floorSqFt).toLocaleString('en-US')} sq ft`],
+    ...(finishRows().length ? [['Inside And Finish', finishRows().join(', ')]] : []),
   ];
   const carriers = result.items.some((i) => i.name === 'Truss Carriers');
   const headerSizes = [...new Set(result.items.filter((i) => i.name === 'Headers').map((i) => i.size))];
@@ -622,7 +687,7 @@ function openEngineer() {
     <table class="cuts eng-members"><thead><tr><th>Member</th><th>Size</th><th>Layout</th><th class="chg">Engineer's Change</th></tr></thead>
       <tbody>${members.map(([m, s, l]) => `<tr><td>${m}</td><td>${esc(s)}</td><td>${esc(l)}</td><td class="chg">&nbsp;</td></tr>`).join('')}</tbody></table>
     <h3>What We Need From You</h3>
-    <p>The program that made this package lays out the frame and counts the material. It does not size anything for load. It has no footings, no bracing, no truss design and no connection details. Those are yours, along with any stamped drawings the permit office asks for.</p>
+    <p>The program that made this package lays out the frame and counts the material. It does not size anything for load. It has no footing design, no bracing, no truss design and no connection details. Any pads, collars or slab in the material list are counted from common sizes and are not sized for this site. Those are yours, along with any stamped drawings the permit office asks for.</p>
     ${b.sheds.length ? `<p>Each lean-to and porch roof starts below the main eave, so its rafters and upper purlins have to carry snow that slides off the main roof and drifts against the wall above. The rafter, ledger and beam sizes shown are placeholders with no published table behind them.</p>` : ''}
     <h3>Doors And Windows</h3>
     ${b.openings.length ? `<table class="cuts"><thead><tr><th>Opening</th><th>Wall</th><th>Starts At</th><th>Width</th><th>Height</th><th>Sill</th></tr></thead>

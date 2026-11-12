@@ -93,6 +93,27 @@ export function normalize(input) {
     b.sheds.push(sh);
   });
 
+  // Finish options. Wainscot and gutters also follow the switches on the Colors step.
+  const o = input.options ?? {};
+  const pick = (v, list, name) => {
+    if (v == null) return list[0];
+    if (!list.includes(v)) { errors.push(`${name} is not one of the choices.`); return list[0]; }
+    return v;
+  };
+  b.options = {
+    wainscotIn: (o.wainscot ?? input.colors?.wainscotOn) ? pick(o.wainscotIn, [36, 48], 'Wainscot height') : 0,
+    gutters: !!(o.gutters ?? input.colors?.gutters),
+    linerWalls: !!o.linerWalls,
+    linerCeiling: !!o.linerCeiling,
+    roofInsulation: pick(o.roofInsulation, ['none', 'bubble', 'fiberglass'], 'Roof insulation'),
+    wallInsulation: pick(o.wallInsulation, ['none', 'bubble', 'wrap', 'fiberglass'], 'Wall insulation'),
+    ceilingR: pick(o.ceilingR, [0, 19, 30, 38, 49, 60], 'Ceiling insulation'),
+    footing: pick(o.footing, ['none', 'pad', 'collar'], 'Footing'),
+    slab: !!o.slab,
+    ridgeVent: !!o.ridgeVent,
+    skylights: o.skylights == null ? 0 : Math.round(num(o.skylights, 'Skylight panels', 0, 200)),
+  };
+
   return { building: b, errors };
 }
 

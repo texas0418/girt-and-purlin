@@ -327,6 +327,7 @@ export function createView(canvas, stage) {
     treated: new THREE.MeshStandardMaterial({ color: 0x8c8656, roughness: 0.9 }),
     gravel: new THREE.MeshStandardMaterial({ map: gravelMap, roughness: 1 }),
     slab: new THREE.MeshStandardMaterial({ color: 0xb9b8b2, roughness: 0.9 }),
+    skylight: new THREE.MeshStandardMaterial({ color: 0xf2f4ee, roughness: 0.25, metalness: 0, emissive: 0x3a3c36 }),
     fence: new THREE.MeshStandardMaterial({ color: 0x8d8272, roughness: 0.95 }),
     bark: new THREE.MeshStandardMaterial({ color: 0x4f4335, roughness: 1 }),
     leaves: [0x34492a, 0x3d532e, 0x2e4228].map((color) => new THREE.MeshStandardMaterial({ color, roughness: 1 })),
@@ -486,7 +487,8 @@ export function createView(canvas, stage) {
       const s = o.startIn / 12, e = o.endIn / 12;
       return { type: o.type, u0: flip ? Lw - e : s, u1: flip ? Lw - s : e, v0: o.sillIn / 12, v1: (o.sillIn + o.heightIn) / 12 };
     });
-    const wains = hasWainscot && H > WAINSCOT_FT + 1 ? WAINSCOT_FT : 0;
+    const wainsFt = (b.options?.wainscotIn || WAINSCOT_FT * 12) / 12;
+    const wains = hasWainscot && H > wainsFt + 1 ? wainsFt : 0;
     const sorted = (list, max) => [...new Set(list.filter((v) => v >= 0 && v <= max).map((v) => +v.toFixed(4)))].sort((a, c) => a - c);
     const us = sorted([0, Lw, ...ops.flatMap((o) => [o.u0, o.u1])], Lw);
     const vs = sorted([0, H, wains, ...ops.flatMap((o) => [o.v0, o.v1])], H);
@@ -604,6 +606,21 @@ export function createView(canvas, stage) {
     const lift = t / 2 / Math.cos(a) + 0.02;
     const top = H + rise + lift;
     box(finished, mats.trim, len + 0.16, 0.16, 0.26, 0, top + 0.09, 0);
+    // A vented ridge stands taller than a plain cap, with a dark slot down each side.
+    if (b.options?.ridgeVent) {
+      box(finished, mats.trim, len - 0.6, 0.22, 0.5, 0, top + 0.25, 0);
+      box(finished, mats.dark, len - 0.8, 0.07, 0.56, 0, top + 0.17, 0);
+    }
+    // Skylight panels share out between the two slopes, spread evenly along the roof.
+    const lights = b.options?.skylights ?? 0, slots = Math.floor(len / PANEL_FT);
+    for (const side of [1, -1]) {
+      const count = Math.min(slots, side === 1 ? Math.ceil(lights / 2) : Math.floor(lights / 2));
+      for (let k = 0; k < count; k++) {
+        const x = (Math.floor((k + 0.5) * slots / count) + 0.5) * PANEL_FT - len / 2;
+        const midY = H + rise - (run / 2) * Math.tan(a) + lift;
+        box(finished, mats.skylight, PANEL_FT - 0.1, t + 0.03, slope - 1.2, x, midY, side * run / 2, side * a);
+      }
+    }
     for (const side of [1, -1]) {
       const midY = H + rise - (run / 2) * Math.tan(a) + lift;
       box(finished, mats.roof, len, t, slope, 0, midY, side * run / 2, side * a);
@@ -755,7 +772,7 @@ export function createView(canvas, stage) {
 
     const L = b.lengthIn / 12, W = b.widthIn / 12;
     pad(site, mats.gravel, L + 4, W + 4, 0.05);
-    box(site, mats.slab, L - 0.1, 0.3, W - 0.1, 0, 0.15, 0);
+    if (b.options?.slab) box(site, mats.slab, L - 0.1, 0.3, W - 0.1, 0, 0.15, 0);
     for (const wall of ['front', 'back', 'left', 'right']) {
       const g = buildWall(b, wall, colors.wainscotOn);
       g.updateMatrixWorld(true);

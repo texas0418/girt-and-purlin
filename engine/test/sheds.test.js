@@ -129,6 +129,6 @@ test('sheds that cannot be built are turned away', () => {
 test('flat and deep sheds carry a warning', () => {
   const flat = design({ ...plain, sheds: [{ kind: 'porch', wall: 'back', depth: 8, pitch: 2, drop: 1 }] });
   assert.equal(flat.ok, true);
-  assert.match(flat.warnings.join(' '), /flatter than 3 in 12/);
-  assert.equal(porch.warnings.some((w) => /flatter/.test(w)), false);
+  assert.match(flat.warnings.map((w) => w.text).join(' '), /flatter than 3 in 12/);
+  assert.equal(porch.warnings.some((w) => /flatter/.test(w.text)), false);
 });
