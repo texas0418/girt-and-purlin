@@ -17,7 +17,7 @@ Version 1 draws plain rectangular buildings with a gable roof.
 
 It does no engineering. There are no footings, bracing, truss design or connection details, and snow, wind and soil are left to your engineer. The framing rules in `engine/rules.js` are each marked verified or not, and the ones marked not verified have not yet been checked against a published source. The drawings carry a notice saying so.
 
-Also not in it yet: lean-tos, porches and hip roofs; panel counts that subtract openings; Excel price lists; gutters in the material list.
+Also not in it yet: buildings that need a post longer than 24 feet (with 12 foot walls and a 4/12 roof, 50 feet wide works and 60 feet wide is turned away with a reason); lean-tos, porches and hip roofs; panel counts that subtract openings; Excel price lists; gutters in the material list.
 
 ## Run It
 

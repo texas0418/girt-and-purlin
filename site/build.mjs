@@ -179,6 +179,7 @@ ${head('What It Does', 'Everything on this page was made by the program from one
 
   <div id="notyet">${notYet([
     'Any shape other than a plain rectangle with a gable roof. No lean-tos, porches or hip roofs.',
+    'Buildings that need a post longer than 24 feet. With 12 foot walls and a 4/12 roof, 50 feet wide works and 60 feet wide is turned away with a reason. So are walls over 20 feet tall.',
     'Engineering of any kind. Snow, wind and soil are your engineer\'s call.',
     'Panel counts that subtract door and window openings. Today the walls are counted solid.',
     'Excel files. Price lists load as CSV.',
