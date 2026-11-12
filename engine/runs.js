@@ -1,0 +1,110 @@
+// Every run of lumber in the frame, split into the boards it is built from.
+// The material count and the cut list both read this, so they always agree.
+// A joint between two boards lands on a post (walls) or a truss (roof), and
+// the joints step over from one row to the next so they never line up.
+import { wallLengthIn, isGable, WALLS } from './building.js';
+import { fitStock, spans } from './stock.js';
+
+const EPS = 0.01;
+export const WALL_NAMES = { front: 'Front wall', back: 'Back wall', left: 'Left end', right: 'Right end' };
+export const OPENING_NAMES = { slider: 'sliding door', walk: 'walk door', overhead: 'overhead door', window: 'window' };
+
+// Roof slope from ridge to the outer edge of the overhang.
+export function slopeIn(b) {
+  const run = b.widthIn / 2 + b.overhangIn;
+  return Math.hypot(run, run * b.pitch / 12);
+}
+
+// One run from startIn to endIn. Each board reaches the farthest support its
+// stock length allows. A staggered run starts with a board half as long.
+export function boards(startIn, endIn, supports, stockFt, stagger = false) {
+  const maxIn = Math.max(...stockFt) * 12;
+  const out = [];
+  let at = startIn, first = true;
+  while (endIn - at > EPS) {
+    let next = endIn;
+    if (endIn - at > maxIn + EPS) {
+      const within = (reach) => supports.filter((s) => s > at + EPS && s <= at + reach + EPS && s < endIn - EPS);
+      const near = first && stagger ? within(maxIn / 2) : [];
+      const reachable = near.length ? near : within(maxIn);
+      next = reachable.length ? Math.max(...reachable) : at + maxIn;
+    }
+    out.push({ cutIn: next - at, stockFt: fitStock(next - at, stockFt) });
+    at = next;
+    first = false;
+  }
+  return out;
+}
+
+function openSpans(b, wall, heightIn, groundOnly = false) {
+  return b.openings
+    .filter((o) => o.wall === wall && (groundOnly ? o.toGround : heightIn > o.sillIn + EPS && heightIn < o.sillIn + o.heightIn - EPS))
+    .map((o) => [o.startIn, o.endIn]);
+}
+
+export function girtRowCount(b, rules) {
+  return Math.ceil((b.eaveIn - rules.skirtHeightIn) / rules.girtSpacingIn - EPS);
+}
+
+export function purlinRowsPerSide(b, rules) {
+  return Math.ceil(slopeIn(b) / rules.purlinSpacingIn - EPS) + 1;
+}
+
+export function headerSizeFor(o, rules) {
+  return o.widthIn > rules.wideHeaderOverFt * 12 + EPS ? rules.wideHeaderSize : rules.headerSize;
+}
+
+// Trusses that do not sit on a post need a carrier under them along that wall.
+export function needsCarrier(wall, posts, trusses) {
+  const at = posts.filter((p) => p.wall === wall).map((p) => p.atIn);
+  return trusses.some((t) => !at.some((s) => Math.abs(s - t.x) < 0.5));
+}
+
+export function lumberRuns(b, rules, posts, trusses) {
+  const runs = [];
+  const stock = rules.lumberStockFt;
+  const put = (part, size, where, pieces, note = '') => runs.push({ part, size, where, note, pieces });
+  const rowCount = girtRowCount(b, rules);
+
+  for (const wall of WALLS) {
+    const len = wallLengthIn(b, wall);
+    // Corner posts belong to the long walls but the end wall boards land on them too.
+    const supports = [0, len, ...posts.filter((p) => p.wall === wall).map((p) => p.atIn)];
+    for (const [s, e] of spans(len, openSpans(b, wall, 0, true))) {
+      put('Skirt Boards', rules.skirtSize, WALL_NAMES[wall], boards(s, e, supports, stock));
+    }
+    let row = 0;
+    for (; row < rowCount; row++) {
+      const h = Math.min(rules.skirtHeightIn + (row + 1) * rules.girtSpacingIn, b.eaveIn);
+      for (const [s, e] of spans(len, openSpans(b, wall, h))) {
+        put('Wall Girts', rules.girtSize, WALL_NAMES[wall], boards(s, e, supports, stock, row % 2 === 1));
+      }
+    }
+    if (isGable(wall)) {
+      // Rows keep going up the gable triangle, each one shorter than the last.
+      for (let up = rules.girtSpacingIn; up < b.riseIn - EPS; up += rules.girtSpacingIn, row++) {
+        const rowLen = b.widthIn * (1 - up / b.riseIn);
+        const s = (b.widthIn - rowLen) / 2;
+        put('Wall Girts', rules.girtSize, `${WALL_NAMES[wall]}, gable`, boards(s, s + rowLen, supports, stock, row % 2 === 1), 'Ends cut to the roof slope');
+      }
+    }
+    if (!isGable(wall) && needsCarrier(wall, posts, trusses)) {
+      for (let ply = 0; ply < 2; ply++) {
+        put('Truss Carriers', rules.trussCarrierSize, WALL_NAMES[wall], boards(0, len, supports, stock, ply === 1), 'Two boards side by side at the top of the posts');
+      }
+    }
+  }
+
+  const trussAt = trusses.map((t) => t.x);
+  for (let i = 0; i < purlinRowsPerSide(b, rules) * 2; i++) {
+    put('Roof Purlins', rules.purlinSize, 'Roof', boards(-b.overhangIn, b.lengthIn + b.overhangIn, trussAt, stock, i % 2 === 1));
+  }
+
+  for (const o of b.openings) {
+    const where = `${WALL_NAMES[o.wall]}, ${OPENING_NAMES[o.type]}`;
+    for (let i = 0; i < 2; i++) put('Headers', headerSizeFor(o, rules), where, boards(0, o.widthIn, [], stock));
+    if (o.type === 'window') put('Opening Blocking', rules.girtSize, where, boards(0, o.widthIn, [], stock), 'Under the sill');
+    if (o.type === 'slider') put('Opening Blocking', rules.girtSize, where, boards(0, o.widthIn * 2, [], stock), 'Backs the door track');
+  }
+  return runs;
+}

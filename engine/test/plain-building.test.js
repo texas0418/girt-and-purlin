@@ -31,29 +31,54 @@ test('trusses', () => {
 });
 
 test('skirt boards', () => {
-  // Long walls 48 ft = three 16s each. Ends 30 ft = one 16 and one 14 each.
-  assert.equal(qty(r, 'Skirt Boards', '16 ft'), 8);
-  assert.equal(qty(r, 'Skirt Boards', '14 ft'), 2);
+  // Long walls 48 ft with a post every 8 ft: three 16s each, joints on posts.
+  // Ends 30 ft with posts every 7 ft 6 in: two 15 ft boards meeting on the center post, each from a 16.
+  assert.equal(qty(r, 'Skirt Boards', '16 ft'), 10);
+  assert.equal(qty(r, 'Skirt Boards', '14 ft'), 0);
 });
 
 test('wall girts', () => {
-  // (144 - 7.25) / 24 = 5.7, so 6 rows. Each row: eight 16s and two 14s. Six rows: 48 and 12.
+  // (144 - 7.25) / 24 = 5.7, so 6 rows. Joints land on posts and step over on every other row.
   assert.equal(r.summary.girtRowsPerWall, 6);
+  // Long walls: three rows of 16, 16, 16 and three rows of 8, 16, 16, 8. Fifteen 16s and six 8s a wall.
+  // Ends: three rows of 15 ft, 15 ft (two 16s) and three rows of 7 ft 6 in, 15 ft, 7 ft 6 in
+  // (one 16, two 8s). Nine 16s and six 8s an end.
   // Gable rows at 24 in and 48 in above the eave (rise is 60 in):
-  // 30 ft x (1 - 24/60) = 18 ft = one 16 and one 8.  30 ft x (1 - 48/60) = 6 ft = one 8.
-  // Two ends: two 16s and four 8s.
-  assert.equal(qty(r, 'Wall Girts', '16 ft'), 50);
-  assert.equal(qty(r, 'Wall Girts', '14 ft'), 12);
-  assert.equal(qty(r, 'Wall Girts', '8 ft'), 4);
+  // 30 ft x (1 - 24/60) = 18 ft, two 9 ft boards meeting on the center post, each from a 10.
+  // 30 ft x (1 - 48/60) = 6 ft = one 8.
+  assert.equal(qty(r, 'Wall Girts', '16 ft'), 48);
+  assert.equal(qty(r, 'Wall Girts', '10 ft'), 4);
+  assert.equal(qty(r, 'Wall Girts', '8 ft'), 26);
 });
 
 test('roof purlins', () => {
   // Run 15 ft + 1 ft overhang = 192 in, rise 64 in, slope = 202.39 in.
   // 202.39 / 24 = 8.4, rounds up to 9 spaces, 10 rows a side, 20 rows.
-  // Each row is 48 + 2 = 50 ft: three 16s and one 8.
+  // Each row is 48 + 2 = 50 ft, starting 1 ft outside the end wall, joints on trusses 4 ft apart.
+  // Plain row: 13 ft (to the truss at 12 ft), 16, 16, 5 ft. Stepped row: 5 ft, 16, 16, 13 ft.
+  // Either way one 14, two 16s and one 8.
   assert.equal(r.summary.purlinRowsPerSide, 10);
-  assert.equal(qty(r, 'Roof Purlins', '16 ft'), 60);
+  assert.equal(qty(r, 'Roof Purlins', '16 ft'), 40);
+  assert.equal(qty(r, 'Roof Purlins', '14 ft'), 20);
   assert.equal(qty(r, 'Roof Purlins', '8 ft'), 20);
+});
+
+test('truss carriers', () => {
+  // Trusses every 4 ft, posts every 8 ft: every other truss lands between posts,
+  // so each long wall gets two 2x12 boards. One runs 16, 16, 16 and the other 8, 16, 16, 8.
+  assert.equal(qty(r, 'Truss Carriers', '16 ft'), 10);
+  assert.equal(qty(r, 'Truss Carriers', '8 ft'), 4);
+  // With a truss on every post there is nothing to carry.
+  assert.equal(qty(design({ ...plain, trussSpacing: 8 }), 'Truss Carriers'), 0);
+});
+
+test('board joints land on posts and trusses, and step over row to row', () => {
+  const ends = (part, where) => r.cuts.filter((c) => c.part === part && c.where === where).map((c) => c.cutIn);
+  // Every long wall board is a whole number of 8 ft bays.
+  for (const cut of ends('Wall Girts', 'Front wall')) assert.equal(cut % 96, 0);
+  // Purlins start 12 in outside the end wall, so the end boards are 12 in more than a truss bay.
+  for (const cut of ends('Roof Purlins', 'Roof')) assert.ok(cut % 48 === 0 || cut % 48 === 12);
+  assert.deepEqual(ends('Roof Purlins', 'Roof').sort((a, b) => a - b), [60, 156, 192]);
 });
 
 test('roof panels', () => {

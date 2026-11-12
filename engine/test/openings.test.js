@@ -36,12 +36,14 @@ test('a wide sliding door moves posts to its jambs', () => {
 test('a door to the ground cuts the skirt board and the girt rows it crosses', () => {
   const plain = design(base);
   const r = withOpenings({ type: 'walk', wall: 'front', offset: 10, width: 3, height: 6 + 8 / 12 });
-  // Front skirt becomes 10 ft and 35 ft: one 10, two 16s and one 8, in place of three 16s.
-  assert.equal(qty(r, 'Skirt Boards', '16 ft'), qty(plain, 'Skirt Boards', '16 ft') - 1);
+  // Front skirt becomes 10 ft and 35 ft. The 35 ft side runs door to the post at 24 ft (11 ft, from a 12),
+  // then 16, then 8: one 10, one 12, one 16 and one 8 in place of three 16s.
+  assert.equal(qty(r, 'Skirt Boards', '16 ft'), qty(plain, 'Skirt Boards', '16 ft') - 2);
+  assert.equal(qty(r, 'Skirt Boards', '12 ft'), 1);
   assert.equal(qty(r, 'Skirt Boards', '10 ft'), 1);
   assert.equal(qty(r, 'Skirt Boards', '8 ft'), 1);
   // The door is 80 in tall, so it cuts the girt rows at 31.25, 55.25 and 79.25 in: three rows.
-  assert.equal(qty(r, 'Wall Girts', '10 ft'), 3);
+  assert.equal(qty(r, 'Wall Girts', '10 ft'), qty(plain, 'Wall Girts', '10 ft') + 3);
 });
 
 test('openings show up on the list with headers', () => {
@@ -71,4 +73,13 @@ test('a window on a post offers a second way to slide when the short way is bloc
   const other = slid(w.otherSlideByIn);
   assert.equal(other.ok, true);
   assert.equal(other.warnings.some((x) => x.openingIndex === w.openingIndex), false);
+});
+
+test('an opening wider than 12 ft gets the larger header', () => {
+  const r = withOpenings({ type: 'overhead', wall: 'front', offset: 16, width: 16, height: 10 });
+  // Two 2x12 boards 16 ft long. A 12 ft door keeps the 2x10.
+  assert.equal(r.items.find((i) => i.name === 'Headers').size, '2x12');
+  assert.equal(qty(r, 'Headers', '16 ft'), 2);
+  const narrow = withOpenings({ type: 'overhead', wall: 'front', offset: 16, width: 12, height: 10 });
+  assert.equal(narrow.items.find((i) => i.name === 'Headers').size, '2x10');
 });

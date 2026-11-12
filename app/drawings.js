@@ -1,6 +1,6 @@
 // Framing drawings: one view of each wall from outside, and the roof from above.
 import { wallLengthIn, wallTopIn, isGable } from '../engine/building.js';
-import { segments, feetInches } from '../engine/stock.js';
+import { spans, feetInches } from '../engine/stock.js';
 
 export const SHEETS = [['front', 'Front Wall'], ['back', 'Back Wall'], ['left', 'Left End'], ['right', 'Right End'], ['roof', 'Roof Framing']];
 const DARK = { ink: '#dcdcdc', soft: '#8f8f8f', paper: '#262626', wood: '#3a3a3a' };
@@ -56,26 +56,13 @@ function wallSheet(result, wall, c) {
     const a = u(fromIn), z = u(fromIn + runIn);
     return `<rect x="${Math.min(a, z)}" y="${y(heightIn + deepIn / 2)}" width="${Math.abs(z - a)}" height="${deepIn / 12}" fill="${c.paper}" stroke="${c.ink}" stroke-width="0.04"/>`;
   };
-  let at = 0;
-  for (const run of segments(len * 12, gaps(0, true))) {
-    const hole = gaps(0, true).find((g) => Math.abs(g[0] - at) < 0.01);
-    if (hole) at = hole[1];
-    out.push(board(at, run, rules.skirtHeightIn / 2, rules.skirtHeightIn));
-    at += run;
-  }
+  for (const [from, to] of spans(len * 12, gaps(0, true))) out.push(board(from, to - from, rules.skirtHeightIn / 2, rules.skirtHeightIn));
   const heights = [];
   for (const row of girtRows.filter((r) => r.wall === wall)) {
     if (row.lengthIn) {
       out.push(board((len * 12 - row.lengthIn) / 2, row.lengthIn, row.heightIn, 5.5));
     } else {
-      let from = 0;
-      const holes = gaps(row.heightIn).sort((p, q) => p[0] - q[0]);
-      for (const run of segments(len * 12, holes)) {
-        const hole = holes.find((g) => Math.abs(g[0] - from) < 0.01);
-        if (hole) from = hole[1];
-        out.push(board(from, run, row.heightIn, 5.5));
-        from += run;
-      }
+      for (const [from, to] of spans(len * 12, gaps(row.heightIn))) out.push(board(from, to - from, row.heightIn, 5.5));
     }
     heights.push(row.heightIn);
   }

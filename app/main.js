@@ -521,13 +521,16 @@ function openEngineer() {
     ['Roof Pitch', `${state.pitch} in 12`], ['Overhang', `${state.overhang} in, all four sides`],
     ['Floor Area', `${Math.round(sum.floorSqFt).toLocaleString('en-US')} sq ft`],
   ];
+  const carriers = result.items.some((i) => i.name === 'Truss Carriers');
+  const headerSizes = [...new Set(result.items.filter((i) => i.name === 'Headers').map((i) => i.size))];
   const members = [
     ['Posts', r.postSize, `Every ${state.postSpacing} ft along each wall, ${posts.length} in all, set ${feetInches(r.postEmbedmentIn)} into the ground`],
     ['Trusses', `${state.width} ft span, ${state.pitch} in 12`, `Every ${state.trussSpacing} ft, ${sum.trusses} in all`],
     ['Skirt Board', r.skirtSize, 'One row at the ground, all four walls'],
-    ['Wall Girts', r.girtSize, `Every ${r.girtSpacingIn} in up the wall, flat on the outside of the posts`],
-    ['Roof Purlins', r.purlinSize, `Every ${r.purlinSpacingIn} in up the slope, ${sum.purlinRowsPerSide} rows each side`],
-    ['Headers', r.headerSize, 'Over each door and window'],
+    ['Wall Girts', r.girtSize, `Every ${r.girtSpacingIn} in up the wall, on the outside face of the posts, joined on posts`],
+    ['Roof Purlins', r.purlinSize, `Every ${r.purlinSpacingIn} in up the slope, ${sum.purlinRowsPerSide} rows each side, joined on trusses`],
+    ...(carriers ? [['Truss Carriers', r.trussCarrierSize, 'Two boards along the top of each long wall, under the trusses that land between posts, joined on posts']] : []),
+    ...(headerSizes.length ? [['Headers', headerSizes.join(' and '), `Two boards over each door and window${headerSizes.length > 1 ? `, the larger size over openings wider than ${r.wideHeaderOverFt} ft` : ''}`]] : []),
     ['Roof And Walls', 'Ribbed steel panel', `${r.panelCoverageIn} in coverage, screwed to the purlins and girts`],
   ];
   const first = `<div class="page sheet eng">

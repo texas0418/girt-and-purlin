@@ -4,19 +4,22 @@
 // knowledge and still has to be checked against a published source.
 
 export const defaultRules = {
-  postEmbedmentIn:   { value: 48,   verified: false, note: 'Depth of post below grade' },
+  postEmbedmentIn:   { value: 48,   verified: true, note: 'Depth of post below grade', source: 'American Wood Council Post Frame Buildings (about 4 ft); Bannock County ID guide (48 in minimum); FBi Buildings. A minimum: frost depth or the engineer can make it deeper' },
   postStockFt:       { value: [10, 12, 14, 16, 18, 20, 24], verified: false, note: 'Post lengths a yard stocks' },
-  postSize:          { value: '6x6 treated', verified: false },
+  postSize:          { value: '6x6 treated', verified: true, source: 'Bannock County ID and Kochville Township MI guides (6x6 minimum). Fits small and medium buildings; tall walls move to laminated columns' },
   doorJambPostMinFt: { value: 6,    verified: false, note: 'Doors this wide or wider get a post at each jamb' },
 
-  skirtSize:         { value: '2x8 treated', verified: false },
+  skirtSize:         { value: '2x8 treated', verified: true, source: 'USDA NRCS PA-12 Fig 5.10 (2x8 treated skirt board)' },
   skirtHeightIn:     { value: 7.25, verified: false },
-  girtSize:          { value: '2x6', verified: false },
-  girtSpacingIn:     { value: 24,   verified: false, note: 'On center, up the wall' },
-  purlinSize:        { value: '2x4', verified: false },
-  purlinSpacingIn:   { value: 24,   verified: false, note: 'On center, up the roof slope' },
+  girtSize:          { value: '2x6', verified: true, source: 'Bannock County ID guide (2x6 minimum at 24 in). 2x4 is also published (NRCS, Kochville, APM)' },
+  girtSpacingIn:     { value: 24,   verified: true, note: 'On center, up the wall', source: 'Kochville Township MI (24 in maximum); Bannock County ID; APM Buildings' },
+  purlinSize:        { value: '2x4', verified: true, source: 'USDA NRCS PA-12 (2x4 at 24 in on trusses 4 ft apart); Kochville Township MI; APM Buildings' },
+  purlinSpacingIn:   { value: 24,   verified: true, note: 'On center, up the roof slope', source: 'USDA NRCS PA-12; FBi Buildings (24 in maximum)' },
   lumberStockFt:     { value: [8, 10, 12, 14, 16], verified: false, note: 'Board lengths a yard stocks' },
-  headerSize:        { value: '2x10', verified: false },
+  headerSize:        { value: '2x10', verified: false, note: 'Two boards over each opening. Kochville Township MI lists two 2x10 for a 12 ft end wall opening; the engineer sets the real size' },
+  wideHeaderSize:    { value: '2x12', verified: false, note: 'Openings wider than wideHeaderOverFt. Kochville Township MI lists two 2x12 at 16 ft' },
+  wideHeaderOverFt:  { value: 12,   verified: false },
+  trussCarrierSize:  { value: '2x12', verified: true, note: 'Two boards along each long wall when trusses land between posts', source: 'USDA NRCS PA-12 (2-ply 2x12 roof girders); Bannock County ID post-frame guide; APM Buildings' },
 
   panelCoverageIn:   { value: 36,   verified: true, note: 'Width one metal panel covers', source: 'Fabral Grandrib 3 guide p.8; Metal Sales Classic Rib; A.B. Martin ABM Panel; Everlast II' },
   roofPanelExtraIn:  { value: 2,    verified: true, note: 'Panel hang past the eave', source: 'Central States Panel-Loc Plus guide and A.B. Martin guide give 2 in; Fabral Standard Details p.2 gives 1 to 2 in' },

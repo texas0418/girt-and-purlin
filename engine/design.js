@@ -1,7 +1,9 @@
 // The one entry point: a building description in, every part out.
 import { normalize } from './building.js';
 import { resolveRules, unverifiedRules } from './rules.js';
-import { placePosts, placeTrusses, frameWalls, frameRoof, frameOpenings } from './framing.js';
+import { placePosts, placeTrusses } from './framing.js';
+import { lumberRuns, girtRowCount, purlinRowsPerSide } from './runs.js';
+import { wallLengthIn, isGable, WALLS } from './building.js';
 import { roofPanels, wallPanels, trim, closures, screws, areas } from './metal.js';
 import { feetInches } from './stock.js';
 import { cutList } from './cutlist.js';
@@ -22,10 +24,30 @@ export function design(input, ruleOverrides) {
   if (postErrors.length) return { ok: false, errors: postErrors, warnings, items: [] };
 
   const trusses = placeTrusses(b);
-  const walls = frameWalls(b, rules);
-  const roof = frameRoof(b, rules);
-  const openings = frameOpenings(b, rules);
+  const runs = lumberRuns(b, rules, posts, trusses);
   const fasteners = screws(b, rules);
+
+  // Boards counted by part, then size, then stock length.
+  const tally = {};
+  for (const r of runs) for (const p of r.pieces) {
+    const bySize = (tally[r.part] ??= {});
+    const byLen = (bySize[r.size] ??= {});
+    byLen[p.stockFt] = (byLen[p.stockFt] ?? 0) + 1;
+  }
+  const lumber = (name) => Object.entries(tally[name] ?? {}).flatMap(([size, t]) => lines('Framing', name, size, t));
+
+  // Where each girt row sits, for the picture and the drawings.
+  const girtRows = [];
+  for (const wall of WALLS) {
+    for (let i = 0; i < girtRowCount(b, rules); i++) {
+      girtRows.push({ wall, heightIn: Math.min(rules.skirtHeightIn + (i + 1) * rules.girtSpacingIn, b.eaveIn) });
+    }
+    if (isGable(wall)) {
+      for (let up = rules.girtSpacingIn; up < b.riseIn - 0.01; up += rules.girtSpacingIn) {
+        girtRows.push({ wall, heightIn: b.eaveIn + up, lengthIn: wallLengthIn(b, wall) * (1 - up / b.riseIn) });
+      }
+    }
+  }
 
   const postTally = {};
   for (const p of posts) postTally[p.stockFt] = (postTally[p.stockFt] ?? 0) + 1;
@@ -33,11 +55,12 @@ export function design(input, ruleOverrides) {
   const items = [
     ...lines('Framing', 'Posts', rules.postSize, postTally),
     { group: 'Framing', name: 'Trusses', size: `${b.widthIn / 12} ft span, ${b.pitch}/12`, length: '', qty: trusses.length, ft: b.widthIn / 12 },
-    ...lines('Framing', 'Skirt Boards', rules.skirtSize, walls.skirt),
-    ...lines('Framing', 'Wall Girts', rules.girtSize, walls.girts),
-    ...lines('Framing', 'Roof Purlins', rules.purlinSize, roof.purlins),
-    ...lines('Framing', 'Headers', rules.headerSize, openings.headers),
-    ...lines('Framing', 'Opening Blocking', rules.girtSize, openings.blocking),
+    ...lumber('Skirt Boards'),
+    ...lumber('Wall Girts'),
+    ...lumber('Roof Purlins'),
+    ...lumber('Truss Carriers'),
+    ...lumber('Headers'),
+    ...lumber('Opening Blocking'),
     ...lines('Metal', 'Roof Panels', '', roofPanels(b, rules), feetInches, inchesToFt),
     ...lines('Metal', 'Wall Panels', '', wallPanels(b, rules), feetInches, inchesToFt),
     ...Object.entries(trim(b, rules)).map(([name, qty]) => ({ group: 'Metal', name, size: '', length: feetInches(rules.trimPieceIn), qty, ft: rules.trimPieceIn / 12 })),
@@ -55,11 +78,11 @@ export function design(input, ruleOverrides) {
     summary: {
       floorSqFt: (b.widthIn * b.lengthIn) / 144,
       posts: posts.length, trusses: trusses.length,
-      girtRowsPerWall: walls.girtRowsPerWall, purlinRowsPerSide: roof.rowsPerSide,
+      girtRowsPerWall: girtRowCount(b, rules), purlinRowsPerSide: purlinRowsPerSide(b, rules),
       screws: fasteners.count, ...areas(b),
     },
-    geometry: { building: b, posts, trusses, girtRows: walls.girtRows, purlinRowLengthIn: roof.rowLengthIn },
-    cuts: cutList(b, rules, posts),
+    geometry: { building: b, posts, trusses, girtRows, purlinRowLengthIn: b.lengthIn + 2 * b.overhangIn },
+    cuts: cutList(rules, posts, runs),
     rules,
     unverifiedRules: unverifiedRules(),
   };

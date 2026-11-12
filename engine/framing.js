@@ -1,7 +1,6 @@
-// Places the wood: posts, trusses, skirt boards, girts, purlins, and the
-// framing around doors and windows.
+// Places the posts and trusses. The boards between them are laid out in runs.js.
 import { wallLengthIn, wallTopIn, isGable, WALLS } from './building.js';
-import { cutStock, fitStock, add, segments, feetInches } from './stock.js';
+import { fitStock, feetInches } from './stock.js';
 
 const EPS = 0.01;
 
@@ -83,67 +82,4 @@ export function placeTrusses(b) {
   return evenSpots(b.lengthIn, b.trussSpacingIn).map((x) => ({ x, spanIn: b.widthIn }));
 }
 
-// Roof slope from ridge to the outer edge of the overhang.
-export function slopeIn(b) {
-  const run = b.widthIn / 2 + b.overhangIn;
-  return Math.hypot(run, run * b.pitch / 12);
-}
-
-function cutsAt(b, wall, heightIn, groundOnly = false) {
-  return b.openings
-    .filter((o) => o.wall === wall && (groundOnly ? o.toGround : heightIn > o.sillIn + EPS && heightIn < o.sillIn + o.heightIn - EPS))
-    .map((o) => [o.startIn, o.endIn]);
-}
-
-export function frameWalls(b, rules) {
-  const skirt = {};
-  const girts = {};
-  const girtRows = [];
-
-  const rowCount = Math.ceil((b.eaveIn - rules.skirtHeightIn) / rules.girtSpacingIn - EPS);
-  const rowHeights = Array.from({ length: rowCount }, (_, i) =>
-    Math.min(rules.skirtHeightIn + (i + 1) * rules.girtSpacingIn, b.eaveIn));
-
-  for (const wall of WALLS) {
-    const len = wallLengthIn(b, wall);
-    for (const seg of segments(len, cutsAt(b, wall, 0, true))) {
-      for (const ft of cutStock(seg, rules.lumberStockFt)) add(skirt, ft);
-    }
-    for (const h of rowHeights) {
-      girtRows.push({ wall, heightIn: h });
-      for (const seg of segments(len, cutsAt(b, wall, h))) {
-        for (const ft of cutStock(seg, rules.lumberStockFt)) add(girts, ft);
-      }
-    }
-    if (isGable(wall)) {
-      // Rows keep going up the gable triangle, each one shorter than the last.
-      for (let up = rules.girtSpacingIn; up < b.riseIn - EPS; up += rules.girtSpacingIn) {
-        const rowLen = b.widthIn * (1 - up / b.riseIn);
-        girtRows.push({ wall, heightIn: b.eaveIn + up, lengthIn: rowLen });
-        for (const ft of cutStock(rowLen, rules.lumberStockFt)) add(girts, ft);
-      }
-    }
-  }
-  return { skirt, girts, girtRows, girtRowsPerWall: rowCount };
-}
-
-export function frameRoof(b, rules) {
-  const purlins = {};
-  const rowsPerSide = Math.ceil(slopeIn(b) / rules.purlinSpacingIn - EPS) + 1;
-  const rowLengthIn = b.lengthIn + 2 * b.overhangIn;
-  for (let i = 0; i < rowsPerSide * 2; i++) {
-    for (const ft of cutStock(rowLengthIn, rules.lumberStockFt)) add(purlins, ft);
-  }
-  return { purlins, rowsPerSide, rowLengthIn };
-}
-
-export function frameOpenings(b, rules) {
-  const headers = {};
-  const blocking = {};
-  for (const o of b.openings) {
-    for (let i = 0; i < 2; i++) for (const ft of cutStock(o.widthIn, rules.lumberStockFt)) add(headers, ft);
-    if (o.type === 'window') for (const ft of cutStock(o.widthIn, rules.lumberStockFt)) add(blocking, ft);
-    if (o.type === 'slider') for (const ft of cutStock(o.widthIn * 2, rules.lumberStockFt)) add(blocking, ft);
-  }
-  return { headers, blocking };
-}
+export { slopeIn } from './runs.js';
