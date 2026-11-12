@@ -56,3 +56,14 @@ test('a bad price list is refused with the row number', () => {
   assert.match(problems[0], /Row 3/);
   assert.equal(parsePriceList('Name,Cost\nPosts,4\n').catalog, null);
 });
+
+test('freight and extra lines add flat dollars and are not taxed', () => {
+  const r = design(plain);
+  const base = priceJob(r, SAMPLE_CATALOG, { markupPct: 10, taxPct: 7 });
+  const more = priceJob(r, SAMPLE_CATALOG, { markupPct: 10, taxPct: 7, freight: 350, extras: [{ name: 'Permit', amount: 125.5 }, { name: '', amount: 0 }, { name: 'Bad', amount: -4 }] });
+  assert.equal(more.tax, base.tax);
+  assert.equal(more.freight, 350);
+  assert.equal(more.extra, 125.5);
+  assert.deepEqual(more.extraLines, [{ name: 'Permit', amount: 125.5 }]);
+  assert.equal(more.total, Math.round((base.total + 475.5) * 100) / 100);
+});

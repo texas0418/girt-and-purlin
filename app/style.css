@@ -97,6 +97,14 @@ main { display: grid; grid-template-columns: 300px 1fr 360px; gap: 3px; padding:
 .op.open { background: #262626; box-shadow: inset 0 0 0 1px var(--accent); padding-bottom: 8px; }
 .op .dim, .op .seg { margin: 3px 8px; }
 .op .remove { margin: 5px 8px 0; }
+.op.here { box-shadow: inset 3px 0 0 var(--accent); }
+.lab { display: block; margin: 6px 2px; color: var(--text-2); font-size: 12px; }
+.op .lab { margin: 6px 8px; }
+.in { display: block; width: 100%; margin-top: 3px; padding: 6px 8px; background: #1d1d1d; border: 1px solid #3d3d3d; border-radius: 5px; color: var(--text); font: inherit; font-size: 13px; }
+.in:focus { outline: 0; border-color: var(--accent); }
+textarea.in { resize: vertical; }
+.pair { display: grid; grid-template-columns: 1fr 84px auto; gap: 4px; margin: 4px 2px; align-items: center; }
+.pair .in { margin-top: 0; }
 
 .swatches { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; padding: 2px 2px 8px; }
 .swatches button { aspect-ratio: 1.3; border: 1px solid #1a1a1a; border-radius: 4px; padding: 0; }
@@ -199,6 +207,13 @@ a.btn { display: inline-flex; align-items: center; text-decoration: none; }
 .page.eng h3 { color: #1a1a1a; font-size: 13px; margin: 20px 0 6px; }
 .page.eng p { line-height: 1.5; }
 .page th.chg, .page td.chg { width: 190px; }
+.page .tick td.box { width: 26px; }
+.page .tick td.box i { display: block; width: 13px; height: 13px; border: 1px solid #1a1a1a; }
+.page .tick td { border-bottom: 1px solid #ddd; }
+.page .optgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 28px; margin-top: 18px; }
+.page .optcard h3 { font-size: 18px; margin-bottom: 8px; }
+.page .optcard dl { margin: 12px 0; font-size: 12px; }
+.page .optcard { break-inside: avoid; }
 .page .eng-members td { padding: 9px 12px 9px 0; vertical-align: top; }
 .page .eng-members td:nth-child(-n+2) { white-space: nowrap; }
 .page.eng > svg { max-height: 360px; }

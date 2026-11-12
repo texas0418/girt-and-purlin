@@ -1,7 +1,7 @@
 // Keeps a copy of the app on the device so it opens with no connection.
-const CACHE = 'girt-and-purlin-v24';
+const CACHE = 'girt-and-purlin-v25';
 const FILES = [
-  './', 'index.html', 'style.css', 'main.js', 'scene.js', 'plan.js', 'drawings.js', 'manifest.json',
+  './', 'index.html', 'style.css', 'main.js', 'office.js', 'scene.js', 'plan.js', 'drawings.js', 'manifest.json',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-180.png',
   'vendor/three.module.min.js', 'vendor/three.core.js', 'vendor/OrbitControls.js', 'vendor/Sky.js',
   '../engine/design.js',

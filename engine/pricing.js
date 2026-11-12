@@ -85,8 +85,10 @@ function pieceCost(row, item) {
 }
 
 // settings: { markupPct, taxPct, laborPerSqFt }. Tax is charged on materials plus markup.
+// Freight and extra lines are flat dollar amounts the builder types in. They are
+// added after markup and are not taxed here; sales tax rules differ by state.
 export function priceJob(result, catalog, settings = {}) {
-  const { markupPct = 0, taxPct = 0, laborPerSqFt = 0 } = settings;
+  const { markupPct = 0, taxPct = 0, laborPerSqFt = 0, freight = 0, extras = [] } = settings;
   const lines = result.items.map((item) => {
     const row = findRow(catalog, item);
     const each = row ? pieceCost(row, item) : null;
@@ -96,9 +98,12 @@ export function priceJob(result, catalog, settings = {}) {
   const markup = cents(materials * markupPct / 100);
   const tax = cents((materials + markup) * taxPct / 100);
   const labor = cents(((result.summary?.floorSqFt ?? 0) + (result.summary?.shedSqFt ?? 0)) * laborPerSqFt);
+  const flat = (v) => cents(Math.max(0, Number(v) || 0));
+  const extraLines = extras.map((e) => ({ name: String(e.name ?? '').trim() || 'Extra', amount: flat(e.amount) })).filter((e) => e.amount > 0);
+  const extra = cents(extraLines.reduce((sum, e) => sum + e.amount, 0));
   return {
-    lines, materials, markup, tax, labor,
-    total: cents(materials + markup + tax + labor),
+    lines, materials, markup, tax, labor, freight: flat(freight), extraLines, extra,
+    total: cents(materials + markup + tax + labor + flat(freight) + extra),
     unpriced: lines.filter((l) => l.cost === null).length,
   };
 }

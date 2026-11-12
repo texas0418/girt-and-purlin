@@ -2,12 +2,13 @@ import { design } from '../engine/design.js';
 import { feetInches } from '../engine/stock.js';
 import { priceJob, parsePriceList, priceListCsv, toCsv, SAMPLE_CATALOG } from '../engine/pricing.js';
 import { createView } from './scene.js';
+import { jobs, templates, company, priceLists, newId, designOf, STARTING_POINTS } from './office.js';
 import { floorPlan } from './plan.js';
 import { drawing, sheetList } from './drawings.js';
 
 const STORE = 'girt-and-purlin.job.v1';
 const PRICE_STORE = 'girt-and-purlin.prices.v1';
-const STEPS = ['Size', 'Roof', 'Doors And Windows', 'Lean-Tos And Porches', 'Inside And Finish', 'Colors', 'Price', 'Drawings'];
+const STEPS = ['Jobs', 'Size', 'Roof', 'Doors And Windows', 'Lean-Tos And Porches', 'Inside And Finish', 'Colors', 'Price', 'Drawings'];
 const VIEWS = [['finished', 'Finished'], ['framing', 'Framing'], ['plan', 'Floor Plan']];
 const WALL_NAMES = { front: 'Front', back: 'Back', left: 'Left End', right: 'Right End' };
 const TYPE_NAMES = { slider: 'Sliding Door', overhead: 'Overhead Door', walk: 'Walk Door', window: 'Window' };
@@ -92,9 +93,12 @@ let result = design(state);
 // A saved job the engine turns away is not opened; the sample shows instead and the reason is given.
 let unopened = '';
 if (!result.ok) { unopened = result.errors[0]; state = structuredClone(SAMPLE); result = design(state); }
+const shelve = () => jobs.put({ id: state.id, name: state.job, savedAt: Date.now(), size: `${state.width} x ${state.length} x ${state.eaveHeight}`, job: state });
+if (!state.id) { state.id = newId(); if (!shared) { try { localStorage.setItem(STORE, JSON.stringify(state)); } catch { /* storage is off */ } shelve(); } }
 let catalog = loadPrices();
+if (!shared && !catalog.sample && !priceLists.all().some((l) => l.supplier === catalog.supplier)) priceLists.put(catalog);
 let priced = priceJob(result, catalog, state.pricing);
-const ui = { delta: 0, notice: '', step: 'Size', view: 'finished', sheet: 'front', sel: null, opening: null, shed: null, placing: null, changed: new Set(), last: '', problem: '', savedAt: null };
+const ui = { delta: 0, notice: '', step: 'Size', view: 'finished', sheet: 'front', sel: null, opening: null, shed: null, placing: null, jobrow: null, tplrow: null, confirm: null, changed: new Set(), last: '', problem: '', savedAt: null };
 if (unopened) { ui.lead = 'Your saved job could not be opened.'; ui.problem = `${unopened} The sample building is showing instead.`; }
 const view = createView($('view'), $('stage'));
 
@@ -110,8 +114,8 @@ function readShare() {
 }
 
 function shareLink() {
-  const { pricing, ...job } = state;
-  const price = { package: priced.materials + priced.markup, labor: priced.labor, tax: priced.tax, total: priced.total };
+  const { pricing, id, alts, alt, ...job } = state;
+  const price = { lines: priceLines(priced), total: priced.total };
   const bytes = new TextEncoder().encode(JSON.stringify({ ...job, price }));
   const packed = btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   return `${location.origin}${location.pathname}#q=${packed}`;
@@ -158,6 +162,52 @@ function download(name, text, type = 'text/csv') {
 function save() {
   if (shared) return;
   try { localStorage.setItem(STORE, JSON.stringify(state)); ui.savedAt = new Date(); } catch { ui.savedAt = null; }
+  shelve();
+}
+
+// The lines a customer sees under the price, in the order they add up.
+const priceLines = (p) => [['Building Package', p.materials + p.markup], ['Freight And Delivery', p.freight],
+  ...p.extraLines.map((e) => [e.name, e.amount]), ['Labor', p.labor], ['Sales Tax', p.tax]].filter(([, v], i) => i === 0 || v > 0);
+
+// Swaps the whole job for another one: a saved job, a copy, or a template.
+function openJob(job, note) {
+  const next = { ...structuredClone(SAMPLE), ...structuredClone(job) };
+  const tried = design(next);
+  if (!tried.ok) { ui.lead = 'That one could not be opened.'; ui.problem = tried.errors[0]; return paint(); }
+  state = next;
+  result = tried;
+  priced = priceJob(result, catalog, state.pricing);
+  Object.assign(ui, { changed: new Set(), last: note, delta: 0, problem: '', lead: '', opening: null, shed: null, placing: null, jobrow: null, tplrow: null, confirm: null });
+  $('job').value = state.job;
+  save();
+  view.update(result, state.colors);
+  paint();
+}
+
+const startFrom = (name, design_) => openJob({ ...design_, id: newId(), job: name, pricing: state.pricing }, `Started from ${name}`);
+
+// Customer options: each is its own version of the building. The one showing
+// lives in the job itself; the rest wait in state.alts.
+const ALT_NAMES = ['Good', 'Better', 'Best', 'Option 4'];
+
+function eachAlt(fn) {
+  const keep = [state, result, priced];
+  const out = keep[0].alts.map((a, i) => {
+    [state, result, priced] = keep;
+    if (i !== keep[0].alt) {
+      const other = { ...keep[0], ...structuredClone(a.snap) }, tried = design(other);
+      if (!tried.ok) return null;
+      state = other; result = tried; priced = priceJob(result, catalog, state.pricing);
+    }
+    return fn(a, i);
+  });
+  [state, result, priced] = keep;
+  return out;
+}
+
+function showAlt(i) {
+  const alts = state.alts.map((a, k) => (k === state.alt ? { ...a, snap: designOf(state) } : a));
+  openJob({ ...state, ...structuredClone(alts[i].snap), alts, alt: i }, `Now showing ${alts[i].name}`);
 }
 
 const lineKey = (i) => [i.group, i.name, i.size, i.length].join('|');
@@ -213,7 +263,38 @@ const field = (key) => stepper(`data-field="${key}"`, FIELDS[key].label, String(
 const choice = (key, options, unit) => `<div class="seg">${options.map((v) =>
   `<button data-choice="${key}" data-value="${v}" class="${state[key] === v ? 'on' : ''}">${v} ${unit}</button>`).join('')}</div>`;
 
+const textIn = (attrs, label, value, hint) => `<label class="lab">${label}<input class="in" ${attrs} value="${esc(value)}" placeholder="${hint}" spellcheck="false"></label>`;
+
+function jobsPanel() {
+  const when = (t) => new Date(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const rows = jobs.all().map((j) => {
+    const here = j.id === state.id;
+    const head = `<button data-jobrow="${j.id}"><span>${esc(j.name)}<small>${esc(j.size)} ft, ${here ? 'open now' : `saved ${when(j.savedAt)}`}</small></span></button>`;
+    if (ui.jobrow !== j.id || here) return `<div class="op${here ? ' here' : ''}">${head}</div>`;
+    return `<div class="op open">${head}<div class="seg"><button data-jobopen="${j.id}">Open</button><button data-jobdel="${j.id}">${ui.confirm === j.id ? 'Press Again To Delete' : 'Delete'}</button></div></div>`;
+  }).join('');
+  const mine = templates.all().map((t, i) => {
+    const head = `<button data-tplrow="${i}"><span>${esc(t.name)}<small>${t.design.width} x ${t.design.length} x ${t.design.eaveHeight} ft</small></span></button>`;
+    if (ui.tplrow !== i) return `<div class="op">${head}</div>`;
+    return `<div class="op open">${head}<div class="seg"><button data-tplstart="${i}">Start A Job</button><button data-tpldel="${i}">Delete</button></div></div>`;
+  }).join('');
+  const co = company.get();
+  return `<h2>My Jobs</h2>${rows || '<p class="hint">Nothing saved yet.</p>'}
+    <div class="seg"><button data-jobcopy>Copy This Job</button></div>
+    <p class="hint">Every job saves itself on this device as you work. Nothing is sent anywhere.</p>
+    <h2>Start A New Job From</h2>
+    <div class="seg stack">${STARTING_POINTS.map((t, i) => `<button data-start="${i}">${t.name}</button>`).join('')}</div>
+    <h2>My Templates</h2>${mine || '<p class="hint">Buildings you sell often can be kept here.</p>'}
+    <div class="seg"><button data-tplsave>Save This Building As A Template</button></div>
+    <h2>Your Company</h2>
+    ${textIn('data-company="name"', 'Company Name', co.name, 'Your company name')}
+    ${textIn('data-company="contact"', 'Address, Phone And Email', co.contact, 'One line')}
+    <label class="lab">Proposal Terms<textarea class="in" data-company="terms" rows="4" placeholder="Payment schedule and how long the price holds">${esc(co.terms)}</textarea></label>
+    <p class="hint">These head every proposal and printed sheet.</p>`;
+}
+
 function leftPanel() {
+  if (ui.step === 'Jobs') return jobsPanel();
   if (ui.step === 'Size') {
     return `<h2>Building Size</h2>${['width', 'length', 'eaveHeight', 'pitch', 'overhang'].map(field).join('')}
       <h2>Post Spacing</h2>${choice('postSpacing', [6, 8, 10, 12], 'ft')}
@@ -288,24 +369,43 @@ function leftPanel() {
   }
   if (ui.step === 'Price') {
     const row = (label, value, strong) => `<div class="sum${strong ? ' strong' : ''}"><span>${label}</span><span>${money(value)}</span></div>`;
+    const lists = [SAMPLE_CATALOG, ...priceLists.all()];
+    const listRows = lists.map((l, i) => {
+      const on = l.supplier === catalog.supplier;
+      return `<div class="op${on ? ' here' : ''}"><button data-list="${i}"><span>${esc(l.supplier)}<small>${l.rows.length} items${on ? ', in use' : ''}</small></span><em>${money(priceJob(result, l, state.pricing).total)}</em></button></div>`;
+    }).join('');
+    const extras = state.pricing.extras ?? [];
+    const alts = state.alts ? eachAlt((a, i) => `<div class="op${i === state.alt ? ' open' : ''}"><button data-alt="${i}"><span>${esc(a.name)}<small>${i === state.alt ? 'Showing now' : 'Click to show'}</small></span><em>${money(priced.total)}</em></button>
+      ${i === state.alt ? `${textIn(`data-altname="${i}"`, 'Name', a.name, 'Option name')}<button class="btn remove" data-altdel="${i}">Remove This Option</button>` : ''}</div>`).join('') : '';
     return `<h2>Price List</h2>
-      <p class="picked">${esc(catalog.supplier)}, ${catalog.rows.length} items</p>
+      ${listRows}
       ${catalog.sample ? '<p class="hint go">These are sample prices so the screen has something to add up. Load your own list before quoting a job.</p>' : ''}
       ${ui.notice ? `<p class="hint go">${esc(ui.notice)}</p>` : ''}
       <div class="seg"><button data-import>Load A Price List</button><button data-export>Save This List</button></div>
-      ${catalog.sample ? '' : '<div class="seg"><button data-sample>Back To Sample Prices</button></div>'}
-      <p class="hint">A price list is a spreadsheet saved as CSV with four columns: Item, Size, Unit and Price. Save This List gives you one to fill in.</p>
+      ${catalog.sample ? '' : '<div class="seg"><button data-listdel>Remove The List In Use</button></div>'}
+      <p class="hint">A price list is a spreadsheet saved as CSV with four columns: Item, Size, Unit and Price. Save This List gives you one to fill in. Load one for each yard you buy from and the figure beside each is this job at that yard's prices.</p>
       <h2>Your Numbers</h2>
       ${Object.entries(PRICE_FIELDS).map(([k, f]) => stepper(`data-price="${k}"`, f.label, String(state.pricing[k]), f.unit, false)).join('')}
+      <h2>Freight And Extras</h2>
+      <label class="lab">Freight Or Delivery, Dollars<input class="in" type="number" min="0" step="1" inputmode="decimal" data-num="freight" value="${state.pricing.freight || ''}" placeholder="0"></label>
+      ${extras.map((e, i) => `<div class="pair"><input class="in" data-xname="${i}" value="${esc(e.name)}" placeholder="What it is" aria-label="Extra line name">
+        <input class="in" type="number" min="0" step="1" inputmode="decimal" data-xamt="${i}" value="${e.amount || ''}" placeholder="0" aria-label="Extra line dollars">
+        <button class="btn" data-xdel="${i}" aria-label="Remove this line">Remove</button></div>`).join('')}
+      <div class="seg"><button data-xadd>Add A Line</button></div>
+      <p class="hint">Flat dollar amounts, such as a permit or equipment rental. They are added after markup and sales tax is not figured on them.</p>
       <h2>This Job</h2>
-      ${row('Materials', priced.materials)}${row('Markup', priced.markup)}${row('Sales Tax', priced.tax)}${row('Labor', priced.labor)}${row('Total', priced.total, true)}
-      ${priced.unpriced ? `<p class="hint go">${priced.unpriced} ${priced.unpriced === 1 ? 'line has' : 'lines have'} no price in this list and count as zero.</p>` : ''}`;
+      ${row('Materials', priced.materials)}${row('Markup', priced.markup)}${row('Sales Tax', priced.tax)}${row('Labor', priced.labor)}
+      ${priced.freight ? row('Freight And Delivery', priced.freight) : ''}${priced.extraLines.map((e) => row(esc(e.name), e.amount)).join('')}${row('Total', priced.total, true)}
+      ${priced.unpriced ? `<p class="hint go">${priced.unpriced} ${priced.unpriced === 1 ? 'line has' : 'lines have'} no price in this list and count as zero.</p>` : ''}
+      <h2>Options For The Customer</h2>${alts}
+      ${(state.alts?.length ?? 0) < ALT_NAMES.length ? `<div class="seg"><button data-altadd>${state.alts ? 'Add Another Option' : 'Offer Good, Better, Best'}</button></div>` : ''}
+      <p class="hint">Each option is its own version of this building. Changes go to the one that is showing and the others stay as they are. The proposal prints them all with their totals.</p>`;
   }
   return `<h2>Drawings</h2>
     <div class="seg stack">${sheetList(result).map(([k, n]) => `<button data-sheet="${k}" class="${ui.sheet === k ? 'on' : ''}">${n}</button>`).join('')}</div>
     <p class="hint">Walls are drawn from outside the building. Dashed lines show the part of each post in the ground.</p>
     <h2>Print</h2>
-    <div class="seg stack"><button data-sheets="all">All Sheets</button><button data-sheets="cuts">Cut List Only</button></div>
+    <div class="seg stack"><button data-sheets="all">All Sheets</button><button data-sheets="cuts">Cut List Only</button><button data-checksheet>Delivery Check Sheet</button></div>
     <h2>For Your Engineer</h2>
     <div class="seg stack"><button data-engineer>Engineer Package</button></div>
     <p class="hint">Everything an engineer needs to start on this building: the size, the framing as drawn, where every post and opening sits, and the drawings. This program does not do the engineering.</p>`;
@@ -349,7 +449,7 @@ function specRows() {
 
 function paintShared() {
   const p = shared.price;
-  const lines = [['Building Package', p.package], ['Labor', p.labor], ['Sales Tax', p.tax]].filter(([, v], i) => i === 0 || v > 0);
+  const lines = p.lines ?? [['Building Package', p.package], ['Labor', p.labor], ['Sales Tax', p.tax]].filter(([, v], i) => i === 0 || v > 0);
   document.body.classList.add('shared');
   document.body.classList.toggle('embed', shared.embed);
   document.title = `${state.job}, Girt And Purlin`;
@@ -359,7 +459,7 @@ function paintShared() {
   if (ui.view === 'plan') $('plan').innerHTML = floorPlan({ ...result, warnings: [] });
   $('total').innerHTML = `<small>${esc(state.job)}</small><strong>${money(Number(p.total) || 0)}</strong><em>Drag the picture to look around your building.</em>`;
   $('list').innerHTML = `<h2>Your Building</h2><dl class="spec">${specRows().map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>
-    <h2>Price</h2>${lines.map(([k, v]) => `<div class="sum"><span>${k}</span><span>${money(Number(v) || 0)}</span></div>`).join('')}
+    <h2>Price</h2>${lines.map(([k, v]) => `<div class="sum"><span>${esc(k)}</span><span>${money(Number(v) || 0)}</span></div>`).join('')}
     <div class="sum strong"><span>Total</span><span>${money(Number(p.total) || 0)}</span></div>`;
 }
 
@@ -425,7 +525,36 @@ document.addEventListener('click', (e) => {
   }
   if ('import' in d) return $('pricefile').click();
   if ('export' in d) return download('price-list.csv', priceListCsv(catalog));
-  if ('sample' in d) { ui.notice = ''; return setPrices(SAMPLE_CATALOG); }
+  if (d.list) { ui.notice = ''; return setPrices([SAMPLE_CATALOG, ...priceLists.all()][Number(d.list)]); }
+  if ('listdel' in d) { priceLists.remove(catalog.supplier); ui.notice = ''; return setPrices(SAMPLE_CATALOG); }
+  if ('xadd' in d) return apply({ pricing: { ...state.pricing, extras: [...(state.pricing.extras ?? []), { name: '', amount: 0 }] } }, 'Extra line added');
+  if (d.xdel) return apply({ pricing: { ...state.pricing, extras: state.pricing.extras.filter((_, i) => i !== Number(d.xdel)) } }, 'Extra line removed');
+  if (d.jobrow) { ui.jobrow = ui.jobrow === d.jobrow ? null : d.jobrow; ui.confirm = null; return paint(); }
+  if (d.jobopen) return openJob(jobs.all().find((j) => j.id === d.jobopen).job, 'Job opened');
+  if (d.jobdel) {
+    if (ui.confirm !== d.jobdel) { ui.confirm = d.jobdel; return paint(); }
+    jobs.remove(d.jobdel); ui.confirm = null; ui.jobrow = null;
+    return paint();
+  }
+  if ('jobcopy' in d) return openJob({ ...state, id: newId(), job: `${state.job}, Copy` }, 'Copy made. You are in the copy now');
+  if (d.start) { const t = STARTING_POINTS[Number(d.start)]; return startFrom(t.name, t.design); }
+  if (d.tplrow) { ui.tplrow = ui.tplrow === Number(d.tplrow) ? null : Number(d.tplrow); return paint(); }
+  if (d.tplstart) { const t = templates.all()[Number(d.tplstart)]; return startFrom(t.name, t.design); }
+  if (d.tpldel) { templates.remove(templates.all()[Number(d.tpldel)].name); ui.tplrow = null; return paint(); }
+  if ('tplsave' in d) { templates.put({ name: state.job, design: designOf(state) }); ui.tplrow = 0; return paint(); }
+  if ('altadd' in d) {
+    const snap = designOf(state);
+    const alts = state.alts ? [...state.alts.map((a, k) => (k === state.alt ? { ...a, snap } : a)), { name: ALT_NAMES[state.alts.length], snap }]
+      : [{ name: ALT_NAMES[0], snap }, { name: ALT_NAMES[1], snap }];
+    return apply({ alts, alt: alts.length - 1 }, `Now showing ${alts[alts.length - 1].name}, a copy to change`);
+  }
+  if (d.alt) return Number(d.alt) === state.alt ? null : showAlt(Number(d.alt));
+  if (d.altdel) {
+    const alts = state.alts.filter((_, i) => i !== Number(d.altdel));
+    if (alts.length < 2) { const { alts: gone, alt, ...rest } = state; state = rest; return apply({}, 'Options removed. The building showing is the job'); }
+    return openJob({ ...state, ...structuredClone(alts[0].snap), alts, alt: 0 }, `Option removed. Now showing ${alts[0].name}`);
+  }
+  if ('checksheet' in d) return openCheckSheet();
   if ('order' in d) {
     return download('material-order.csv', toCsv([['Qty', 'Item', 'Size', 'Length', 'Each', 'Cost'],
       ...priced.lines.map((l) => [l.qty, l.name, l.size, l.length, l.each ?? '', l.cost ?? ''])]));
@@ -545,6 +674,24 @@ $('view').addEventListener('pointerup', (e) => {
   paint();
 });
 
+// Typed fields. The repaint waits a moment so a click that ended the typing still lands on its button.
+document.addEventListener('change', (e) => {
+  const d = e.target.dataset, v = e.target.value;
+  const later = (change, note) => setTimeout(() => apply(change, note), 200);
+  const dollars = Math.max(0, Number(v) || 0);
+  if (d.company) return company.set({ [d.company]: v.trim() });
+  if (d.num) return later({ pricing: { ...state.pricing, [d.num]: dollars } }, `Freight now ${money(dollars)}`);
+  if (d.xname) return later({ pricing: { ...state.pricing, extras: state.pricing.extras.map((x, i) => (i === Number(d.xname) ? { ...x, name: v.trim() } : x)) } }, 'Extra line named');
+  if (d.xamt) return later({ pricing: { ...state.pricing, extras: state.pricing.extras.map((x, i) => (i === Number(d.xamt) ? { ...x, amount: dollars } : x)) } }, `Extra line now ${money(dollars)}`);
+  if (d.altname) return later({ alts: state.alts.map((a, i) => (i === Number(d.altname) ? { ...a, name: v.trim() || ALT_NAMES[i] } : a)) }, 'Option renamed');
+});
+
+// Company details typed on a printed page are kept for the next one.
+$('proposal').addEventListener('focusout', (e) => {
+  const key = e.target.dataset?.co, text = e.target.innerText?.trim();
+  if (key && text && text !== e.target.dataset.ph) company.set({ [key]: text });
+});
+
 $('pricefile').addEventListener('change', async (e) => {
   const file = e.target.files[0];
   if (!file) return;
@@ -554,14 +701,49 @@ $('pricefile').addEventListener('change', async (e) => {
   ui.notice = problems.length
     ? `Loaded ${next.rows.length} prices. ${problems.length} ${problems.length === 1 ? 'row was' : 'rows were'} skipped. ${problems[0]}`
     : `Loaded ${next.rows.length} prices.`;
+  priceLists.put(next);
   setPrices(next);
 });
+
+// The company block at the top of a printed page. Typing in it on the page saves it.
+function companyHead(kind) {
+  const co = company.get(), slot = (tag, key, ph) => `<${tag} contenteditable spellcheck="false" data-co="${key}" data-ph="${ph}">${esc(co[key] || ph)}</${tag}>`;
+  return `<div class="top"><div>${slot('h1', 'name', 'Your Company Name')}${slot('p', 'contact', 'Address, phone and email')}</div>
+    <div class="when"><b>${kind}</b><br>${today()}</div></div>`;
+}
+
+// One card for each customer option, with its own picture and total.
+function optionPage() {
+  if (!state.alts) return '';
+  const cards = eachAlt((a) => {
+    view.update(result, state.colors);
+    return `<div class="optcard"><h3>${esc(a.name)}</h3><img src="${view.snapshot()}" alt="${esc(a.name)}">
+      <dl>${specRows().map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>
+      <div class="price"><div class="grand"><span>Total</span><span>${money(priced.total)}</span></div></div></div>`;
+  }).filter(Boolean);
+  view.update(result, state.colors);
+  return `<div class="page"><h2>Your Options</h2><div class="optgrid">${cards.join('')}</div></div>`;
+}
+
+function openCheckSheet() {
+  const groups = [...new Set(result.items.map((i) => i.group))];
+  $('proposal').innerHTML = `<div class="bar"><span>Check each line off as the truck is unloaded. Write what is short or damaged in the last column.</span>
+    <button class="btn" data-close>Close</button><button class="btn solid" data-print>Print Or Save As PDF</button></div>
+    <div class="page sheet">${companyHead('Delivery Check Sheet')}<h2>${esc(state.job)}</h2>
+    <table class="cuts tick"><thead><tr><th></th><th>Qty</th><th>Item</th><th>Size</th><th>Length</th><th class="chg">Short Or Damaged</th></tr></thead>
+    ${groups.map((g) => `<tbody><tr class="part"><td colspan="6">${g}</td></tr>${result.items.filter((i) => i.group === g).map((i) =>
+      `<tr><td class="box"><i></i></td><td class="q">${i.qty}</td><td>${i.name}</td><td>${esc(i.size ?? '')}</td><td>${esc(i.length ?? '')}</td><td class="chg">&nbsp;</td></tr>`).join('')}</tbody>`).join('')}
+    </table>
+    <div class="sign"><span>Received By</span><span>Date</span></div></div>`;
+  $('proposal').hidden = false;
+  $('proposal').scrollTop = 0;
+}
 
 function openProposal() {
   if (ui.view !== 'finished') { ui.view = 'finished'; view.setMode('finished'); paint(); }
   const picture = view.snapshot();
   const spec = specRows();
-  const price = [['Building Package', priced.materials + priced.markup], ['Labor', priced.labor], ['Sales Tax', priced.tax]].filter(([, v], i) => i === 0 || v > 0);
+  const price = priceLines(priced), co = company.get();
   const groups = [...new Set(result.items.map((i) => i.group))];
   $('proposal').innerHTML = `
     <div class="bar">
@@ -569,16 +751,16 @@ function openProposal() {
       <button class="btn" data-close>Close</button><button class="btn solid" data-print>Print Or Save As PDF</button>
     </div>
     <div class="page">
-      <div class="top"><div><h1 contenteditable spellcheck="false">Your Company Name</h1><p contenteditable spellcheck="false">Address, phone and email</p></div>
-        <div class="when"><b>Proposal</b><br>${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</div></div>
-      <h2>${esc(state.job)}</h2>
+      ${companyHead('Proposal')}
+      <h2>${esc(state.job)}${state.alts ? `, ${esc(state.alts[state.alt].name)}` : ''}</h2>
       <img src="${picture}" alt="The building">
       <div class="cols"><dl>${spec.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>
-        <div class="price">${price.map(([k, v]) => `<div><span>${k}</span><span>${money(v)}</span></div>`).join('')}
+        <div class="price">${price.map(([k, v]) => `<div><span>${esc(k)}</span><span>${money(v)}</span></div>`).join('')}
           <div class="grand"><span>Total</span><span>${money(priced.total)}</span></div></div></div>
-      <p class="terms" contenteditable spellcheck="false">Type your terms, payment schedule and how long this price holds.</p>
+      <p class="terms" contenteditable spellcheck="false" data-co="terms" data-ph="Type your terms, payment schedule and how long this price holds.">${esc(co.terms || 'Type your terms, payment schedule and how long this price holds.')}</p>
       <div class="sign"><span>Customer</span><span>Date</span></div>
     </div>
+    ${optionPage()}
     <div class="page">
       <h2>What Is Included</h2>
       ${groups.map((g) => `<h3>${g}</h3><table>${result.items.filter((i) => i.group === g).map((i) =>
@@ -672,8 +854,7 @@ function openEngineer() {
     ['Roof And Walls', 'Ribbed steel panel', `${r.panelCoverageIn} in coverage, screwed to the purlins and girts`],
   ];
   const first = `<div class="page sheet eng">
-    <div class="top"><div><h1 contenteditable spellcheck="false">Your Company Name</h1><p contenteditable spellcheck="false">Address, phone and email</p></div>
-      <div class="when"><b>Engineer Package</b><br>${today()}</div></div>
+    ${companyHead('Engineer Package')}
     <h2>${esc(state.job)}</h2>
     <p class="lead">This package describes a post-frame building we want to build. We are asking you for the engineered design. Nothing in it has been engineered and no loads have been calculated. The member sizes are our starting point and are yours to change.</p>
     <img src="${picture}" alt="The building">
@@ -726,7 +907,7 @@ function openSheets(withDrawings) {
 window.addEventListener('hashchange', () => location.reload());
 
 $('job').value = state.job;
-$('job').addEventListener('change', (e) => { state = { ...state, job: e.target.value.trim() || SAMPLE.job }; save(); paint(); });
+$('job').addEventListener('change', (e) => { if (e.target.dataset.company || e.target !== $('job')) return; state = { ...state, job: e.target.value.trim() || SAMPLE.job }; save(); paint(); });
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
 
