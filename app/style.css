@@ -250,3 +250,8 @@ a.btn { display: inline-flex; align-items: center; text-decoration: none; }
 @media (pointer: coarse) and (max-width: 1000px) {
   body { grid-template-rows: auto 1fr; }
 }
+
+body.embed { grid-template-rows: 1fr; min-width: 0; }
+body.embed > header, body.embed .right { display: none; }
+body.embed main { display: block; padding: 0; }
+body.embed .stage { height: 100%; border-radius: 0; }

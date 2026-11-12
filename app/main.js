@@ -72,12 +72,13 @@ const ui = { delta: 0, notice: '', step: 'Size', view: 'finished', sheet: 'front
 const view = createView($('view'), $('stage'));
 
 function readShare() {
-  const packed = location.hash.match(/^#q=(.+)$/);
+  // &embed after the job shows the picture alone, for the front page of the site.
+  const packed = location.hash.match(/^#q=([^&]+)(&embed)?$/);
   if (!packed) return null;
   try {
     const bytes = Uint8Array.from(atob(packed[1].replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
     const job = JSON.parse(new TextDecoder().decode(bytes));
-    return job && job.width && job.price ? job : null;
+    return job && job.width && job.price ? { ...job, embed: !!packed[2] } : null;
   } catch { return null; }
 }
 
@@ -264,6 +265,7 @@ function paintShared() {
   const p = shared.price;
   const lines = [['Building Package', p.package], ['Labor', p.labor], ['Sales Tax', p.tax]].filter(([, v], i) => i === 0 || v > 0);
   document.body.classList.add('shared');
+  document.body.classList.toggle('embed', shared.embed);
   document.title = `${state.job}, Girt And Purlin`;
   $('views').innerHTML = [VIEWS[0], VIEWS[2]].map(([k, n]) => `<button data-view="${k}" class="${ui.view === k ? 'on' : ''}">${n}</button>`).join('');
   $('readout').textContent = `${result.summary.floorSqFt.toLocaleString()} sq ft`;
