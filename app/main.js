@@ -58,6 +58,13 @@ const OPTION_SETS = {
 const ROOF_NAMES = { gable: 'Gable', mono: 'Single Slope', gambrel: 'Gambrel' };
 const roofOf = () => state.roof ?? 'gable';
 const OPTION_DEFAULTS = { wainscotIn: 36, linerWalls: false, linerCeiling: false, roofInsulation: 'none', wallInsulation: 'none', ceilingR: 0, footing: 'none', slab: false, ridgeVent: false, skylights: 0, cupolas: false, cupolaSizeIn: 0 };
+const WALL_FIELDS = {
+  at: { label: 'From Left End', other: 'From Front Wall', step: 1, min: 2 },
+  start: { label: 'Starts At', step: 1, min: 0 },
+  length: { label: 'Length', step: 1, min: 2 },
+  doors: { label: 'Doors', step: 1, min: 0 },
+};
+const LOFT_FIELDS = { depth: { label: 'Depth', step: 1, min: 6 }, height: { label: 'Floor Height', step: 0.5, min: 7 } };
 const OPENING_FIELDS = {
   offset: { label: 'Position', step: 0.5 },
   width: { label: 'Width', step: 0.5 },
@@ -82,6 +89,8 @@ const SAMPLE = {
     { type: 'window', wall: 'front', offset: 41, width: 4, height: 3.5, sill: 3 },
   ],
   sheds: [],
+  partitions: [],
+  loft: null,
   options: {},
   colors: { walls: '#8b908d', roof: '#2f3336', trim: '#e6e6e0', wainscot: '#2f3336', wainscotOn: true, gutters: false, truck: false },
   pricing: { markupPct: 0, taxPct: 0, laborPerSqFt: 0 },
@@ -103,7 +112,7 @@ if (!state.id) { state.id = newId(); if (!shared) { try { localStorage.setItem(S
 let catalog = loadPrices();
 if (!shared && !catalog.sample && !priceLists.all().some((l) => l.supplier === catalog.supplier)) priceLists.put(catalog);
 let priced = priceJob(result, catalog, state.pricing);
-const ui = { delta: 0, notice: '', step: 'Size', view: 'finished', sheet: 'front', sel: null, opening: null, shed: null, placing: null, jobrow: null, tplrow: null, confirm: null, changed: new Set(), last: '', problem: '', savedAt: null };
+const ui = { delta: 0, notice: '', step: 'Size', view: 'finished', sheet: 'front', sel: null, opening: null, shed: null, part: null, placing: null, jobrow: null, tplrow: null, confirm: null, changed: new Set(), last: '', problem: '', savedAt: null };
 if (unopened) { ui.lead = 'Your saved job could not be opened.'; ui.problem = `${unopened} The sample building is showing instead.`; }
 const view = createView($('view'), $('stage'));
 
@@ -249,6 +258,18 @@ function setShed(index, change, note) {
   apply({ sheds: state.sheds.map((s, i) => (i === index ? { ...s, ...change } : s)) }, note);
 }
 
+const walls = () => state.partitions ?? [];
+function setPart(index, change, note) {
+  apply({ partitions: walls().map((p, i) => (i === index ? { ...p, ...change } : p)) }, note);
+}
+// A new interior wall, or one turned the other way, fills the open floor beside any loft.
+function wallAcross(axis) {
+  const f = state.loft, open0 = f?.end === 'left' ? f.depth : 0, open1 = state.length - (f?.end === 'right' ? f.depth : 0);
+  return axis === 'across'
+    ? { axis, at: Math.round((open0 + open1) / 2), start: 0, length: state.width }
+    : { axis, at: Math.round(state.width / 2), start: open0, length: open1 - open0 };
+}
+
 const num = (v) => (Number.isInteger(v) ? String(v) : feetInches(v * 12));
 
 function stepper(attrs, label, value, unit, selected) {
@@ -359,7 +380,25 @@ function leftPanel() {
       <h2>On This Building</h2>${rows || '<p class="hint">Nothing yet.</p>'}`;
   }
   if (ui.step === 'Inside And Finish') {
-    return `${optionRow('linerWalls')}${optionRow('linerCeiling')}
+    const rows = walls().map((p, i) => {
+      const head = `<button data-partopen="${i}"><span>Interior Wall ${i + 1}<small>${p.axis === 'across' ? 'Front to back' : 'End to end'}, ${p.doors} ${p.doors === 1 ? 'door' : 'doors'}, ${p.sheathed ? 'sheathed' : 'studs only'}</small></span><em>${num(p.length)} ft</em></button>`;
+      if (ui.part !== i) return `<div class="op">${head}</div>`;
+      return `<div class="op open">${head}
+        <div class="seg"><button data-partaxis="across" class="${p.axis === 'across' ? 'on' : ''}">Front To Back</button><button data-partaxis="along" class="${p.axis === 'along' ? 'on' : ''}">End To End</button></div>
+        ${Object.entries(WALL_FIELDS).map(([k, f]) => stepper(`data-partfield="${k}"`, k === 'at' && p.axis === 'along' ? f.other : k === 'start' ? (p.axis === 'across' ? 'Starts From Front' : 'Starts From Left') : f.label, k === 'doors' ? String(p.doors) : feetInches(p[k] * 12), '', false)).join('')}
+        <div class="seg"><button data-partskin="1" class="${p.sheathed ? 'on' : ''}">Sheathed</button><button data-partskin="0" class="${p.sheathed ? '' : 'on'}">Studs Only</button></div>
+        <button class="btn remove" data-partremove="${i}">Remove</button></div>`;
+    }).join('');
+    const f = state.loft;
+    const loftPart = `<h2>Loft</h2><div class="seg">${[['', 'None'], ['left', 'Left End'], ['right', 'Right End']].map(([e, name]) =>
+      `<button data-loftend="${e}" class="${(f?.end ?? '') === e ? 'on' : ''}">${name}</button>`).join('')}</div>
+      ${f ? Object.entries(LOFT_FIELDS).map(([k, fd]) => stepper(`data-loftfield="${k}"`, fd.label, feetInches(f[k] * 12), '', false)).join('') : ''}
+      <p class="hint">A loft is a floor across one end of the building, side wall to side wall, with a straight stair down along the front wall. The list adds its posts, beam, joists, subfloor, stair and guard rail. Its beam, posts and footings are sized by your engineer.</p>`;
+    return `<h2>Interior Walls</h2>${rows}
+      <div class="seg"><button data-partadd>Add An Interior Wall</button></div>
+      <p class="hint">An interior wall is a stud wall from the floor to the underside of the trusses. It carries no roof. Each door is 3 ft wide. See the walls and loft in the Framing and Floor Plan views.</p>
+      ${loftPart}
+      ${optionRow('linerWalls')}${optionRow('linerCeiling')}
       <p class="hint">A steel liner is the bright panel on the inside of the walls or under the trusses. The list adds its panels, trim, screws and the framing it fastens to.</p>
       ${optionRow('roofInsulation')}${optionRow('wallInsulation', true)}${optionRow('ceilingR', true)}
       <p class="hint">Bubble is a thin foil roll that stops dripping under a steel roof. Blown insulation lies on top of a ceiling liner, so picking it turns the ceiling liner on.</p>
@@ -430,6 +469,12 @@ function leftPanel() {
 // The finish choices that are switched on, in plain words.
 function finishRows() {
   const rows = [];
+  const inside = result.geometry.partitions ?? [], loft = result.geometry.loft;
+  if (inside.length) {
+    const doors = inside.reduce((n, p) => n + p.doors.length, 0);
+    rows.push(`${inside.length} interior ${inside.length === 1 ? 'wall' : 'walls'}, ${feetInches(inside.reduce((n, p) => n + p.lengthIn, 0))} in all${doors ? `, ${doors} ${doors === 1 ? 'door' : 'doors'}` : ''}`);
+  }
+  if (loft) rows.push(`Loft at the ${loft.end} end, ${feetInches(loft.depthIn)} deep, floor ${feetInches(loft.heightIn)} up, with a stair`);
   if (state.colors.wainscotOn) rows.push(`${optName('wainscotIn')} wainscot`);
   const cupolas = result.geometry.cupolas ?? [];
   if (cupolas.length) rows.push(`${cupolas.length === 1 ? 'One' : 'Two'} ${cupolas[0].sizeIn} in ${cupolas.length === 1 ? 'cupola' : 'cupolas'} on the ridge`);
@@ -651,6 +696,36 @@ document.addEventListener('click', (e) => {
     ui.shed = null;
     return apply({ sheds: state.sheds.filter((_, i) => i !== Number(d.shedremove)) }, `${SHED_NAMES[s.kind]} removed`);
   }
+  if ('partadd' in d) {
+    ui.part = walls().length;
+    apply({ partitions: [...walls(), { ...wallAcross('across'), doors: 1, sheathed: true }] }, 'Interior wall added');
+    if (ui.problem) ui.part = null;
+    return paint();
+  }
+  if (d.partopen) { ui.part = ui.part === Number(d.partopen) ? null : Number(d.partopen); return paint(); }
+  if (d.partaxis) return setPart(ui.part, wallAcross(d.partaxis), `Interior wall now runs ${d.partaxis === 'across' ? 'front to back' : 'end to end'}`);
+  if (d.partfield) {
+    const p = walls()[ui.part], f = WALL_FIELDS[d.partfield];
+    const to = Math.max(f.min, p[d.partfield] + f.step * Number(d.dir));
+    const change = { [d.partfield]: to };
+    // Moving the start keeps the far end where it is.
+    if (d.partfield === 'start') change.length = Math.max(2, p.length - (to - p.start));
+    return setPart(ui.part, change, `Interior wall ${d.partfield === 'doors' ? `doors now ${to}` : `${(d.partfield === 'at' ? 'position' : f.label.toLowerCase())} now ${feetInches(to * 12)}`}`);
+  }
+  if (d.partskin) return setPart(ui.part, { sheathed: d.partskin === '1' }, `Interior wall ${d.partskin === '1' ? 'sheathed' : 'left as studs'}`);
+  if (d.partremove) {
+    ui.part = null;
+    return apply({ partitions: walls().filter((_, i) => i !== Number(d.partremove)) }, 'Interior wall removed');
+  }
+  if ('loftend' in d) {
+    if (!d.loftend) return apply({ loft: null }, 'Loft removed');
+    const loft = state.loft ? { ...state.loft, end: d.loftend } : { end: d.loftend, depth: Math.min(12, state.length - 8), height: Math.max(7, state.eaveHeight - 6) };
+    return apply({ loft }, `Loft at the ${d.loftend} end`);
+  }
+  if (d.loftfield) {
+    const f = LOFT_FIELDS[d.loftfield], to = Math.max(f.min, state.loft[d.loftfield] + f.step * Number(d.dir));
+    return apply({ loft: { ...state.loft, [d.loftfield]: to } }, `Loft ${f.label.toLowerCase()} now ${feetInches(to * 12)}`);
+  }
   if (d.color) {
     const title = COLOR_PARTS.find((p) => p[0] === d.color)[1];
     return apply({ colors: { ...state.colors, [d.color]: d.hex } }, `${title} color now ${t.title}`);
@@ -827,7 +902,15 @@ function drawingPages() {
   const how = (k) => (k === 'roof' ? ', seen from above' : k.startsWith('shed') ? ', cut through looking along the main wall' : ', seen from outside');
   return [['front', 'back'], ['left', 'right'], ['roof'], ...pairs].map((set) => `<div class="page sheet">${sheetHead('Framing Drawings')}
     ${set.map((k) => `<h3>${names[k]}${how(k)}</h3>${drawing(result, k, true)}`).join('')}
-    <p class="fine">Built from framing rules that have not been checked against a builder's guide yet. Not an engineered drawing.</p></div>`).join('');
+    <p class="fine">Built from framing rules that have not been checked against a builder's guide yet. Not an engineered drawing.</p></div>`).join('')
+    + (result.geometry.loft || result.geometry.partitions?.length ? `<div class="page sheet">${sheetHead('Inside Layout')}
+    <h3>Interior walls and loft, seen from above, front wall at the bottom</h3>${floorPlan(result, true)}
+    <table class="cuts"><thead><tr><th>Part</th><th>Where</th><th>Size</th></tr></thead><tbody>
+    ${(result.geometry.partitions ?? []).map((p) => `<tr><td>Interior Wall ${p.index + 1}</td><td>${p.axis === 'across' ? `${feetInches(p.atIn)} from the left end, from ${feetInches(p.startIn)} to ${feetInches(p.endIn)} off the front wall` : `${feetInches(p.atIn)} from the front wall, from ${feetInches(p.startIn)} to ${feetInches(p.endIn)} off the left end`}</td><td>${p.studSize} studs, ${feetInches(p.heightIn)} tall${p.doors.map((d) => `, door at ${feetInches(d.startIn)}`).join('')}</td></tr>`).join('')}
+    ${result.geometry.loft ? ((f) => `<tr><td>Loft</td><td>${f.end === 'left' ? 'Left' : 'Right'} end, ${feetInches(f.depthIn)} deep</td><td>${f.joistSize} joists, floor ${feetInches(f.heightIn)} up, ${feetInches(f.underIn)} clear under the joists</td></tr>
+      <tr><td>Loft Stair</td><td>Along the front wall, ${feetInches(f.stair.runIn)} of floor</td><td>${f.stair.risers} risers of ${(f.stair.riseIn / f.stair.risers).toFixed(2)} in, ${f.stair.treads} treads</td></tr>`)(result.geometry.loft) : ''}
+    </tbody></table>
+    <p class="fine">Built from framing rules that have not been checked against a builder's guide yet. Not an engineered drawing.</p></div>` : '');
 }
 
 // The same building as numbers, for an engineer who wants to load it into
@@ -838,7 +921,7 @@ function engineerData() {
     madeWith: 'Girt And Purlin',
     note: 'A description of the building as drawn. Not an engineered design. No loads were calculated. Lengths are in inches, measured along each wall from the front-left corner (front and back walls) or from the front wall (end walls).',
     job: state.job, date: new Date().toISOString().slice(0, 10),
-    building: g.building, posts: g.posts, leanTosAndPorches: g.sheds, trusses: g.trusses, girtRows: g.girtRows, purlinRowLengthIn: g.purlinRowLengthIn,
+    building: g.building, posts: g.posts, leanTosAndPorches: g.sheds, interiorWalls: g.partitions, loft: g.loft, trusses: g.trusses, girtRows: g.girtRows, purlinRowLengthIn: g.purlinRowLengthIn,
     framingAsDrawn: result.rules, summary: result.summary,
   }, null, 2);
 }
@@ -861,6 +944,7 @@ function openEngineer() {
     ['Floor Area', `${Math.round(sum.floorSqFt).toLocaleString('en-US')} sq ft`],
     ...(finishRows().length ? [['Inside And Finish', finishRows().join(', ')]] : []),
   ];
+  const loftG = result.geometry.loft;
   const carriers = result.items.some((i) => i.name === 'Truss Carriers');
   const headerSizes = [...new Set(result.items.filter((i) => i.name === 'Headers').map((i) => i.size))];
   const members = [
@@ -878,6 +962,15 @@ function openEngineer() {
         [`${name} Rafters`, r.rafterSize, `${s.rafters.length} rafters about every ${r.rafterSpacingIn} in, from a ${r.shedLedgerSize} ledger on the main wall posts to a beam of two ${r.shedBeamSize} boards on ${s.outer.length} posts`],
       ];
     }),
+    ...(result.geometry.partitions ?? []).map((p) => [`Interior Wall ${p.index + 1}`, `${p.studSize} studs`,
+      `${feetInches(p.lengthIn)} long and ${feetInches(p.heightIn)} tall, running ${p.axis === 'across' ? `front to back, ${feetInches(p.atIn)} from the left end` : `end to end, ${feetInches(p.atIn)} from the front wall`}, studs every ${r.partitionStudSpacingIn} in, ${p.doors.length} ${p.doors.length === 1 ? 'door' : 'doors'}, ${p.sheathed ? 'sheathed both sides' : 'not sheathed'}. Carries no roof or floor`]),
+    ...(loftG ? [
+      ['Loft', `${feetInches(loftG.depthIn)} deep, ${state.width} ft wide`, `Across the ${loftG.end} end, top of floor ${feetInches(loftG.heightIn)} above the ground floor, ${feetInches(loftG.aboveIn)} clear to the truss bottom chords`],
+      ['Loft Joists', loftG.joistSize, `Every ${r.loftJoistSpacingIn} in, ${loftG.joists.length} in all, running the long way of the building, hung between a ledger on the end wall posts and the loft beam`],
+      ['Loft Beam', `Two ${r.loftBeamSize}`, `Under the open edge, one board each side of ${loftG.posts.length} posts spaced ${feetInches(state.width * 12 / (loftG.posts.length - 1))} apart`],
+      ['Loft Posts', r.postSize, `${loftG.posts.length} posts, set ${feetInches(r.postEmbedmentIn)} into the ground like the wall posts`],
+      ['Loft Stair', `${r.stairStringers} stringers, ${r.stairStringerSize}`, `${loftG.stair.risers} risers of ${(loftG.stair.riseIn / loftG.stair.risers).toFixed(2)} in, ${loftG.stair.treads} treads of ${r.stairTreadIn} in, ${feetInches(loftG.stair.widthIn)} wide, along the front wall`],
+    ] : []),
     ['Roof And Walls', 'Ribbed steel panel', `${r.panelCoverageIn} in coverage, screwed to the purlins and girts`],
   ];
   const first = `<div class="page sheet eng">
@@ -897,6 +990,7 @@ function openEngineer() {
     <h3>What We Need From You</h3>
     <p>The program that made this package lays out the frame and counts the material. It does not size anything for load. It has no footing design, no bracing, no truss design and no connection details. Any pads, collars or slab in the material list are counted from common sizes and are not sized for this site. Those are yours, along with any stamped drawings the permit office asks for.</p>
     ${b.sheds.length ? `<p>Each lean-to and porch roof starts below the main eave, so its rafters and upper purlins have to carry snow that slides off the main roof and drifts against the wall above. The rafter, ledger and beam sizes shown are placeholders with no published table behind them.</p>` : ''}
+    ${loftG ? `<p>The loft joist size comes from a house floor span table for a 40 lb per sq ft live load. Storage or shop use can call for more. The loft beam, its posts and the ledger fastening are placeholders with no table behind them. The loft adds floor load to the end wall posts and their footings, and its own posts need footings sized for it.</p>` : ''}
     <h3>Doors And Windows</h3>
     ${b.openings.length ? `<table class="cuts"><thead><tr><th>Opening</th><th>Wall</th><th>Starts At</th><th>Width</th><th>Height</th><th>Sill</th></tr></thead>
       <tbody>${b.openings.map((o) => `<tr><td>${TYPE_NAMES[o.type]}</td><td>${WALL_NAMES[o.wall]}</td><td>${feetInches(o.startIn)}</td><td>${feetInches(o.widthIn)}</td><td>${feetInches(o.heightIn)}</td><td>${o.toGround ? 'At the ground' : feetInches(o.sillIn)}</td></tr>`).join('')}</tbody></table>` : '<p>None.</p>'}
@@ -906,7 +1000,8 @@ function openEngineer() {
     <h3>Seen from above, front wall at the bottom</h3>${floorPlan(result, true)}
     <table class="cuts posts"><thead><tr><th>Wall</th><th>At</th><th>Top Above Ground</th><th>Post Length</th></tr></thead>
       <tbody>${posts.map((p) => `<tr><td>${WALL_NAMES[p.wall]}</td><td>${feetInches(p.atIn)}</td><td>${feetInches(p.topIn)}</td><td>${p.stockFt} ft</td></tr>`).join('')}
-      ${result.geometry.sheds.flatMap((s) => s.posts.map((p) => `<tr><td>${s.label[0].toUpperCase() + s.label.slice(1)}</td><td>${feetInches(p.atIn)} along, ${feetInches(p.outIn)} out</td><td>${feetInches(p.topIn)}</td><td>${p.stockFt} ft</td></tr>`)).join('')}</tbody></table>
+      ${result.geometry.sheds.flatMap((s) => s.posts.map((p) => `<tr><td>${s.label[0].toUpperCase() + s.label.slice(1)}</td><td>${feetInches(p.atIn)} along, ${feetInches(p.outIn)} out</td><td>${feetInches(p.topIn)}</td><td>${p.stockFt} ft</td></tr>`)).join('')}
+      ${(loftG?.posts ?? []).map((p) => `<tr><td>Loft</td><td>${feetInches(p.y)} from the front wall, ${feetInches(p.x)} from the left end</td><td>${feetInches(p.topIn)}</td><td>${p.stockFt} ft</td></tr>`).join('')}</tbody></table>
   </div>`;
   $('proposal').innerHTML = `<div class="bar"><span>Click any gray text on the first page to type your own. The data file is the same building as numbers, for the engineer's own software.</span>
     <button class="btn" data-close>Close</button><button class="btn" data-engdata>Save Data File</button><button class="btn solid" data-print>Print Or Save As PDF</button></div>${first}${second}${third}${drawingPages()}`;

@@ -327,6 +327,7 @@ export function createView(canvas, stage) {
     dark: new THREE.MeshStandardMaterial({ color: 0x1c1d1f, roughness: 0.5, metalness: 0.4 }),
     wood: new THREE.MeshStandardMaterial({ color: 0xcaa46c, roughness: 0.85 }),
     treated: new THREE.MeshStandardMaterial({ color: 0x8c8656, roughness: 0.9 }),
+    deck: new THREE.MeshStandardMaterial({ color: 0xd9bd8c, roughness: 0.8, transparent: true, opacity: 0.55 }),
     gravel: new THREE.MeshStandardMaterial({ map: gravelMap, roughness: 1 }),
     slab: new THREE.MeshStandardMaterial({ color: 0xb9b8b2, roughness: 0.9 }),
     skylight: new THREE.MeshStandardMaterial({ color: 0xf2f4ee, roughness: 0.25, metalness: 0, emissive: 0x3a3c36 }),
@@ -768,6 +769,58 @@ export function createView(canvas, stage) {
     }
   }
 
+  // Interior walls and the loft. They show in the framing view only, since the
+  // finished view is closed in.
+  function buildInterior(result) {
+    const { building: b, partitions = [], loft } = result.geometry;
+    const L = b.lengthIn / 12, W = b.widthIn / 12;
+    const X = (xIn) => xIn / 12 - L / 2, Z = (yIn) => W / 2 - yIn / 12;
+    for (const p of partitions) {
+      const across = p.axis === 'across', H = p.heightIn / 12, len = p.lengthIn / 12, mid = (p.startIn + p.endIn) / 2;
+      const deep = p.studSize === '2x6' ? 0.46 : 0.29;
+      const lay = (mat, alongFt, tall, atIn, y) => (across
+        ? box(framing, mat, deep, tall, alongFt, X(p.atIn), y, Z(atIn))
+        : box(framing, mat, alongFt, tall, deep, X(atIn), y, Z(p.atIn)));
+      lay(mats.wood, len, 0.125, mid, H - 0.06);
+      // The bottom plate is cut out of each doorway.
+      let from = p.startIn;
+      for (const d of [...p.doors, { startIn: p.endIn, endIn: p.endIn }]) {
+        if (d.startIn > from) lay(mats.treated, (d.startIn - from) / 12, 0.125, (from + d.startIn) / 2, 0.06);
+        from = d.endIn;
+      }
+      const inDoor = (at) => p.doors.some((d) => at > d.startIn + 0.5 && at < d.endIn - 0.5);
+      const studAt = [...p.studs.filter((at) => !inDoor(at)), ...p.doors.flatMap((d) => [d.startIn - 0.75, d.endIn + 0.75])];
+      for (const at of studAt) lay(mats.wood, 0.125, H - 0.25, at, H / 2);
+      for (const d of p.doors) lay(mats.wood, (d.endIn - d.startIn + 3) / 12, 0.125, (d.startIn + d.endIn) / 2, 6.9);
+    }
+    if (!loft) return;
+    const F = loft.heightIn / 12, jd = loft.joistIn / 12, dir = loft.end === 'left' ? 1 : -1;
+    const xMid = X((loft.wallX + loft.edgeX) / 2), D = loft.depthIn / 12;
+    for (const p of loft.posts) box(framing, mats.treated, 0.46, F - jd, 0.46, X(p.x), (F - jd) / 2, Z(Math.min(Math.max(p.y, 2.75), b.widthIn - 2.75)));
+    // Ledger on the end wall posts, beam on the loft posts, joists between.
+    box(framing, mats.wood, 0.125, jd, W - 0.3, X(loft.wallX) + dir * 0.55, F - jd / 2 - 0.06, 0);
+    for (const side of [-1, 1]) box(framing, mats.wood, 0.125, 0.94, W - 0.1, X(loft.edgeX) + side * 0.29, F - 0.53, 0);
+    for (const y of loft.joists) box(framing, mats.wood, D - 0.9, jd, 0.125, xMid, F - jd / 2 - 0.06, Z(Math.min(Math.max(y, 0.75), b.widthIn - 0.75)));
+    const deck = box(framing, mats.wood, D, 0.06, W - 0.1, xMid, F - 0.03, 0);
+    deck.material = mats.deck;
+    // The stair runs down from the open edge along the front wall.
+    const st = loft.stair, run = st.runIn / 12, rise = st.riseIn / 12, wide = st.widthIn / 12;
+    const zs = [0.2, wide / 2, wide - 0.2].map((v) => Z(v * 12 + 1));
+    const angle = Math.atan2(rise, run);
+    for (const z of zs) {
+      const m = box(framing, mats.wood, st.stringerIn / 12, 0.6, 0.125, X(st.x0) + dir * run / 2, rise / 2 - 0.35, z);
+      m.rotation.z = -dir * angle;
+    }
+    for (let i = 1; i <= st.treads; i++) {
+      box(framing, mats.wood, 0.9, 0.125, wide, X(st.x0) + dir * (i - 0.5) * (run / st.treads), rise - i * (rise / st.risers), Z(st.widthIn / 2 + 1));
+    }
+    // Guard along the open edge, past the head of the stair.
+    const g0 = st.widthIn + 2, gl = (b.widthIn - g0) / 12, gz = Z((g0 + b.widthIn) / 2);
+    box(framing, mats.wood, 0.125, 0.29, gl, X(loft.edgeX), F + 3, gz);
+    box(framing, mats.wood, 0.125, 0.29, gl, X(loft.edgeX), F + 1.5, gz);
+    for (const p of loft.posts) if (p.y > g0) box(framing, mats.wood, 0.29, 3, 0.29, X(loft.edgeX), F + 1.5, Z(Math.min(p.y, b.widthIn - 2)));
+  }
+
   // The dark halo on the ground around the foot of the building.
   function buildContact(L, W) {
     const reach = 4.5, w = L + reach * 2, d = W + reach * 2;
@@ -865,6 +918,7 @@ export function createView(canvas, stage) {
     }
     buildRoof(b, colors.gutters, result.geometry.cupolas ?? []);
     buildFraming(result);
+    buildInterior(result);
     for (const s of result.geometry.sheds) buildShed(b, s);
     if (settingKey !== `${L}x${W}`) {
       settingKey = `${L}x${W}`;

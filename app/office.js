@@ -38,8 +38,9 @@ export const company = {
 
 // The parts of a job that describe the building itself. Customer options and
 // templates copy these and nothing else.
-export const DESIGN_KEYS = ['roof', 'width', 'length', 'eaveHeight', 'pitch', 'overhang', 'postSpacing', 'trussSpacing', 'openings', 'sheds', 'options', 'colors'];
-export const designOf = (job) => structuredClone(Object.fromEntries(DESIGN_KEYS.filter((k) => k in job).map((k) => [k, job[k]])));
+export const DESIGN_KEYS = ['roof', 'width', 'length', 'eaveHeight', 'pitch', 'overhang', 'postSpacing', 'trussSpacing', 'openings', 'sheds', 'partitions', 'loft', 'options', 'colors'];
+// Keys added after a job was saved get their empty value, so a copy laid over another design never keeps that design's parts.
+export const designOf = (job) => structuredClone({ roof: 'gable', partitions: [], loft: null, ...Object.fromEntries(DESIGN_KEYS.filter((k) => k in job).map((k) => [k, job[k]])) });
 
 const colors = (walls, roof, trim, wainscot, wainscotOn) => ({ walls, roof, trim, wainscot, wainscotOn, gutters: false, truck: false });
 

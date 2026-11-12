@@ -80,6 +80,29 @@ export const defaultRules = {
   vaporRollFt:       { value: 140,  verified: true, source: 'Stego Wrap 15 mil' },
   vaporLapIn:        { value: 6,    verified: true, source: 'IRC R506.2.3 (joints lapped not less than 6 in)' },
 
+  partitionStudSpacingIn: { value: 24, verified: false, note: 'Interior wall studs, on center' },
+  partitionStudByHeightFt: { value: [[14, '2x4'], [20, '2x6']], verified: false, note: 'Tallest interior wall each stud size may frame when the wall carries no load' },
+  partitionStudStockFt: { value: [8, 10, 12, 14, 16, 18, 20], verified: false, note: 'Stud lengths a yard stocks' },
+  partitionPlateSize: { value: '2x4', verified: false, note: 'One treated plate on the floor and one plate on top, fastened to the truss bottom chords or to blocking between them' },
+  partitionDoorWidthIn: { value: 36, verified: false, note: 'Interior door width' },
+  partitionDoorRoughExtraIn: { value: 2, verified: false, note: 'Rough opening is this much wider than the door' },
+  partitionDoorExtraStuds: { value: 2, verified: false, note: 'Studs added at each interior door, one under each end of the header' },
+  partitionSheetSize: { value: '7/16 in OSB, 4 x 8 ft', verified: false, note: 'Sheathing counted by area on both faces, door openings not deducted' },
+
+  loftJoistSpacingIn: { value: 16, verified: false, note: 'Loft floor joists, on center' },
+  loftJoistSpanIn:   { value: { '2x8': 142, '2x10': 168, '2x12': 198 }, verified: false, note: 'Farthest each joist size may span at 16 in on center under a 40 psf floor load. The shorter of the No. 2 spruce-pine-fir and No. 2 southern pine figures, so it holds for either' },
+  loftBeamSize:      { value: '2x12', verified: false, note: 'Two boards on the loft posts under the open edge of the floor. A placeholder: the engineer sizes this beam' },
+  loftPostSpacingFt: { value: 8,    verified: false, note: 'Farthest apart the posts under the open edge of the loft sit. A placeholder for the engineer' },
+  loftSubfloorSize:  { value: '23/32 in tongue and groove, 4 x 8 ft', verified: false },
+  loftHeadroomIn:    { value: 84,   verified: false, note: 'Ceiling height a room needs before it counts as living space' },
+  stairRiserMaxIn:   { value: 7.75, verified: false, note: 'Tallest step' },
+  stairTreadIn:      { value: 10,   verified: false, note: 'Shallowest step, front to back' },
+  stairWidthIn:      { value: 36,   verified: false, note: 'Narrowest stair' },
+  stairStringers:    { value: 3,    verified: false, note: 'Notched 2x12 stringers under a 36 in stair' },
+  stairStringerSize: { value: '2x12', verified: false },
+  stairStringerStockFt: { value: [8, 10, 12, 14, 16, 18, 20], verified: false, note: 'Stringer lengths a yard stocks' },
+  guardHeightIn:     { value: 36,   verified: false, note: 'Lowest guard rail along the open edge of a loft and the open side of its stair' },
+
   closureStripIn:    { value: 36,   verified: true, note: 'Foam closure strips are 3 ft long', source: 'Fabral guide p.15; A.B. Martin guide' },
 };
 

@@ -1,5 +1,6 @@
 // The floor plan: a flat drawing seen from above, front wall at the bottom.
 const SIGNAL = '#f0883a';
+const fi = (inches) => { const f = Math.floor(inches / 12), i = Math.round(inches - f * 12); return i ? `${f} ft ${i} in` : `${f} ft`; };
 
 // light draws it in ink on white for the printed sheets.
 export function floorPlan(result, light = false) {
@@ -44,6 +45,37 @@ export function floorPlan(result, light = false) {
       out.push(side
         ? `<path d="M ${s} ${at} L ${s} ${at - w * outward} A ${w} ${w} 0 0 ${outward > 0 ? 1 : 0} ${e} ${at}" fill="none" stroke="${INK}" stroke-width="0.08"/>`
         : `<path d="M ${at} ${y(s)} L ${at - w * outward} ${y(s)} A ${w} ${w} 0 0 ${outward > 0 ? 0 : 1} ${at} ${y(e)}" fill="none" stroke="${INK}" stroke-width="0.08"/>`);
+    }
+  }
+
+  // Inside: the loft goes down first, then interior walls over it.
+  const loft = result.geometry.loft;
+  if (loft) {
+    const x0 = Math.min(loft.wallX, loft.edgeX) / 12, D = loft.depthIn / 12, cx = x0 + D / 2;
+    out.push(`<rect x="${x0}" y="0" width="${D}" height="${W}" fill="${INK}" fill-opacity="0.07" stroke="none"/>`,
+      `<line x1="${loft.edgeX / 12}" x2="${loft.edgeX / 12}" y1="0" y2="${W}" stroke="${INK}" stroke-width="0.12" stroke-dasharray="0.7 0.4"/>`);
+    // A double-headed arrow shows which way the joists run.
+    const ay = W * 0.3, a0 = x0 + D * 0.15, a1 = x0 + D * 0.85;
+    out.push(`<path d="M ${a0 + 0.6} ${ay - 0.4} L ${a0} ${ay} L ${a0 + 0.6} ${ay + 0.4} M ${a0} ${ay} L ${a1} ${ay} M ${a1 - 0.6} ${ay - 0.4} L ${a1} ${ay} L ${a1 - 0.6} ${ay + 0.4}" fill="none" stroke="${SOFT}" stroke-width="0.07"/>`,
+      label(cx, ay - pad * 0.06, `${loft.joistSize} joists`),
+      label(cx, W / 2 - pad * 0.13, 'Loft'), label(cx, W / 2, `Floor ${fi(loft.heightIn)} up`), label(cx, W / 2 + pad * 0.13, `${D} x ${W} ft`));
+    for (const p of loft.posts.slice(1, -1)) out.push(`<rect x="${p.x / 12 - 0.3}" y="${y(p.y / 12) - 0.3}" width="0.6" height="0.6" fill="${INK}"/>`);
+    const st = loft.stair, s0 = Math.min(st.x0, st.x1) / 12, sl = st.runIn / 12, sw = st.widthIn / 12;
+    out.push(`<rect x="${s0}" y="${W - sw}" width="${sl}" height="${sw}" fill="${PAPER}" stroke="${INK}" stroke-width="0.08"/>`);
+    for (let i = 1; i < st.treads; i++) out.push(`<line x1="${s0 + i * sl / st.treads}" x2="${s0 + i * sl / st.treads}" y1="${W - sw}" y2="${W}" stroke="${INK}" stroke-width="0.04"/>`);
+    out.push(label(s0 + sl / 2, W - sw - pad * 0.05, `Stair, ${st.risers} risers`));
+  }
+  for (const p of result.geometry.partitions ?? []) {
+    const across = p.axis === 'across', at = p.atIn / 12;
+    const seg = (a, e, width, color) => (across
+      ? `<line x1="${at}" x2="${at}" y1="${y(a / 12)}" y2="${y(e / 12)}" stroke="${color}" stroke-width="${width}"/>`
+      : `<line x1="${a / 12}" x2="${e / 12}" y1="${y(at)}" y2="${y(at)}" stroke="${color}" stroke-width="${width}"/>`);
+    out.push(seg(p.startIn, p.endIn, p.sheathed ? 0.4 : 0.16, INK));
+    for (const d of p.doors) {
+      const w = (d.endIn - d.startIn) / 12, a = d.startIn / 12, e = d.endIn / 12;
+      out.push(seg(d.startIn, d.endIn, 0.5, PAPER), across
+        ? `<path d="M ${at} ${y(a)} L ${at + w} ${y(a)} A ${w} ${w} 0 0 0 ${at} ${y(e)}" fill="none" stroke="${INK}" stroke-width="0.08"/>`
+        : `<path d="M ${a} ${y(at)} L ${a} ${y(at) - w} A ${w} ${w} 0 0 1 ${e} ${y(at)}" fill="none" stroke="${INK}" stroke-width="0.08"/>`);
     }
   }
 

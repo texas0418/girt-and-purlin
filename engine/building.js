@@ -102,6 +102,38 @@ export function normalize(input) {
     b.sheds.push(sh);
   });
 
+  // Interior walls. One that runs across sits a distance from the left end and is measured
+  // from the front wall; one that runs along sits a distance from the front wall and is
+  // measured from the left end.
+  b.partitions = [];
+  (input.partitions ?? []).forEach((p, i) => {
+    const name = `Interior wall ${i + 1}`;
+    if (p.axis !== 'across' && p.axis !== 'along') { errors.push(`${name} has no direction.`); return; }
+    const across = p.axis === 'across';
+    const runMax = across ? b.widthIn : b.lengthIn, atMax = across ? b.lengthIn : b.widthIn;
+    const pt = { index: i, axis: p.axis, sheathed: !!p.sheathed,
+      atIn: num(p.at, `${name} position`, 0, 400) * 12,
+      startIn: num(p.start ?? 0, `${name} start`, 0, 400) * 12,
+      doors: p.doors == null ? 0 : Math.round(num(p.doors, `${name} door count`, 0, 4)) };
+    pt.lengthIn = p.length == null ? runMax - pt.startIn : num(p.length, `${name} length`, 2, 400) * 12;
+    pt.endIn = pt.startIn + pt.lengthIn;
+    if (pt.atIn < 24 - 0.01 || pt.atIn > atMax - 24 + 0.01) errors.push(`${name} has to sit at least 2 ft inside the outside walls.`);
+    if (pt.lengthIn < 24 - 0.01 || pt.endIn > runMax + 0.01) errors.push(`${name} runs past the outside wall.`);
+    else if (pt.doors * 48 > pt.lengthIn + 0.01) errors.push(`${name} is too short for ${pt.doors} ${pt.doors === 1 ? 'door' : 'doors'}.`);
+    b.partitions.push(pt);
+  });
+
+  // A loft fills one end of the building from side wall to side wall.
+  b.loft = null;
+  if (input.loft) {
+    const f = input.loft;
+    if (f.end !== 'left' && f.end !== 'right') errors.push('The loft is not at an end of the building.');
+    else {
+      b.loft = { end: f.end, depthIn: num(f.depth, 'Loft depth', 6, 40) * 12, heightIn: num(f.height, 'Loft floor height', 7, 20) * 12 };
+      if (b.loft.depthIn > b.lengthIn - 96 + 0.01) errors.push('The loft has to leave at least 8 ft of the building open.');
+    }
+  }
+
   // Finish options. Wainscot and gutters also follow the switches on the Colors step.
   const o = input.options ?? {};
   const pick = (v, list, name) => {
