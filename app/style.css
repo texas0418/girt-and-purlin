@@ -291,3 +291,5 @@ body.embed { grid-template-rows: 1fr; min-width: 0; }
 body.embed > header, body.embed .right { display: none; }
 body.embed main { display: block; padding: 0; }
 body.embed .stage { height: 100%; border-radius: 0; }
+
+body.designer .job, body.designer .right .actions { display: none; }

@@ -101,17 +101,25 @@ const $ = (id) => document.getElementById(id);
 const money = (n) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
+const EMAIL = /^[^\s@?&,;<>"]+@[^\s@?&,;<>"]+\.[a-z]{2,}$/i;
+const pack = (value) => btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(value)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const unpack = (text) => JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(text.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0))));
+
 // A customer link carries the whole job after the # sign. Opening one shows a look-only page.
 const shared = readShare();
+// A builder's website can show this program as a designer for its customers:
+// the building steps, with no jobs, prices or drawings. The customer's work is kept apart from the builder's jobs.
+const designer = shared ? null : readDesigner();
+const STORE_KEY = designer ? 'girt-and-purlin.designer.v1' : STORE;
 let state = load();
 let result = design(state);
 // A saved job the engine turns away is not opened; the sample shows instead and the reason is given.
 let unopened = '';
 if (!result.ok) { unopened = result.errors[0]; state = structuredClone(SAMPLE); result = design(state); }
-const shelve = () => jobs.put({ id: state.id, name: state.job, savedAt: Date.now(), size: `${state.width} x ${state.length} x ${state.eaveHeight}`, job: state });
-if (!state.id) { state.id = newId(); if (!shared) { try { localStorage.setItem(STORE, JSON.stringify(state)); } catch { /* storage is off */ } shelve(); } }
+const shelve = () => designer || jobs.put({ id: state.id, name: state.job, savedAt: Date.now(), size: `${state.width} x ${state.length} x ${state.eaveHeight}`, job: state });
+if (!state.id) { state.id = newId(); if (!shared) { try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch { /* storage is off */ } shelve(); } }
 let catalog = loadPrices();
-if (!shared && !catalog.sample && !priceLists.all().some((l) => l.supplier === catalog.supplier)) priceLists.put(catalog);
+if (!shared && !designer && !catalog.sample && !priceLists.all().some((l) => l.supplier === catalog.supplier)) priceLists.put(catalog);
 let priced = priceJob(result, catalog, state.pricing);
 const ui = { delta: 0, notice: '', step: 'Size', view: 'finished', sheet: 'front', sel: null, opening: null, shed: null, part: null, placing: null, jobrow: null, tplrow: null, confirm: null, changed: new Set(), last: '', problem: '', savedAt: null };
 if (unopened) { ui.lead = 'Your saved job could not be opened.'; ui.problem = `${unopened} The sample building is showing instead.`; }
@@ -128,6 +136,22 @@ function readShare() {
   } catch { return null; }
 }
 
+function readDesigner() {
+  if (!/^#designer(&|$)/.test(location.hash)) return null;
+  const q = new URLSearchParams(location.hash.slice(1));
+  const to = q.get('to') ?? '';
+  return { to: EMAIL.test(to) ? to : '', name: (q.get('name') ?? '').slice(0, 80) };
+}
+
+// A design a customer sent from the designer opens as a new job.
+function readSent() {
+  const packed = location.hash.match(/^#d=([^&]+)$/);
+  if (!packed) return null;
+  history.replaceState(null, '', location.pathname);
+  try { const d = unpack(packed[1]); return d && d.width ? designOf(d) : null; } catch { return null; }
+}
+const designLink = () => `${location.origin}${location.pathname}#d=${pack(designOf(state))}`;
+
 function shareLink() {
   const { pricing, id, alts, alt, ...job } = state;
   const price = { lines: priceLines(priced), total: priced.total };
@@ -138,8 +162,10 @@ function shareLink() {
 
 function load() {
   if (shared) { const { price, ...job } = shared; return { ...structuredClone(SAMPLE), ...job }; }
+  const sent = designer ? null : readSent();
+  if (sent) return { ...structuredClone(SAMPLE), ...sent, job: 'Customer Design' };
   try {
-    const saved = JSON.parse(localStorage.getItem(STORE));
+    const saved = JSON.parse(localStorage.getItem(STORE_KEY));
     if (saved && saved.width) return { ...structuredClone(SAMPLE), ...saved };
   } catch { /* nothing saved, or storage is off */ }
   return structuredClone(SAMPLE);
@@ -176,7 +202,7 @@ function download(name, text, type = 'text/csv') {
 
 function save() {
   if (shared) return;
-  try { localStorage.setItem(STORE, JSON.stringify(state)); ui.savedAt = new Date(); } catch { ui.savedAt = null; }
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); ui.savedAt = new Date(); } catch { ui.savedAt = null; }
   shelve();
 }
 
@@ -317,7 +343,18 @@ function jobsPanel() {
     ${textIn('data-company="name"', 'Company Name', co.name, 'Your company name')}
     ${textIn('data-company="contact"', 'Address, Phone And Email', co.contact, 'One line')}
     <label class="lab">Proposal Terms<textarea class="in" data-company="terms" rows="4" placeholder="Payment schedule and how long the price holds">${esc(co.terms)}</textarea></label>
-    <p class="hint">These head every proposal and printed sheet.</p>`;
+    <p class="hint">These head every proposal and printed sheet.</p>
+    <h2>Designer For Your Website</h2>
+    ${textIn('data-company="designerEmail"', 'Email That Gets The Designs', co.designerEmail ?? '', 'you@yourcompany.com')}
+    ${co.designerEmail && !EMAIL.test(co.designerEmail) ? '<p class="hint go">That does not read as an email address, so the designer will hand customers a link to copy instead.</p>' : ''}
+    <label class="lab">Link To The Designer<input class="in" readonly value="${esc(designerLink(co))}" onfocus="this.select()"></label>
+    <label class="lab">Code For Your Web Page<textarea class="in" readonly rows="4" onfocus="this.select()">${esc(`<iframe src="${designerLink(co)}" title="Building Designer" style="width:100%;height:760px;border:0"></iframe>`)}</textarea></label>
+    <p class="hint">Customers lay out a building on your site with no prices showing, then press one button to email it to you. Their message carries a link that opens the design here as a new job, ready to price. The link works once this program is on your own web address.</p>`;
+}
+
+function designerLink(co) {
+  const to = EMAIL.test(co.designerEmail ?? '') ? `&to=${encodeURIComponent(co.designerEmail)}` : '';
+  return `${location.origin}${location.pathname}#designer${to}${co.name ? `&name=${encodeURIComponent(co.name)}` : ''}`;
 }
 
 function leftPanel() {
@@ -538,7 +575,8 @@ const firstWarning = () => result.warnings.find((w) => w.openingIndex !== undefi
 
 function paint() {
   if (shared) return paintShared();
-  $('nav').innerHTML = STEPS.map((s) => `<button data-nav="${s}" class="${ui.step === s ? 'on' : ''}">${s}</button>`).join('');
+  document.body.classList.toggle('designer', Boolean(designer));
+  $('nav').innerHTML = STEPS.filter((s) => !designer || !['Jobs', 'Price', 'Drawings'].includes(s)).map((s) => `<button data-nav="${s}" class="${ui.step === s ? 'on' : ''}">${s}</button>`).join('');
   $('views').innerHTML = VIEWS.map(([k, n]) => `<button data-view="${k}" class="${ui.view === k ? 'on' : ''}">${n}</button>`).join('');
   $('left').innerHTML = leftPanel();
   $('stage').classList.toggle('placing', Boolean(ui.placing));
@@ -567,6 +605,13 @@ function paint() {
     check.innerHTML = `<span><b>Check this${more}.</b> ${esc(warning.text)}</span>${warning.openingIndex === undefined ? '' : '<button data-fix>Fix It For Me</button>'}`;
   }
 
+  if (designer) {
+    $('total').innerHTML = `<small>${esc(designer.name || 'Building Designer')}</small><strong>${state.width} x ${state.length} x ${state.eaveHeight} ft</strong><em>Lay out your building, then send it over for a price.</em>`;
+    $('list').innerHTML = `<h2>Your Building</h2><dl class="spec">${specRows().map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>
+      <div class="seg stack"><button class="on" data-tobuilder>Send This Design For A Price</button></div>
+      <p class="hint">Your design stays on this device until you send it. The builder checks it and prices it. This is a layout, not an engineered plan.</p>`;
+    return;
+  }
   const changed = ui.changed.size;
   const moved = Math.abs(ui.delta) >= 0.005 ? ` ${ui.delta > 0 ? 'Up' : 'Down'} ${money(Math.abs(ui.delta))}.` : '';
   $('total').innerHTML = `<small>Job Total${catalog.sample ? ', Sample Prices' : ''}</small><strong>${money(priced.total)}</strong>
@@ -646,6 +691,7 @@ document.addEventListener('click', (e) => {
     box.select();
     return navigator.clipboard.writeText(box.value).then(() => { t.textContent = 'Copied'; }, () => { t.textContent = 'Press Copy On Your Keyboard'; });
   }
+  if ('tobuilder' in d) return openToBuilder();
   if ('proposal' in d) return openProposal();
   if ('print' in d) return window.print();
   if ('close' in d) { $('proposal').hidden = true; $('proposal').innerHTML = ''; return; }
@@ -792,7 +838,7 @@ document.addEventListener('change', (e) => {
   const d = e.target.dataset, v = e.target.value;
   const later = (change, note) => setTimeout(() => apply(change, note), 200);
   const dollars = Math.max(0, Number(v) || 0);
-  if (d.company) return company.set({ [d.company]: v.trim() });
+  if (d.company) { company.set({ [d.company]: v.trim() }); return d.company === 'designerEmail' || d.company === 'name' ? paint() : null; }
   if (d.num) return later({ pricing: { ...state.pricing, [d.num]: dollars } }, `Freight now ${money(dollars)}`);
   if (d.xname) return later({ pricing: { ...state.pricing, extras: state.pricing.extras.map((x, i) => (i === Number(d.xname) ? { ...x, name: v.trim() } : x)) } }, 'Extra line named');
   if (d.xamt) return later({ pricing: { ...state.pricing, extras: state.pricing.extras.map((x, i) => (i === Number(d.xamt) ? { ...x, amount: dollars } : x)) } }, `Extra line now ${money(dollars)}`);
@@ -892,6 +938,21 @@ function openSend() {
       <input readonly value="${esc(link)}" aria-label="Customer link">
       <div class="row"><button class="btn solid" data-copy>Copy Link</button><a class="btn" href="${esc(link)}" target="_blank" rel="noopener">See What They See</a></div>
       <p class="fine">The link holds this job as it is right now. Change the job and you send a new link. Paste it into a text or an email yourself.</p></div>`;
+  $('proposal').hidden = false;
+}
+
+function openToBuilder() {
+  const link = designLink(), who = designer.name || 'The Builder';
+  const plain = (html) => html.replace(/<br>/g, '; ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
+  const body = ['I laid out this building on your website and would like a price.', '', ...specRows().map(([k, v]) => `${k}: ${plain(v)}`), '',
+    'Open the design:', link, '', 'My name:', 'My phone:', 'Where it will be built:'].join('\n');
+  const mail = `mailto:${designer.to}?subject=${encodeURIComponent(`Building design, ${state.width} x ${state.length} x ${state.eaveHeight} ft`)}&body=${encodeURIComponent(body)}`;
+  $('proposal').innerHTML = `<div class="bar"><span></span><button class="btn" data-close>Close</button></div>
+    <div class="send"><h2>Send To ${esc(who)}</h2>
+      <p>${designer.to ? 'Open Email starts a message in your own email with the sizes, doors and colors written out, and a link that opens this exact design on the builder\'s screen. Add your name, phone and where it will be built, then press send.' : 'Copy this link and send it to the builder. It opens this exact design on their screen.'}</p>
+      <input readonly value="${esc(link)}" aria-label="Design link">
+      <div class="row">${designer.to ? `<a class="btn solid" href="${esc(mail)}">Open Email</a>` : ''}<button class="btn${designer.to ? '' : ' solid'}" data-copy>Copy Link</button></div>
+      <p class="fine">Nothing leaves this device until you send the message yourself.</p></div>`;
   $('proposal').hidden = false;
 }
 
