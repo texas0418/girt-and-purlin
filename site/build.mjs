@@ -233,13 +233,14 @@ ${head('On A Tablet, With Or Without Signal', 'Stand in the customer\'s yard, la
     <div class="rows still">
       <div><strong>No Signal Needed</strong><span>Open the designer once while you have a connection. After that it opens and works with none. Nothing about the job is sent anywhere.</span></div>
       <div><strong>The Job Stays On The Tablet</strong><span>Every change saves on the device as you make it. Close the tab, open it tomorrow, and the job is where you left it.</span></div>
+      <div><strong>Take The Job Back To The Office</strong><span>Save a job to a file, send it by email or carry it on a thumb drive, and open it on the office computer. The file carries the building, the pricing and the price list in use.</span></div>
       <div><strong>Sized For Thumbs</strong><span>On a touch screen the buttons and steppers grow. On a narrow screen the building takes the top and the settings and material list sit side by side below it.</span></div>
       <div><strong>Add It To The Home Screen</strong><span>It carries its own icon, so it can sit on the home screen next to your other apps.</span></div>
     </div>
   </section>
   ${notYet([
     'A run on a real tablet. The layouts were checked at tablet sizes on a computer, not yet on the device itself. Adding it to a home screen has not been tried on one either.',
-    'Moving a job from the tablet to the office computer. A job lives on the device it was drawn on.',
+    'Jobs that keep themselves in step between two devices. A job moves as a file you save and open, not on its own.',
   ])}
 </div>`));
 

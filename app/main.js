@@ -417,6 +417,8 @@ function jobsPanel() {
   return `<h2>My Jobs</h2>${rows || '<p class="hint">Nothing saved yet.</p>'}
     <div class="seg"><button data-jobcopy>Copy This Job</button></div>
     <p class="hint">Every job saves itself on this device as you work. Nothing is sent anywhere.</p>
+    <div class="seg stack"><button data-jobsave>Save This Job To A File</button><button data-jobload>Open A Job File</button></div>
+    <p class="hint">A job file carries the building, the pricing and the price list in use. Save it here, move it by email or a thumb drive, and open it on the tablet or the office computer.</p>
     <h2>Start A New Job From</h2>
     <div class="seg stack">${STARTING_POINTS.map((t, i) => `<button data-start="${i}">${t.name}</button>`).join('')}</div>
     <h2>My Templates</h2>${mine || '<p class="hint">Buildings you sell often can be kept here.</p>'}
@@ -774,6 +776,11 @@ document.addEventListener('click', (e) => {
     jobs.remove(d.jobdel); ui.confirm = null; ui.jobrow = null;
     return paint();
   }
+  if ('jobsave' in d) {
+    const stem = state.job.replace(/[^\w]+/g, '-').replace(/^-|-$/g, '').toLowerCase() || 'building';
+    return download(`${stem}.job.json`, JSON.stringify({ app: 'girt-and-purlin', file: 1, job: state, prices: catalog.sample ? null : catalog }), 'application/json');
+  }
+  if ('jobload' in d) return $('jobfile').click();
   if ('jobcopy' in d) return openJob({ ...state, signed: null, id: newId(), job: `${state.job}, Copy` }, 'Copy made. You are in the copy now');
   if (d.start) { const t = STARTING_POINTS[Number(d.start)]; return startFrom(t.name, t.design); }
   if (d.tplrow) { ui.tplrow = ui.tplrow === Number(d.tplrow) ? null : Number(d.tplrow); return paint(); }
@@ -1012,6 +1019,19 @@ document.addEventListener('change', (e) => {
 $('proposal').addEventListener('focusout', (e) => {
   const key = e.target.dataset?.co, text = e.target.innerText?.trim();
   if (key && text && text !== e.target.dataset.ph) company.set({ [key]: text });
+});
+
+// A job file made by Save This Job To A File, on this device or another one.
+$('jobfile').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  let made = null;
+  try { made = JSON.parse(await file.text()); } catch { /* not a job file */ }
+  e.target.value = '';
+  if (made?.app !== 'girt-and-purlin' || !made.job?.width) { ui.lead = 'That one could not be opened.'; ui.problem = 'It is not a Girt And Purlin job file.'; return paint(); }
+  const list = made.prices;
+  if (list && typeof list.supplier === 'string' && Array.isArray(list.rows)) { priceLists.put(list); setPrices(list); }
+  openJob({ ...made.job, id: made.job.id || newId() }, 'Job file opened');
 });
 
 $('pricefile').addEventListener('change', async (e) => {

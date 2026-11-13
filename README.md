@@ -13,7 +13,7 @@ It draws rectangular buildings up to 100 feet wide with a gable, single slope or
 - Keeps good, better and best versions of a job, a payment schedule and a signature taken on the screen.
 - Prints a proposal, a cut list, a delivery check sheet and framing drawings of all four walls and the roof. Saves the material order as a spreadsheet file, an invoice file for QuickBooks and the drawings as DXF.
 - Makes a look-only link for the customer that leaves out your costs and markup, and a simple designer a builder can put on their own website.
-- Works on a tablet without signal once it has been opened, and saves the job on the device.
+- Works on a tablet without signal once it has been opened, saves the job on the device, and moves a job between devices as a file.
 - Packs the building's facts and drawings into a package for your engineer.
 
 ## What It Does Not Do
