@@ -20,11 +20,13 @@ function entities(file) {
   return list;
 }
 
-test('the file is one ENTITIES section that ends with EOF', () => {
-  const list = entities(dxf(design(job)));
-  assert.deepEqual([list[0].type, list[0][2]], ['SECTION', 'ENTITIES']);
+test('the file names its units, then one ENTITIES section that ends with EOF', () => {
+  const file = dxf(design(job)), list = entities(file);
+  // The header says inches ($INSUNITS 1), so a CAD program does not have to ask.
+  assert.ok(file.startsWith(['0', 'SECTION', '2', 'HEADER', '9', '$INSUNITS', '70', '1', '9', '$MEASUREMENT', '70', '0', '0', 'ENDSEC', ''].join('\r\n')));
+  assert.deepEqual([list[2].type, list[2][2]], ['SECTION', 'ENTITIES']);
   assert.deepEqual(list.slice(-2).map((e) => e.type), ['ENDSEC', 'EOF']);
-  assert.deepEqual([...new Set(list.slice(1, -2).map((e) => e.type))].sort(), ['LINE', 'TEXT']);
+  assert.deepEqual([...new Set(list.slice(3, -2).map((e) => e.type))].sort(), ['LINE', 'TEXT']);
   for (const e of list.filter((e) => e.type === 'LINE')) {
     for (const code of [8, 10, 20, 11, 21]) assert.ok(e[code] !== undefined && (code === 8 || Number.isFinite(Number(e[code]))));
   }

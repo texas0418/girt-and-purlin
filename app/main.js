@@ -631,7 +631,7 @@ function leftPanel() {
     <div class="seg stack"><button data-sheets="all">All Sheets</button><button data-sheets="cuts">Cut List Only</button><button data-checksheet>Delivery Check Sheet</button></div>
     <h2>For CAD</h2>
     <div class="seg stack"><button data-dxf>Save CAD File</button></div>
-    <p class="hint">A DXF file with the floor plan and the four walls as plain lines. It opens in AutoCAD, DraftSight, LibreCAD, QCAD and most other drafting programs. One unit is one inch, so pick inches if the program asks.</p>
+    <p class="hint">A DXF file with the floor plan and the four walls as plain lines. It opens in AutoCAD, DraftSight, LibreCAD, QCAD and most other drafting programs. It opens in FreeCAD too. One unit is one inch, and the file says so, but pick inches if the program still asks.</p>
     <h2>For Your Engineer</h2>
     <div class="seg stack"><button data-engineer>Engineer Package</button></div>
     <p class="hint">Everything an engineer needs to start on this building: the size, the framing as drawn, where every post and opening sits, and the drawings. This program does not do the engineering.</p>`;

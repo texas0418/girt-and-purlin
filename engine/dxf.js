@@ -1,9 +1,9 @@
 // A CAD file of the building: the floor plan and the four walls, as plain
 // lines and labels. One drawing unit is one inch.
 //
-// The file is a DXF with an ENTITIES section only. The AutoCAD DXF reference
-// allows the header to be left out, and a file that small opens in every CAD
-// program. A header-less file cannot name its units, so the screen says inches.
+// The file is a DXF with a two-line header and an ENTITIES section. The
+// header names the units as inches ($INSUNITS 1). Without it FreeCAD 1.1.4
+// took each inch for a millimeter; with it the building opens at full size.
 import { WALLS, isGable, isOpen, wallLengthIn, wallTopIn, roofSpanAbove } from './building.js';
 import { WALL_NAMES } from './runs.js';
 
@@ -15,7 +15,7 @@ const n = (v) => String(Math.round(v * 1000) / 1000);
 export function dxf(result) {
   const g = result.geometry, b = g.building;
   const L = b.lengthIn, W = b.widthIn;
-  const out = ['0', 'SECTION', '2', 'ENTITIES'];
+  const out = ['0', 'SECTION', '2', 'HEADER', '9', '$INSUNITS', '70', '1', '9', '$MEASUREMENT', '70', '0', '0', 'ENDSEC', '0', 'SECTION', '2', 'ENTITIES'];
   const line = (layer, x1, y1, x2, y2) => out.push('0', 'LINE', '8', layer, '10', n(x1), '20', n(y1), '30', '0', '11', n(x2), '21', n(y2), '31', '0');
   const text = (layer, x, y, heightIn, value) => out.push('0', 'TEXT', '8', layer, '10', n(x), '20', n(y), '30', '0', '40', n(heightIn), '1', String(value).replace(/[\r\n]+/g, ' '));
   const rect = (layer, x1, y1, x2, y2) => { line(layer, x1, y1, x2, y1); line(layer, x2, y1, x2, y2); line(layer, x2, y2, x1, y2); line(layer, x1, y2, x1, y1); };
