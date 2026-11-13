@@ -1,7 +1,9 @@
 // The 30 day trial and the license code that follows it. A code is made for one
 // company name and one end date and is signed with a key that never leaves the
 // licensor's own computer. The program holds only the matching public key, so
-// it can check a code with no connection and cannot make one.
+// it can check a code with no connection and cannot make one. When there is a
+// connection the program also asks the server whether the code has been
+// switched off, and a server that cannot be reached never locks anyone out.
 
 export const TRIAL_DAYS = 30;
 // A license warns this many days before it ends, and the trial turns orange this close to its end.
@@ -79,13 +81,33 @@ export function tick(trial, now) {
   return { start, seen: Math.max(trial?.seen ?? 0, now, start) };
 }
 
+// A short name for a code that the server can hold in place of the code itself.
+export async function codeId(code) {
+  const bytes = fromBase32(code);
+  if (!bytes) return null;
+  const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
+  return [...hash.slice(0, 12)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+// Asks the server whether a code has been switched off. True or false when the
+// server gave a plain answer. Null when there is no connection or the answer is
+// anything else, such as a host's "checking your browser" page.
+export async function askSwitchedOff(code, url, fetcher = fetch) {
+  try {
+    const r = await fetcher(`${url}?id=${await codeId(code)}`, { cache: 'no-store', signal: AbortSignal.timeout(5000) });
+    if (r.status !== 200 || r.headers.get('sg-captcha')) return null;
+    const off = (await r.json())?.off;
+    return typeof off === 'boolean' ? off : null;
+  } catch { return null; }
+}
+
 // Where a device stands: licensed, in its trial, or locked.
 export function standing(trial, license, now) {
   const clock = Math.max(now, trial.seen);
-  if (license && clock < license.endsAt) return { mode: 'licensed', daysLeft: Math.ceil((license.endsAt - clock) / DAY) };
+  if (license && !license.off && clock < license.endsAt) return { mode: 'licensed', daysLeft: Math.ceil((license.endsAt - clock) / DAY) };
   const daysLeft = TRIAL_DAYS - Math.floor((clock - trial.start) / DAY);
   if (daysLeft > 0) return { mode: 'trial', daysLeft };
-  return { mode: 'locked', why: license ? 'ended' : 'trial' };
+  return { mode: 'locked', why: license?.off ? 'off' : license ? 'ended' : 'trial' };
 }
 
 // 2027-11-13 reads as November 13, 2027.

@@ -1,11 +1,13 @@
 // The trial line in the top bar and the screen that asks for a license code.
 // The checking itself is in engine/license.js; this file keeps the trial and
 // the code on this device and puts the screen up.
-import { tick, standing, readCode, longDate, TRIAL_DAYS, TRIAL_WARN_DAYS, LICENSE_WARN_DAYS } from '../engine/license.js';
+import { tick, standing, readCode, askSwitchedOff, longDate, TRIAL_DAYS, TRIAL_WARN_DAYS, LICENSE_WARN_DAYS } from '../engine/license.js';
 import { company } from './office.js';
 
 const TRIAL = 'girt-and-purlin.trial.v1';
 const LICENSE = 'girt-and-purlin.license.v1';
+// Where the server says whether a code has been switched off.
+const CHECK = '../check/';
 const HOUR = 3600000;
 const read = (key) => { try { return JSON.parse(localStorage.getItem(key)); } catch { return null; } };
 const write = (key, value) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* storage is off */ } };
@@ -25,12 +27,25 @@ export async function startLock(given) {
   hooks = given;
   const kept = read(LICENSE);
   const good = kept ? await readCode(kept.name, kept.code) : null;
-  license = good ? { ...good, name: kept.name } : null;
+  license = good ? { ...good, name: kept.name, code: kept.code, off: !!kept.off } : null;
   document.querySelector('header .job').insertAdjacentHTML('afterbegin', '<button id="trial" class="trial" hidden></button>');
   document.getElementById('trial').addEventListener('click', () => show());
   check();
+  askServer();
   // A tablet left open for weeks still comes to its last day.
-  setInterval(check, HOUR);
+  setInterval(() => { check(); askServer(); }, HOUR);
+}
+
+// A code switched off on the server locks the program the next time it is online, and one switched back on opens it again.
+async function askServer() {
+  if (!license) return;
+  const off = await askSwitchedOff(license.code, CHECK);
+  if (off === null || off === license.off) return;
+  license.off = off;
+  write(LICENSE, { name: license.name, code: license.code, off });
+  check();
+  if (!off) document.getElementById('lock')?.remove();
+  hooks.onChange();
 }
 
 function check() {
@@ -49,8 +64,9 @@ function check() {
 
 function show(bad = '') {
   const locked = now.mode === 'locked';
-  const head = !locked ? 'Enter Your License Code' : now.why === 'ended' ? 'Your License Has Ended' : `Your ${TRIAL_DAYS} Day Trial Has Ended`;
-  const lead = locked ? 'Your jobs are safe on this device. Type in your license code to keep working.'
+  const head = !locked ? 'Enter Your License Code' : now.why === 'off' ? 'This License Code Has Been Switched Off' : now.why === 'ended' ? 'Your License Has Ended' : `Your ${TRIAL_DAYS} Day Trial Has Ended`;
+  const lead = locked && now.why === 'off' ? 'Your jobs are safe on this device. Email simon@simonbuilds.app about this code, or type in a new one.'
+    : locked ? 'Your jobs are safe on this device. Type in your license code to keep working.'
     : now.mode === 'trial' ? `You have ${days(now.daysLeft)} left in your trial. A code keeps the program open after that.`
       : `Your license runs until ${longDate(license.expires)}. A new code takes over from the one you have.`;
   const old = document.getElementById('lock');
@@ -79,8 +95,9 @@ async function enter(e) {
   const got = await readCode(name, code);
   if (!got) return show('That code does not match this company name. Check both and try again.');
   if (Math.max(Date.now(), trial.seen) >= got.endsAt) return show(`That code ended on ${longDate(got.expires)}. Email simon@simonbuilds.app for a new one.`);
-  license = { ...got, name };
-  write(LICENSE, { name, code });
+  if (await askSwitchedOff(code, CHECK)) return show('That code has been switched off. Email simon@simonbuilds.app about it.');
+  license = { ...got, name, code, off: false };
+  write(LICENSE, { name, code, off: false });
   document.getElementById('lock').remove();
   check();
   hooks.onChange();

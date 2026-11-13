@@ -2,7 +2,7 @@
 // the real private key is never needed to run them.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { signCode, readCode, tick, standing, normalName, longDate, PUBLIC_KEY, TRIAL_DAYS } from '../license.js';
+import { signCode, readCode, codeId, askSwitchedOff, tick, standing, normalName, longDate, PUBLIC_KEY, TRIAL_DAYS } from '../license.js';
 
 const DAY = 86400000;
 const pair = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
@@ -80,4 +80,38 @@ test('a license runs to its end date and then locks', async () => {
   assert.deepEqual(standing(tick(trial, lastDay), license, lastDay), { mode: 'licensed', daysLeft: 1 });
   const after = Date.UTC(2027, 10, 14, 0, 1);
   assert.deepEqual(standing(tick(trial, after), license, after), { mode: 'locked', why: 'ended' });
+});
+
+test('a switched off license locks, and falls back to the trial while trial days remain', async () => {
+  const license = { ...await readCode('Smith Barns LLC', code, pub), off: true };
+  const start = Date.UTC(2026, 10, 13);
+  const trial = { start, seen: start };
+  assert.equal(standing(tick(trial, start + DAY), license, start + DAY).mode, 'trial');
+  const later = start + 40 * DAY;
+  assert.deepEqual(standing(tick(trial, later), license, later), { mode: 'locked', why: 'off' });
+  assert.equal(standing(tick(trial, later), { ...license, off: false }, later).mode, 'licensed');
+});
+
+test('the name the server holds for a code is the same however the code is typed', async () => {
+  const id = await codeId(code);
+  assert.match(id, /^[0-9a-f]{24}$/);
+  assert.equal(await codeId(code.toLowerCase().replace(/-/g, ' ')), id);
+  assert.equal(await codeId('not a code'), null);
+  const other = await signCode('Smith Barns LLC', 'paid', '2028-11-13', pair.privateKey);
+  assert.notEqual(await codeId(other), id);
+});
+
+test('only a plain answer from the server switches a code off', async () => {
+  const answer = (status, body, headers = {}) => async () => ({ status, headers: { get: (h) => headers[h] ?? null }, json: async () => JSON.parse(body) });
+  let asked = '';
+  assert.equal(await askSwitchedOff(code, '../check/', async (u) => { asked = u; return answer(200, '{"off":true}')(); }), true);
+  assert.equal(asked, `../check/?id=${await codeId(code)}`);
+  assert.equal(await askSwitchedOff(code, '../check/', answer(200, '{"off":false}')), false);
+  // A "checking your browser" page, a server fault, a page that is not an answer, and no connection at all.
+  assert.equal(await askSwitchedOff(code, '../check/', answer(202, '<html>', { 'sg-captcha': 'challenge' })), null);
+  assert.equal(await askSwitchedOff(code, '../check/', answer(200, '{"off":true}', { 'sg-captcha': 'challenge' })), null);
+  assert.equal(await askSwitchedOff(code, '../check/', answer(500, '{"off":true}')), null);
+  assert.equal(await askSwitchedOff(code, '../check/', answer(200, '<html>')), null);
+  assert.equal(await askSwitchedOff(code, '../check/', answer(200, '{"off":"yes"}')), null);
+  assert.equal(await askSwitchedOff(code, '../check/', async () => { throw new Error('offline'); }), null);
 });

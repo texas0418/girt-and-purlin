@@ -1,5 +1,5 @@
 // Keeps a copy of the app on the device so it opens with no connection.
-const CACHE = 'girt-and-purlin-v45';
+const CACHE = 'girt-and-purlin-v46';
 const FILES = [
   './', 'index.html', 'style.css', 'main.js', 'lock.js', 'office.js', 'scene.js', 'plan.js', 'drawings.js', 'manifest.json',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-180.png',
@@ -37,7 +37,9 @@ self.addEventListener('activate', (e) => {
 // Try the network for a few seconds so updates arrive, then fall back to the saved copy.
 // The browser is told to check with the server, so its own stored copy never hides an update.
 self.addEventListener('fetch', (e) => {
-  if (e.request.method !== 'GET' || new URL(e.request.url).origin !== location.origin) return;
+  const url = new URL(e.request.url);
+  // The license check always goes to the server and is never saved.
+  if (e.request.method !== 'GET' || url.origin !== location.origin || url.pathname.includes('/check/')) return;
   e.respondWith((async () => {
     const cache = await caches.open(CACHE);
     const saved = await cache.match(e.request, { ignoreSearch: true });
