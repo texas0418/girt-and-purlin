@@ -134,7 +134,7 @@ ${head('What It Does', 'Everything on this page was made by the program from one
   <section>
     <h2>Lay Out The Building</h2>
     <div class="split">
-      <div class="prose"><p>Set the width, length, wall height, roof pitch and overhang with arrow buttons. Pick the post spacing and truss spacing, for the whole building or wall by wall. Click a wall to put a sliding door, overhead door, walk door or window on it, then nudge it along the wall.</p><p>The building redraws in 3D as you go, in your colors. Switch to Framing to see the posts, girts, trusses and purlins with the steel off, or to Floor Plan for the view from above.</p></div>
+      <div class="prose"><p>Set the width, length, wall height, roof pitch and overhang with arrow buttons, or type the number in. Pick the post spacing and truss spacing, for the whole building or wall by wall. Click a wall to put a sliding door, overhead door, walk door or window on it, then nudge it along the wall.</p><p>The building redraws in 3D as you go, in your colors. Switch to Framing to see the posts, girts, trusses and purlins with the steel off, or to Floor Plan for the view from above.</p></div>
       <div class="sheet"><b>Floor Plan</b>${floorPlan(result, true)}</div>
     </div>
   </section>
@@ -223,7 +223,6 @@ ${head('What It Does', 'Everything on this page was made by the program from one
     'Eave lights on the printed framing drawings. They show in the 3D picture and the material list.',
     'Panel counts that subtract door and window openings. Today the walls are counted solid.',
     'Excel files. Price lists load as CSV.',
-    'Typing a number straight into a size box. Sizes move by arrow buttons.',
   ])}</div>
 </div>`));
 

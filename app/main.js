@@ -357,7 +357,9 @@ const overhangText = () => {
   if (roofOf() === 'gambrel') return `${b.endOverhangIn} in overhang at the ends`;
   return b.endOverhangIn === b.overhangIn ? `${b.overhangIn} in overhang` : `${b.overhangIn} in overhang at the sides, ${b.endOverhangIn} in at the ends`;
 };
-const field = (key) => stepper(`data-field="${key}"`, FIELDS[key].label, String(fieldValue(key)), FIELDS[key].unit, ui.sel === key);
+// The main sizes can also be typed: the number in the middle is a box.
+const field = (key) => stepper(`data-field="${key}"`, FIELDS[key].label, String(fieldValue(key)), FIELDS[key].unit, ui.sel === key)
+  .replace(/<output[^>]*>[\s\S]*<\/output>/, `<output><input data-type="${key}" inputmode="numeric" value="${fieldValue(key)}" aria-label="${FIELDS[key].label}"><small>${FIELDS[key].unit}</small></output>`);
 const choice = (key, options, unit) => `<div class="seg">${options.map((v) =>
   `<button data-choice="${key}" data-value="${v}" class="${state[key] === v ? 'on' : ''}">${v} ${unit}</button>`).join('')}</div>`;
 
@@ -980,10 +982,17 @@ $('view').addEventListener('pointerup', (e) => {
 });
 
 // Typed fields. The repaint waits a moment so a click that ended the typing still lands on its button.
+document.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.dataset?.type) e.target.blur(); });
 document.addEventListener('change', (e) => {
   const d = e.target.dataset, v = e.target.value;
   const later = (change, note) => setTimeout(() => apply(change, note), 200);
   const dollars = Math.max(0, Number(v) || 0);
+  if (d.type) {
+    const f = FIELDS[d.type], from = fieldValue(d.type), to = Math.round(Number(v));
+    if (!v.trim() || !Number.isFinite(to) || to === from) return paint();
+    ui.sel = d.type;
+    return apply({ [d.type]: to }, `${f.label} ${from} to ${to} ${f.unit === '/12' ? 'in 12' : f.unit}`);
+  }
   if (d.company) { company.set({ [d.company]: v.trim() }); return d.company === 'designerEmail' || d.company === 'name' ? paint() : null; }
   if ('thingname' in d) return later({ things: things().map((t, i) => (i === ui.thing ? { ...t, name: v.trim() } : t)) }, 'Named');
   if (d.thingnum) return later({ things: things().map((t, i) => (i === ui.thing ? { ...t, [d.thingnum]: Math.min(Math.max(Number(v) || 0.5, 0.5), 200) } : t)) }, 'Size updated');
