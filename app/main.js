@@ -3,6 +3,7 @@ import { feetInches } from '../engine/stock.js';
 import { dxf } from '../engine/dxf.js';
 import { edgeOverhangIn, eaveDropIn } from '../engine/building.js';
 import { priceJob, paymentSchedule, parsePriceList, priceListCsv, builderPriceList, toCsv, invoiceCsv, SAMPLE_CATALOG } from '../engine/pricing.js';
+import { RETAIL_CATALOG } from '../engine/retail-prices.js';
 import { createView } from './scene.js';
 import { jobs, templates, company, priceLists, newId, designOf, STARTING_POINTS } from './office.js';
 import { floorPlan } from './plan.js';
@@ -128,7 +129,7 @@ if (!result.ok) { unopened = result.errors[0]; state = structuredClone(SAMPLE); 
 const shelve = () => designer || jobs.put({ id: state.id, name: state.job, savedAt: Date.now(), size: `${state.width} x ${state.length} x ${state.eaveHeight}`, job: state });
 if (!state.id) { state.id = newId(); if (!shared) { try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch { /* storage is off */ } shelve(); } }
 let catalog = loadPrices();
-if (!shared && !designer && !catalog.sample && !priceLists.all().some((l) => l.supplier === catalog.supplier)) priceLists.put(catalog);
+if (!shared && !designer && !catalog.sample && !catalog.retail && !priceLists.all().some((l) => l.supplier === catalog.supplier)) priceLists.put(catalog);
 let priced = priceJob(result, catalog, state.pricing);
 const ui = { delta: 0, notice: '', step: 'Size', view: 'finished', sheet: 'front', sel: null, opening: null, shed: null, part: null, thing: null, side: null, placing: null, jobrow: null, tplrow: null, confirm: null, changed: new Set(), last: '', problem: '', savedAt: null, builder: { name: '', pct: 0 } };
 if (unopened) { ui.lead = 'Your saved job could not be opened.'; ui.problem = `${unopened} The sample building is showing instead.`; }
@@ -562,7 +563,7 @@ function leftPanel() {
   }
   if (ui.step === 'Price') {
     const row = (label, value, strong) => `<div class="sum${strong ? ' strong' : ''}"><span>${label}</span><span>${money(value)}</span></div>`;
-    const lists = [SAMPLE_CATALOG, ...priceLists.all()];
+    const lists = [SAMPLE_CATALOG, RETAIL_CATALOG, ...priceLists.all()];
     const listRows = lists.map((l, i) => {
       const on = l.supplier === catalog.supplier;
       return `<div class="op${on ? ' here' : ''}"><button data-list="${i}"><span>${esc(l.supplier)}<small>${l.rows.length} items${on ? ', in use' : ''}</small></span><em>${money(priceJob(result, l, state.pricing).total)}</em></button></div>`;
@@ -573,9 +574,10 @@ function leftPanel() {
     return `<h2>Price List</h2>
       ${listRows}
       ${catalog.sample ? '<p class="hint go">These are sample prices so the screen has something to add up. Load your own list before quoting a job.</p>' : ''}
+      ${catalog.retail ? `<p class="hint go">These are store shelf prices read from public web pages in November 2026, mostly one Lowe's store in Georgia. A yard's prices to a builder will differ, and ${priced.unpriced ? `${priced.unpriced} line${priced.unpriced === 1 ? ' has' : 's have'} no price on this job` : 'some items have no store price'}. Use it for a rough figure, then load your own list before quoting a job.</p>` : ''}
       ${ui.notice ? `<p class="hint go">${esc(ui.notice)}</p>` : ''}
       <div class="seg"><button data-import>Load A Price List</button><button data-export>Save This List</button></div>
-      ${catalog.sample ? '' : '<div class="seg"><button data-listdel>Remove The List In Use</button></div>'}
+      ${catalog.sample || catalog.retail ? '' : '<div class="seg"><button data-listdel>Remove The List In Use</button></div>'}
       <p class="hint">A price list is a spreadsheet saved as CSV with four columns: Item, Size, Unit and Price. Save This List gives you one to fill in. Load one for each yard you buy from and the figure beside each is this job at that yard's prices.</p>
       <h2>A Price List For One Of Your Builders</h2>
       ${catalog.sample ? '<p class="hint">For a lumber yard or supplier who hands this program to the builders it sells to. Load your own price list first; the sample prices cannot be handed out.</p>' : `
@@ -763,7 +765,7 @@ document.addEventListener('click', (e) => {
     const made = builderPriceList(catalog, ui.builder.name, ui.builder.pct);
     return download(`${(made.supplier.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'price-list')}.csv`, priceListCsv(made));
   }
-  if (d.list) { ui.notice = ''; return setPrices([SAMPLE_CATALOG, ...priceLists.all()][Number(d.list)]); }
+  if (d.list) { ui.notice = ''; return setPrices([SAMPLE_CATALOG, RETAIL_CATALOG, ...priceLists.all()][Number(d.list)]); }
   if ('listdel' in d) { priceLists.remove(catalog.supplier); ui.notice = ''; return setPrices(SAMPLE_CATALOG); }
   if ('xadd' in d) return apply({ pricing: { ...state.pricing, extras: [...(state.pricing.extras ?? []), { name: '', amount: 0 }] } }, 'Extra line added');
   if (d.xdel) return apply({ pricing: { ...state.pricing, extras: state.pricing.extras.filter((_, i) => i !== Number(d.xdel)) } }, 'Extra line removed');
@@ -1134,7 +1136,7 @@ function openProposal() {
   const groups = [...new Set(result.items.map((i) => i.group))];
   $('proposal').innerHTML = `
     <div class="bar">
-      <span>${catalog.sample ? '<b>Sample prices are loaded.</b> Load your own price list before sending this. ' : ''}Click any gray text on the page to type your own.</span>
+      <span>${catalog.sample ? '<b>Sample prices are loaded.</b> Load your own price list before sending this. ' : ''}${catalog.retail ? '<b>Retail store prices are loaded.</b> Load your own price list before sending this. ' : ''}Click any gray text on the page to type your own.</span>
       <button class="btn" data-close>Close</button>${state.signed ? '<button class="btn" data-signoff>Clear Signature</button>' : '<button class="btn" data-signopen>Sign On Screen</button>'}<button class="btn solid" data-print>Print Or Save As PDF</button>
     </div>
     <div class="page">
@@ -1202,7 +1204,7 @@ function openSend() {
   $('proposal').innerHTML = `<div class="bar"><span></span><button class="btn" data-close>Close</button></div>
     <div class="send"><h2>Send To Customer</h2>
       <p>This link opens a look-only page: the building in 3D, what is included, and the total of ${money(priced.total)}. Your costs, markup and material list are not in it.</p>
-      ${catalog.sample ? '<p class="warn">Sample prices are loaded. Load your own price list before sending this.</p>' : ''}
+      ${catalog.sample ? '<p class="warn">Sample prices are loaded. Load your own price list before sending this.</p>' : ''}${catalog.retail ? '<p class="warn">Retail store prices are loaded. Load your own price list before sending this.</p>' : ''}
       <input readonly value="${esc(link)}" aria-label="Customer link">
       <div class="row"><button class="btn solid" data-copy>Copy Link</button><a class="btn" href="${esc(link)}" target="_blank" rel="noopener">See What They See</a></div>
       <p class="fine">The link holds this job as it is right now. Change the job and you send a new link. Paste it into a text or an email yourself.</p></div>`;
