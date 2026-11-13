@@ -427,7 +427,9 @@ function jobsPanel() {
     ${textIn('data-company="name"', 'Company Name', co.name, 'Your company name')}
     ${textIn('data-company="contact"', 'Address, Phone And Email', co.contact, 'One line')}
     <label class="lab">Proposal Terms<textarea class="in" data-company="terms" rows="4" placeholder="Payment schedule and how long the price holds">${esc(co.terms)}</textarea></label>
-    <p class="hint">These head every proposal and printed sheet.</p>
+    ${co.logo ? `<img class="logo-now" src="${co.logo}" alt="Your logo">` : ''}
+    <div class="seg"><button data-logoadd>${co.logo ? 'Change Logo' : 'Add Your Logo'}</button>${co.logo ? '<button data-logodel>Remove Logo</button>' : ''}</div>
+    <p class="hint">These head every proposal and printed sheet. The logo can be a PNG or JPG picture.</p>
     <h2>Designer For Your Website</h2>
     ${textIn('data-company="designerEmail"', 'Email That Gets The Designs', co.designerEmail ?? '', 'you@yourcompany.com')}
     ${co.designerEmail && !EMAIL.test(co.designerEmail) ? '<p class="hint go">That does not read as an email address, so the designer will hand customers a link to copy instead.</p>' : ''}
@@ -781,6 +783,8 @@ document.addEventListener('click', (e) => {
     return download(`${stem}.job.json`, JSON.stringify({ app: 'girt-and-purlin', file: 1, job: state, prices: catalog.sample ? null : catalog }), 'application/json');
   }
   if ('jobload' in d) return $('jobfile').click();
+  if ('logoadd' in d) return $('logofile').click();
+  if ('logodel' in d) { company.set({ logo: '' }); return paint(); }
   if ('jobcopy' in d) return openJob({ ...state, signed: null, id: newId(), job: `${state.job}, Copy` }, 'Copy made. You are in the copy now');
   if (d.start) { const t = STARTING_POINTS[Number(d.start)]; return startFrom(t.name, t.design); }
   if (d.tplrow) { ui.tplrow = ui.tplrow === Number(d.tplrow) ? null : Number(d.tplrow); return paint(); }
@@ -1021,6 +1025,23 @@ $('proposal').addEventListener('focusout', (e) => {
   if (key && text && text !== e.target.dataset.ph) company.set({ [key]: text });
 });
 
+// The company logo is shrunk to fit a page header before it is kept, so it stays small on the device.
+$('logofile').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  e.target.value = '';
+  const fail = () => { ui.lead = 'That picture could not be used.'; ui.problem = 'Pick a PNG or JPG picture of your logo.'; paint(); };
+  let img;
+  try { img = await createImageBitmap(file); } catch { return fail(); }
+  const scale = Math.min(1, 480 / img.width, 240 / img.height);
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(img.width * scale));
+  canvas.height = Math.max(1, Math.round(img.height * scale));
+  canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+  if (!company.set({ logo: canvas.toDataURL('image/png') })) return fail();
+  paint();
+});
+
 // A job file made by Save This Job To A File, on this device or another one.
 $('jobfile').addEventListener('change', async (e) => {
   const file = e.target.files[0];
@@ -1050,7 +1071,7 @@ $('pricefile').addEventListener('change', async (e) => {
 // The company block at the top of a printed page. Typing in it on the page saves it.
 function companyHead(kind) {
   const co = company.get(), slot = (tag, key, ph) => `<${tag} contenteditable spellcheck="false" data-co="${key}" data-ph="${ph}">${esc(co[key] || ph)}</${tag}>`;
-  return `<div class="top"><div>${slot('h1', 'name', 'Your Company Name')}${slot('p', 'contact', 'Address, phone and email')}</div>
+  return `<div class="top">${co.logo ? `<img class="logo" src="${co.logo}" alt="">` : ''}<div class="who">${slot('h1', 'name', 'Your Company Name')}${slot('p', 'contact', 'Address, phone and email')}</div>
     <div class="when"><b>${kind}</b><br>${today()}</div></div>`;
 }
 

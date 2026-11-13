@@ -258,7 +258,7 @@ ${head('For Lumber Yards', 'Hand your builders a designer that adds up jobs at y
     </div>
   </section>
   ${notYet([
-        'Your yard\'s logo on the designer. Your company name and contact details print on the paperwork.',
+        'Your yard\'s logo on the designer. Your logo, company name and contact details do print on the paperwork.',
     'Manufacturer catalogs built in. Every item comes from the price list you load.',
     'Excel files. Price lists load as CSV.',
     'Orders sent to you from inside the program. The builder saves the order file and sends it.',

@@ -316,3 +316,7 @@ body.embed main { display: block; padding: 0; }
 body.embed .stage { height: 100%; border-radius: 0; }
 
 body.designer .job, body.designer .right .actions { display: none; }
+
+.page .top .logo { max-height: 64px; max-width: 180px; margin-right: 16px; object-fit: contain; }
+.page .top .who { flex: 1; }
+.logo-now { display: block; max-height: 56px; max-width: 160px; margin: 6px 0; background: #fff; padding: 4px; border-radius: 3px; }
