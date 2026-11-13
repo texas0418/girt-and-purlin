@@ -4,8 +4,8 @@
 import { tick, standing, readCode, askSwitchedOff, longDate, TRIAL_DAYS, TRIAL_WARN_DAYS, LICENSE_WARN_DAYS } from '../engine/license.js';
 import { company } from './office.js';
 
-const TRIAL = 'girt-and-purlin.trial.v1';
-const LICENSE = 'girt-and-purlin.license.v1';
+const TRIAL = 'ridge-and-rafter.trial.v1';
+const LICENSE = 'ridge-and-rafter.license.v1';
 // Where the server says whether a code has been switched off.
 const CHECK = '../check/';
 const HOUR = 3600000;

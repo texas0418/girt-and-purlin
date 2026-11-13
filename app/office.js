@@ -2,10 +2,10 @@
 // company details that head every printed page, and saved price lists.
 // Everything lives in the browser's own storage on this device.
 const KEYS = {
-  jobs: 'girt-and-purlin.jobs.v1',
-  templates: 'girt-and-purlin.templates.v1',
-  company: 'girt-and-purlin.company.v1',
-  lists: 'girt-and-purlin.pricelists.v1',
+  jobs: 'ridge-and-rafter.jobs.v1',
+  templates: 'ridge-and-rafter.templates.v1',
+  company: 'ridge-and-rafter.company.v1',
+  lists: 'ridge-and-rafter.pricelists.v1',
 };
 
 function read(key, fallback) {

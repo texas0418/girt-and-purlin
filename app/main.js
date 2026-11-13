@@ -1,3 +1,4 @@
+import './moved.js';
 import { design } from '../engine/design.js';
 import { feetInches } from '../engine/stock.js';
 import { dxf } from '../engine/dxf.js';
@@ -12,8 +13,8 @@ import { placeOnLot, feet, FACINGS } from '../engine/site.js';
 import { testFit, spare } from '../engine/fit.js';
 import { startLock, licenseLine } from './lock.js';
 
-const STORE = 'girt-and-purlin.job.v1';
-const PRICE_STORE = 'girt-and-purlin.prices.v1';
+const STORE = 'ridge-and-rafter.job.v1';
+const PRICE_STORE = 'ridge-and-rafter.prices.v1';
 const STEPS = ['Jobs', 'Size', 'Roof', 'Doors And Windows', 'Lean-Tos And Porches', 'Inside And Finish', 'Colors', 'Price', 'Drawings'];
 const VIEWS = [['finished', 'Finished'], ['framing', 'Framing'], ['plan', 'Floor Plan']];
 const WALL_NAMES = { front: 'Front', back: 'Back', left: 'Left End', right: 'Right End' };
@@ -120,7 +121,7 @@ const shared = readShare();
 // A builder's website can show this program as a designer for its customers:
 // the building steps, with no jobs, prices or drawings. The customer's work is kept apart from the builder's jobs.
 const designer = shared ? null : readDesigner();
-const STORE_KEY = designer ? 'girt-and-purlin.designer.v1' : STORE;
+const STORE_KEY = designer ? 'ridge-and-rafter.designer.v1' : STORE;
 let state = load();
 let result = design(state);
 // A saved job the engine turns away is not opened; the sample shows instead and the reason is given.
@@ -680,7 +681,7 @@ function paintShared() {
   const lines = p.lines ?? [['Building Package', p.package], ['Labor', p.labor], ['Sales Tax', p.tax]].filter(([, v], i) => i === 0 || v > 0);
   document.body.classList.add('shared');
   document.body.classList.toggle('embed', shared.embed);
-  document.title = `${state.job}, Girt And Purlin`;
+  document.title = `${state.job}, Ridge And Rafter`;
   $('views').innerHTML = [VIEWS[0], VIEWS[2]].map(([k, n]) => `<button data-view="${k}" class="${ui.view === k ? 'on' : ''}">${n}</button>`).join('');
   $('readout').textContent = `${result.summary.floorSqFt.toLocaleString()} sq ft`;
   $('plan').hidden = ui.view !== 'plan';
@@ -785,7 +786,7 @@ document.addEventListener('click', (e) => {
   }
   if ('jobsave' in d) {
     const stem = state.job.replace(/[^\w]+/g, '-').replace(/^-|-$/g, '').toLowerCase() || 'building';
-    return download(`${stem}.job.json`, JSON.stringify({ app: 'girt-and-purlin', file: 1, job: state, prices: catalog.sample ? null : catalog }), 'application/json');
+    return download(`${stem}.job.json`, JSON.stringify({ app: 'ridge-and-rafter', file: 1, job: state, prices: catalog.sample ? null : catalog }), 'application/json');
   }
   if ('jobsall' in d) return saveAllJobs();
   if ('jobload' in d) return $('jobfile').click();
@@ -1050,7 +1051,7 @@ $('logofile').addEventListener('change', async (e) => {
 
 // Every job on this device and every saved price list, in one file.
 function saveAllJobs() {
-  download('girt-and-purlin-jobs.json', JSON.stringify({ app: 'girt-and-purlin', file: 1, jobs: jobs.all(), lists: priceLists.all() }), 'application/json');
+  download('ridge-and-rafter-jobs.json', JSON.stringify({ app: 'ridge-and-rafter', file: 1, jobs: jobs.all(), lists: priceLists.all() }), 'application/json');
 }
 
 // Puts the jobs from that file in My Jobs beside the ones already here. The job that is open stays open.
@@ -1074,8 +1075,8 @@ $('jobfile').addEventListener('change', async (e) => {
   let made = null;
   try { made = JSON.parse(await file.text()); } catch { /* not a job file */ }
   e.target.value = '';
-  if (made?.app === 'girt-and-purlin' && Array.isArray(made.jobs)) return openAllJobs(made);
-  if (made?.app !== 'girt-and-purlin' || !made.job?.width) { ui.lead = 'That one could not be opened.'; ui.problem = 'It is not a Girt And Purlin job file.'; return paint(); }
+  if (made?.app === 'ridge-and-rafter' && Array.isArray(made.jobs)) return openAllJobs(made);
+  if (made?.app !== 'ridge-and-rafter' || !made.job?.width) { ui.lead = 'That one could not be opened.'; ui.problem = 'It is not a Ridge And Rafter job file.'; return paint(); }
   const list = made.prices;
   if (list && typeof list.supplier === 'string' && Array.isArray(list.rows)) { priceLists.put(list); setPrices(list); }
   openJob({ ...made.job, id: made.job.id || newId() }, 'Job file opened');
@@ -1282,7 +1283,7 @@ function drawingPages() {
 function engineerData() {
   const g = result.geometry;
   return JSON.stringify({
-    madeWith: 'Girt And Purlin',
+    madeWith: 'Ridge And Rafter',
     note: 'A description of the building as drawn. Not an engineered design. No loads were calculated. Lengths are in inches, measured along each wall from the front-left corner (front and back walls) or from the front wall (end walls).',
     job: state.job, date: new Date().toISOString().slice(0, 10),
     building: g.building, posts: g.posts, leanTosAndPorches: g.sheds, interiorWalls: g.partitions, loft: g.loft, trusses: g.trusses, girtRows: g.girtRows, purlinRowLengthIn: g.purlinRowLengthIn,

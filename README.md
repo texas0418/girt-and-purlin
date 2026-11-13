@@ -1,4 +1,4 @@
-# Girt And Purlin
+# Ridge And Rafter
 
 Pole barn design software that runs in a browser. Lay out a post-frame building, watch it stand up in 3D, and get the material list, the price, the proposal and the framing drawings as you work.
 

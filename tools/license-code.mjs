@@ -23,7 +23,7 @@ import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { signCode, readCode, codeId, normalName, longDate } from '../engine/license.js';
 
-const DIR = process.env.GIRT_AND_PURLIN_KEYS || join(homedir(), 'Documents', 'girt-and-purlin-keys');
+const DIR = process.env.RIDGE_AND_RAFTER_KEYS || join(homedir(), 'Documents', 'ridge-and-rafter-keys');
 const FILE = join(DIR, 'private-key.json');
 const RECORD = join(DIR, 'codes-issued.csv');
 const OFF = join(DIR, 'codes-switched-off.csv');

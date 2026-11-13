@@ -7,7 +7,7 @@ import { priceJob, SAMPLE_CATALOG } from '../engine/pricing.js';
 import { drawing } from '../app/drawings.js';
 import { floorPlan } from '../app/plan.js';
 
-const REPO = 'https://github.com/texas0418/girt-and-purlin';
+const REPO = 'https://github.com/texas0418/ridge-and-rafter';
 const out = (name, html) => writeFileSync(new URL(name, import.meta.url), html);
 const money = (n) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 
@@ -36,7 +36,7 @@ const cutLength = (inches) => {
   return `${ft} ft ${whole}${part ? ` ${part / div}/${8 / div}` : ''} in`;
 };
 
-const icon = '<svg viewBox="0 0 48 48" aria-hidden="true"><mask id="door"><path d="M6 42V20L24 7l18 13v22H31V26H17v16z" fill="#fff" stroke="#fff" stroke-width="3" stroke-linejoin="round"/><path d="M14 26h20" stroke="#000" stroke-width="3" stroke-linecap="round"/></mask><rect width="48" height="48" fill="currentColor" mask="url(#door)"/></svg>';
+const icon = '<svg viewBox="0 0 48 48" aria-hidden="true"><rect width="48" height="48" rx="9" fill="currentColor"/><g transform="translate(3.58 6.98) scale(0.851 0.74)" fill="none" stroke="#fff" stroke-width="4"><path d="M4 17L24 4l20 13"/><path d="M24 42V21h5.5a5.5 5.5 0 0 1 0 11h-5.5m5 0l6 10m-3 0h6M19 42h5"/><path d="M24 42V21h5.5a5.5 5.5 0 0 1 0 11h-5.5m5 0l6 10m-3 0h6M19 42h5" transform="translate(48 0) scale(-1 1)"/></g></svg>';
 const MENU = [['what-it-does.html', 'What It Does'], ['tablet.html', 'Tablet'], ['lumber-yards.html', 'Lumber Yards'], ['license.html', 'License'], ['source.html', 'Source']];
 
 function page(file, title, description, body) {
@@ -54,14 +54,14 @@ function page(file, title, description, body) {
 <body>
 <div class="wrap">
   <header>
-    <a class="brand" href="index.html">${icon}Girt And Purlin</a>
+    <a class="brand" href="index.html">${icon}Ridge And Rafter</a>
     <nav>${MENU.map(([href, name]) => `<a href="${href}"${href === file ? ' class="here"' : ''}>${name}</a>`).join('')}</nav>
     <a class="btn" href="../app/">Open The Designer</a>
   </header>
 </div>
 ${body}
 <div class="wrap">
-  <footer><span>Girt And Purlin</span>${MENU.map(([href, name]) => `<a href="${href}">${name}</a>`).join('')}<a href="../app/">Open The Designer</a><a href="mailto:simon@simonbuilds.app">simon@simonbuilds.app</a></footer>
+  <footer><span>Ridge And Rafter</span>${MENU.map(([href, name]) => `<a href="${href}">${name}</a>`).join('')}<a href="../app/">Open The Designer</a><a href="mailto:simon@simonbuilds.app">simon@simonbuilds.app</a></footer>
 </div>
 </body>
 </html>
@@ -73,7 +73,7 @@ const framing = result.items.filter((i) => i.group === 'Framing').slice(0, 9);
 const head = (h1, lead) => `<div class="wrap"><div class="top"><h1>${h1}</h1><div><p>${lead}</p></div></div></div>`;
 const notYet = (items) => `<section><h2>Not In It Yet</h2><ul class="notyet">${items.map((i) => `<li>${i}</li>`).join('')}</ul></section>`;
 
-out('index.html', page('index.html', 'Girt And Purlin, Pole Barn Design Software',
+out('index.html', page('index.html', 'Ridge And Rafter, Pole Barn Design Software',
   'Lay out a post-frame building in 3D and get the material list, price, proposal and framing drawings. Runs in a browser and on a tablet.', `
 <div class="wrap">
   <div class="top">
@@ -127,7 +127,7 @@ out('index.html', page('index.html', 'Girt And Purlin, Pole Barn Design Software
   </section>
 </div>`));
 
-out('what-it-does.html', page('what-it-does.html', 'What Girt And Purlin Does',
+out('what-it-does.html', page('what-it-does.html', 'What Ridge And Rafter Does',
   'Post layout, material list, pricing from your own list, proposal, cut list, framing drawings, customer link and an engineer package.', `
 ${head('What It Does', 'Everything on this page was made by the program from one sample building: a 30 by 48 machine shed with 12 foot walls, a sliding door, a walk door and two windows.')}
 <div class="wrap">
@@ -225,7 +225,7 @@ ${head('What It Does', 'Everything on this page was made by the program from one
   ])}</div>
 </div>`));
 
-out('tablet.html', page('tablet.html', 'Girt And Purlin On A Tablet',
+out('tablet.html', page('tablet.html', 'Ridge And Rafter On A Tablet',
   'The designer runs on a tablet in the field and keeps working without signal.', `
 ${head('On A Tablet, With Or Without Signal', 'Stand in the customer\'s yard, lay out the building in front of them and hand over a price before you leave.')}
 <div class="wrap">
@@ -244,7 +244,7 @@ ${head('On A Tablet, With Or Without Signal', 'Stand in the customer\'s yard, la
   ])}
 </div>`));
 
-out('lumber-yards.html', page('lumber-yards.html', 'Girt And Purlin For Lumber Yards',
+out('lumber-yards.html', page('lumber-yards.html', 'Ridge And Rafter For Lumber Yards',
   'Give your builders a pole barn designer that prices from your list and sends you the material order.', `
 ${head('For Lumber Yards', 'Hand your builders a designer that adds up jobs at your prices and sends the material order back to you.')}
 <div class="wrap">
@@ -265,7 +265,7 @@ ${head('For Lumber Yards', 'Hand your builders a designer that adds up jobs at y
   ])}
 </div>`));
 
-out('license.html', page('license.html', 'Girt And Purlin License',
+out('license.html', page('license.html', 'Ridge And Rafter License',
   'A 30 day trial for every company. No charge after that for companies of ten people or fewer. Larger companies buy a license. Source-available.', `
 ${head('The License, In Plain Words', 'Small shops use it without paying. Larger companies buy a license. Anyone can read the code.')}
 <div class="wrap">
@@ -284,7 +284,7 @@ ${head('The License, In Plain Words', 'Small shops use it without paying. Larger
   </section>
 </div>`));
 
-out('source.html', page('source.html', 'Girt And Purlin Source',
+out('source.html', page('source.html', 'Ridge And Rafter Source',
   'The code is public on GitHub. Plain JavaScript, no build step.', `
 ${head('The Source', 'All of the code is public. Read it, run it on your own computer, or check how a count was made.')}
 <div class="wrap">

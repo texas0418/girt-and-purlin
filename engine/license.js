@@ -47,7 +47,7 @@ function fromBase32(text) {
   return Uint8Array.from(out);
 }
 
-const signedText = (name, kind, day) => new TextEncoder().encode(`girt-and-purlin license 1|${kind}|${day}|${normalName(name)}`);
+const signedText = (name, kind, day) => new TextEncoder().encode(`ridge-and-rafter license 1|${kind}|${day}|${normalName(name)}`);
 const ECDSA = { name: 'ECDSA', namedCurve: 'P-256' }, HASH = { name: 'ECDSA', hash: 'SHA-256' };
 
 // Makes a code. Only the code tool calls this, with the private key.
