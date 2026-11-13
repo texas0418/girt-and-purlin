@@ -1,5 +1,5 @@
 // Framing drawings: one view of each wall from outside, and the roof from above.
-import { wallLengthIn, wallTopIn, edgeOverhangIn, isGable } from '../engine/building.js';
+import { wallLengthIn, wallTopIn, edgeOverhangIn, isGable, litWalls } from '../engine/building.js';
 import { spans, feetInches } from '../engine/stock.js';
 import { placeOnLot, feet } from '../engine/site.js';
 
@@ -70,6 +70,13 @@ function wallSheet(result, wall, c) {
       for (const [from, to] of spans(len * 12, gaps(row.heightIn))) out.push(board(from, to - from, row.heightIn, 5.5));
     }
     heights.push(row.heightIn);
+  }
+  // Eave lights: the clear strip under the eave, hatched, with the girt that backs its joint.
+  if (litWalls(b).includes(wall)) {
+    const joint = wallIn - rules.eaveLightIn, strip = rules.eaveLightIn / 12;
+    out.push(board(0, len * 12, joint, 3.5));
+    for (let x = 0; x < len; x += 1.5) out.push(line(x, y(joint), Math.min(x + strip, len), y(joint) - Math.min(strip, len - x), 0.03, c.soft));
+    out.push(text(len / 2, y(wallIn) - unit * 0.5, `Eave lights: clear panels, top ${short(rules.eaveLightIn)}, Z trim and ${rules.eaveLightGirtSize} girt at the joint, ${short(joint)} up`, 0.75, c.soft));
   }
 
   // Opening labels stay inside the opening: a tall narrow door reads up its

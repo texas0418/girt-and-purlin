@@ -220,7 +220,6 @@ ${head('What It Does', 'Everything on this page was made by the program from one
     'Truss types. Every truss is counted as one ordered item at the span and pitch, with no choice of scissor, attic or others.',
     'Coverings other than ribbed steel panels. No shingles, standing seam, lap siding or board and batten.',
     'Stud-framed walls and buildings joined to one another.',
-    'Eave lights on the printed framing drawings. They show in the 3D picture and the material list.',
     'Panel counts that subtract door and window openings. Today the walls are counted solid.',
     'Excel files. Price lists load as CSV.',
   ])}</div>
