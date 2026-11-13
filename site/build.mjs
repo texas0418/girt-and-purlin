@@ -79,7 +79,7 @@ out('index.html', page('index.html', 'Girt And Purlin, Pole Barn Design Software
   <div class="top">
     <h1>Pole Barn Design Software You Can Open Right Now</h1>
     <div>
-      <p>Lay out a post-frame building and watch it stand up in 3D. The material list, the price, the proposal and the framing drawings follow along as you work. There is no sales call and no sign-up.</p>
+      <p>Lay out a post-frame building and watch it stand up in 3D. The material list, the price, the proposal and the framing drawings follow along as you work. There is no sales call, and every company gets 30 days with the whole program.</p>
       <div class="go"><a class="btn" href="../app/">Open The Designer</a><a class="btn plain" href="source.html">See The Source</a></div>
     </div>
   </div>
@@ -121,7 +121,7 @@ out('index.html', page('index.html', 'Girt And Purlin, Pole Barn Design Software
 
   <section>
     <div class="two">
-      <div><h3>No Charge For Shops Of Ten Or Fewer</h3><p>Builders and yards with ten people or fewer use the whole program without paying. Larger companies buy a license. The code is public for anyone to read, which makes it source-available.</p><a href="license.html">Read The License</a></div>
+      <div><h3>No Charge For Shops Of Ten Or Fewer</h3><p>Every company gets 30 days with the whole program. After that it asks for a license code. Builders and yards with ten people or fewer get theirs without paying, and larger companies buy a license. The code is public for anyone to read, which makes it source-available.</p><a href="license.html">Read The License</a></div>
       <div><h3>Where It Stands Today</h3><p>It draws gable, single slope and gambrel buildings up to 100 feet wide, with lean-tos, porches, lofts, interior walls, liner and insulation. Its framing rules are still being checked against published builder guides, and the drawings say so until that is done.</p><a href="what-it-does.html#notyet">See What Is Not In It Yet</a></div>
     </div>
   </section>
@@ -266,20 +266,21 @@ ${head('For Lumber Yards', 'Hand your builders a designer that adds up jobs at y
 </div>`));
 
 out('license.html', page('license.html', 'Girt And Purlin License',
-  'No charge for companies of ten people or fewer. Larger companies buy a license. Source-available.', `
+  'A 30 day trial for every company. No charge after that for companies of ten people or fewer. Larger companies buy a license. Source-available.', `
 ${head('The License, In Plain Words', 'Small shops use it without paying. Larger companies buy a license. Anyone can read the code.')}
 <div class="wrap">
   <section>
     <div class="rows still">
-      <div><strong>Ten People Or Fewer</strong><span>Your company uses the whole program at no charge.</span></div>
-      <div><strong>More Than Ten People</strong><span>Your company buys a license. To ask about one, write to <a href="mailto:simon@simonbuilds.app">simon@simonbuilds.app</a>.</span></div>
+      <div><strong>The First 30 Days</strong><span>Every company uses the whole program for 30 days. After that it asks for a license code, and your jobs stay on your device while you get one.</span></div>
+      <div><strong>Ten People Or Fewer</strong><span>Your code costs nothing. Write to <a href="mailto:simon@simonbuilds.app">simon@simonbuilds.app</a> with your company name and how many people work for you. A code runs for one year and is renewed the same way.</span></div>
+      <div><strong>More Than Ten People</strong><span>Builders and contractors pay $1,500 a year, or $149 a month. Lumber yards and suppliers pay $4,800 a year. The first ten paying companies keep the price they signed at. To buy, write to <a href="mailto:simon@simonbuilds.app">simon@simonbuilds.app</a>.</span></div>
       <div><strong>Who Counts</strong><span>Employees and regular subcontractors, across the whole company. A parent company and sister companies count together.</span></div>
       <div><strong>Source-Available</strong><span>The code is public and you can read all of it. Because larger companies must pay, it is source-available and not open source.</span></div>
     </div>
   </section>
   <section>
     <h2>Still Being Written</h2>
-    <div class="prose wide"><p>This page is a summary, not the license itself. The full legal text is being prepared and reviewed, and it will be posted here and in the code before the program is offered for sale. The price for larger companies is not set yet.</p></div>
+    <div class="prose wide"><p>This page is a summary, not the license itself. The full legal text is being prepared and reviewed, and it will be posted here and in the code before the program is offered for sale.</p></div>
   </section>
 </div>`));
 

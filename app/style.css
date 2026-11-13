@@ -50,6 +50,21 @@ nav button.on { color: #fff; background: var(--area); font-weight: 500; }
 .btn:hover { background: var(--widget-hi); }
 .btn.solid { background: var(--accent); color: #fff; }
 .btn:disabled { opacity: .45; cursor: default; }
+.trial { background: none; border: 0; padding: 0 4px; height: 28px; color: var(--text-2); font-size: 12px; white-space: nowrap; }
+.trial:hover { color: var(--text); text-decoration: underline; }
+.trial.soon { color: var(--signal); }
+.lock { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 16px; background: rgba(22, 22, 22, .94); overflow: auto; }
+.lockbox { width: min(560px, 100%); background: var(--area); border-radius: 8px; padding: 28px 30px; display: grid; gap: 14px; }
+.lockbox h1 { font-size: 20px; font-weight: 600; letter-spacing: -.01em; }
+.lockbox p { color: var(--text-2); font-size: 14px; }
+.lockbox label { display: grid; gap: 5px; color: var(--text-2); font-size: 12px; }
+.lockbox input, .lockbox textarea { background: var(--field); border: 1px solid #3d3d3d; border-radius: 5px; padding: 8px 10px; font: inherit; font-size: 14px; color: var(--text); resize: none; }
+.lockbox textarea { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; line-height: 1.5; }
+.lockbox input:focus, .lockbox textarea:focus { outline: 0; border-color: var(--accent); }
+.lockbox .row { display: flex; gap: 10px; flex-wrap: wrap; }
+.lockbox .btn { height: 34px; }
+.lockbox .bad { color: var(--signal); }
+.lockbox .fine { color: var(--text-3); font-size: 12px; }
 
 main { display: grid; grid-template-columns: 300px 1fr 360px; gap: 3px; padding: 0 3px 3px; min-height: 0; }
 .left, .right, .stage { background: var(--area); border-radius: 6px; }
@@ -245,7 +260,7 @@ a.btn { display: inline-flex; align-items: center; text-decoration: none; }
   @page { size: letter; margin: .3in 0; }
   html, body { height: auto; }
   body { display: block; min-width: 0; overflow: visible; background: #fff; }
-  body > header, main, #proposal .bar { display: none; }
+  body > header, main, #proposal .bar, .lock { display: none; }
   #proposal { position: static; padding: 0; background: #fff; overflow: visible; }
   /* 850 px at 96% is the full width of a letter sheet, so a page prints as it looks on screen. */
   .page, .page.sheet { margin: 0; width: 850px; zoom: .96; min-height: 0; padding-top: 0; padding-bottom: 0; break-after: page; }

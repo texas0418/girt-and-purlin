@@ -41,6 +41,6 @@ Then open `localhost:8771/app/` for the designer, or `localhost:8771/site/` for 
 
 ## License
 
-Source-available, not open source. A company of ten people or fewer uses it at no charge. A larger company buys a license. The count covers employees and regular subcontractors across the whole company, including parent and sister companies.
+Source-available, not open source. Every company gets a 30 day trial, and after that the program asks for a license code. A company of ten people or fewer gets its code at no charge. A larger company buys a license: $1,500 a year or $149 a month for builders and contractors, $4,800 a year for lumber yards and suppliers. The count covers employees and regular subcontractors across the whole company, including parent and sister companies.
 
 The full license text is not in this repository yet. Until it is, this section is a summary only.

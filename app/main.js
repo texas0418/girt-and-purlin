@@ -9,6 +9,7 @@ import { floorPlan } from './plan.js';
 import { drawing, sheetList } from './drawings.js';
 import { placeOnLot, feet, FACINGS } from '../engine/site.js';
 import { testFit, spare } from '../engine/fit.js';
+import { startLock, licenseLine } from './lock.js';
 
 const STORE = 'girt-and-purlin.job.v1';
 const PRICE_STORE = 'girt-and-purlin.prices.v1';
@@ -419,6 +420,8 @@ function jobsPanel() {
     <p class="hint">Every job saves itself on this device as you work. Nothing is sent anywhere.</p>
     <div class="seg stack"><button data-jobsave>Save This Job To A File</button><button data-jobload>Open A Job File</button></div>
     <p class="hint">A job file carries the building, the pricing and the price list in use. Save it here, move it by email or a thumb drive, and open it on the tablet or the office computer.</p>
+    <div class="seg stack"><button data-jobsall>Save Every Job To One File</button></div>
+    ${licenseLine() ? `<p class="hint">${esc(licenseLine())}</p>` : ''}
     <h2>Start A New Job From</h2>
     <div class="seg stack">${STARTING_POINTS.map((t, i) => `<button data-start="${i}">${t.name}</button>`).join('')}</div>
     <h2>My Templates</h2>${mine || '<p class="hint">Buildings you sell often can be kept here.</p>'}
@@ -782,6 +785,7 @@ document.addEventListener('click', (e) => {
     const stem = state.job.replace(/[^\w]+/g, '-').replace(/^-|-$/g, '').toLowerCase() || 'building';
     return download(`${stem}.job.json`, JSON.stringify({ app: 'girt-and-purlin', file: 1, job: state, prices: catalog.sample ? null : catalog }), 'application/json');
   }
+  if ('jobsall' in d) return saveAllJobs();
   if ('jobload' in d) return $('jobfile').click();
   if ('logoadd' in d) return $('logofile').click();
   if ('logodel' in d) { company.set({ logo: '' }); return paint(); }
@@ -1042,6 +1046,25 @@ $('logofile').addEventListener('change', async (e) => {
   paint();
 });
 
+// Every job on this device and every saved price list, in one file.
+function saveAllJobs() {
+  download('girt-and-purlin-jobs.json', JSON.stringify({ app: 'girt-and-purlin', file: 1, jobs: jobs.all(), lists: priceLists.all() }), 'application/json');
+}
+
+// Puts the jobs from that file in My Jobs beside the ones already here. The job that is open stays open.
+function openAllJobs(made) {
+  const good = made.jobs.filter((j) => j?.job?.width && design({ ...structuredClone(SAMPLE), ...j.job }).ok);
+  for (const j of good.reverse()) {
+    const id = j.job.id || j.id || newId();
+    jobs.put({ id, name: j.job.job, savedAt: j.savedAt || Date.now(), size: `${j.job.width} x ${j.job.length} x ${j.job.eaveHeight}`, job: { ...j.job, id } });
+  }
+  for (const l of made.lists ?? []) if (typeof l?.supplier === 'string' && Array.isArray(l.rows)) priceLists.put(l);
+  if (!good.length) { ui.lead = 'That one could not be opened.'; ui.problem = 'There are no jobs in that file.'; return paint(); }
+  ui.step = 'Jobs';
+  ui.last = `${good.length} ${good.length === 1 ? 'job' : 'jobs'} added to My Jobs`;
+  paint();
+}
+
 // A job file made by Save This Job To A File, on this device or another one.
 $('jobfile').addEventListener('change', async (e) => {
   const file = e.target.files[0];
@@ -1049,6 +1072,7 @@ $('jobfile').addEventListener('change', async (e) => {
   let made = null;
   try { made = JSON.parse(await file.text()); } catch { /* not a job file */ }
   e.target.value = '';
+  if (made?.app === 'girt-and-purlin' && Array.isArray(made.jobs)) return openAllJobs(made);
   if (made?.app !== 'girt-and-purlin' || !made.job?.width) { ui.lead = 'That one could not be opened.'; ui.problem = 'It is not a Girt And Purlin job file.'; return paint(); }
   const list = made.prices;
   if (list && typeof list.supplier === 'string' && Array.isArray(list.rows)) { priceLists.put(list); setPrices(list); }
@@ -1382,6 +1406,8 @@ $('job').addEventListener('change', (e) => { if (e.target.dataset.company || e.t
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
 
 paint();
+// The customer's look-only page and a builder's website designer carry no trial and no lock.
+if (!shared && !designer) startLock({ saveJobs: saveAllJobs, onChange: () => { ui.step = 'Jobs'; paint(); } }).then(paint);
 view.resize();
 view.update(result, state.colors, fits());
 if (shared) view.spin();
