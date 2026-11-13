@@ -4,16 +4,19 @@
 //
 //   node tools/license-code.mjs "Smith Barns LLC" free
 //   node tools/license-code.mjs "Smith Barns LLC" paid 2027-11-13
+//   node tools/license-code.mjs list
 //   node tools/license-code.mjs new-key
 //
-// With no end date the code runs one year from today.
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
+// With no end date the code runs one year from today. Every code made is
+// written to codes-issued.csv beside the private key, and list shows that record.
+import { readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { signCode, readCode, longDate } from '../engine/license.js';
 
 const DIR = process.env.GIRT_AND_PURLIN_KEYS || join(homedir(), 'Documents', 'girt-and-purlin-keys');
 const FILE = join(DIR, 'private-key.json');
+const RECORD = join(DIR, 'codes-issued.csv');
 const ECDSA = { name: 'ECDSA', namedCurve: 'P-256' };
 const [first, kind = '', date] = process.argv.slice(2);
 
@@ -27,6 +30,11 @@ if (first === 'new-key') {
   process.exit(0);
 }
 
+if (first === 'list') {
+  console.log(existsSync(RECORD) ? readFileSync(RECORD, 'utf8').trimEnd() : 'No codes have been made yet.');
+  process.exit(0);
+}
+
 if (!first || !['free', 'paid'].includes(kind)) { console.error('Use: node tools/license-code.mjs "Company Name" free|paid [YYYY-MM-DD]'); process.exit(1); }
 if (!existsSync(FILE)) { console.error(`No private key at ${FILE}.`); process.exit(1); }
 
@@ -37,4 +45,6 @@ const key = await crypto.subtle.importKey('jwk', JSON.parse(readFileSync(FILE, '
 const code = await signCode(first, kind, expires, key);
 // Checked against the public key the program ships with, so a code that would not unlock is never handed out.
 if (!await readCode(first, code)) { console.error('This code does not pass the public key in engine/license.js, so the program would turn it away. The key file and the program do not match.'); process.exit(1); }
-console.log(`Company:  ${first}\nKind:     ${kind}\nGood through: ${longDate(expires)}\n\n${code}\n`);
+if (!existsSync(RECORD)) writeFileSync(RECORD, 'Issued,Company,Kind,Good Through,Code\n', { mode: 0o600 });
+appendFileSync(RECORD, `${new Date().toISOString().slice(0, 10)},"${first.replace(/"/g, '""')}",${kind},${expires},${code}\n`);
+console.log(`Company:  ${first}\nKind:     ${kind}\nGood through: ${longDate(expires)}\n\n${code}\n\nWritten to ${RECORD}`);
