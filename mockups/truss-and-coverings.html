@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Truss And Covering Mockup</title>
+<style>
+  :root { --gap: #161616; --area: #303030; --widget: #545454; --text: #e6e6e6; --text-2: #b4b4b4; --text-3: #8a8a8a; --accent: #4772b3; }
+  body { margin: 0; padding: 24px; background: var(--gap); color: var(--text); font: 13px system-ui, sans-serif; font-stretch: 103%; display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; }
+  .col { width: 340px; }
+  .cap { color: var(--text-2); font-size: 12px; margin: 0 0 8px 2px; }
+  .panel { background: var(--area); border-radius: 6px; padding: 8px 6px 10px; }
+  h2 { font-size: 12px; font-weight: 600; margin: 10px 4px 4px; color: var(--text); }
+  .seg { display: flex; gap: 1px; margin: 3px 2px 8px; border-radius: 5px; overflow: hidden; }
+  .seg.stack { flex-direction: column; }
+  .seg button { flex: 1; height: 28px; background: var(--widget); border: 0; color: var(--text); font: inherit; }
+  .seg button.on { background: var(--accent); }
+  .hint { padding: 4px 6px 8px; color: var(--text-3); font-size: 12px; margin: 0; }
+  .row { display: flex; justify-content: space-between; align-items: center; margin: 3px 2px; padding: 0 10px; height: 28px; background: var(--widget); border-radius: 5px; }
+  .row span:last-child { color: var(--text-2); }
+</style></head><body>
+
+<div class="col"><p class="cap">Roof Tab, One New Row: Truss Type</p><div class="panel">
+  <h2>Roof Shape</h2>
+  <div class="seg"><button class="on">Gable</button><button>Single Slope</button><button>Gambrel</button></div>
+  <h2>Truss Type</h2>
+  <div class="seg"><button>Common</button><button class="on">Scissor</button><button>Attic</button></div>
+  <p class="hint">A scissor truss gives a vaulted ceiling. The ceiling liner and ceiling insulation follow the slope.</p>
+  <h2>Roof</h2>
+  <div class="row"><span>Pitch</span><span>4 in 12</span></div>
+  <div class="row"><span>Ceiling Pitch</span><span>2 in 12</span></div>
+  <div class="row"><span>Overhang</span><span>12 in</span></div>
+  <div class="row"><span>End Overhang</span><span>12 in</span></div>
+  <h2>Truss Spacing</h2>
+  <div class="seg"><button>2 ft</button><button class="on">4 ft</button><button>8 ft</button></div>
+</div></div>
+
+<div class="col"><p class="cap">Roof Tab With Attic Chosen</p><div class="panel">
+  <h2>Roof Shape</h2>
+  <div class="seg"><button class="on">Gable</button><button>Single Slope</button><button>Gambrel</button></div>
+  <h2>Truss Type</h2>
+  <div class="seg"><button>Common</button><button>Scissor</button><button class="on">Attic</button></div>
+  <p class="hint">An attic truss leaves a room inside the roof. The room floor is counted and drawn.</p>
+  <h2>Roof</h2>
+  <div class="row"><span>Pitch</span><span>8 in 12</span></div>
+  <div class="row"><span>Room Width</span><span>12 ft</span></div>
+  <div class="row"><span>Overhang</span><span>12 in</span></div>
+  <div class="row"><span>End Overhang</span><span>12 in</span></div>
+  <h2>Truss Spacing</h2>
+  <div class="seg"><button class="on">2 ft</button><button>4 ft</button><button>8 ft</button></div>
+</div></div>
+
+<div class="col"><p class="cap">Finish Tab, Two New Rows: Roof Covering And Wall Covering</p><div class="panel">
+  <h2>Roof Covering</h2>
+  <div class="seg"><button>Steel Panel</button><button>Standing Seam</button><button class="on">Shingles</button></div>
+  <p class="hint">Shingles add roof sheathing, underlayment and drip edge to the list.</p>
+  <h2>Wall Covering</h2>
+  <div class="seg stack"><button>Steel Panel</button><button class="on">Board And Batten</button><button>Lap Siding</button></div>
+  <p class="hint">Wood and lap siding add wall sheathing and house wrap to the list.</p>
+  <h2>Wainscot</h2>
+  <div class="seg"><button class="on">None</button><button>36 in</button><button>48 in</button></div>
+</div></div>
+
+</body></html>
