@@ -855,6 +855,13 @@ document.addEventListener('click', (e) => {
   if ('close' in d) { $('proposal').hidden = true; $('proposal').innerHTML = ''; return; }
   if (d.roof) {
     if (d.roof === roofOf()) return;
+    // A single slope climbs the whole width, so a pitch that suits a gable can call for posts longer than any stocked.
+    // The roof drops to the steepest pitch the posts allow instead of refusing.
+    if (d.roof === 'mono' && !design({ ...state, roof: 'mono' }).ok) {
+      for (let pitch = state.pitch - 1; pitch >= 1; pitch--) {
+        if (design({ ...state, roof: 'mono', pitch }).ok) return apply({ roof: 'mono', pitch }, `Roof now single slope at ${pitch} in 12, the steepest the longest stocked post allows`);
+      }
+    }
     return apply({ roof: d.roof }, `Roof now ${ROOF_NAMES[d.roof].toLowerCase()}`);
   }
   if (d.choice) {
