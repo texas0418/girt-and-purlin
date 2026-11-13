@@ -22,6 +22,9 @@ export function placePosts(b, rules) {
   const posts = [];
   const warnings = [];
   const errors = [];
+  // One kind of post for the whole frame: laminated columns once the side walls outgrow solid posts.
+  const columns = needsColumns(b, rules);
+  const stock = columns ? rules.columnStockFt : rules.postStockFt;
 
   for (const wall of WALLS) {
     const len = wallLengthIn(b, wall);
@@ -67,23 +70,33 @@ export function placePosts(b, rules) {
 
     for (const atIn of spots.sort((a, c) => a - c)) {
       let topIn = wallTopIn(b, wall, atIn);
-      let stockFt = fitStock(topIn + rules.postEmbedmentIn, rules.postStockFt);
+      let stockFt = fitStock(topIn + rules.postEmbedmentIn, stock);
       // An end wall post too tall for any stocked length stops under the end truss instead.
       if (stockFt === null && isGable(wall) && topIn > b.eaveIn + EPS) {
         topIn = b.eaveIn;
-        stockFt = fitStock(topIn + rules.postEmbedmentIn, rules.postStockFt);
+        stockFt = fitStock(topIn + rules.postEmbedmentIn, stock);
         if (!warnings.some((w) => w.code === 'end-posts-short')) {
-          warnings.push({ code: 'end-posts-short', text: 'The roof at the end walls is taller than the longest stocked post, so those posts stop at the eave height under the end truss and the wall above is framed on the truss. Have the engineer confirm the end wall.' });
+          warnings.push({ code: 'end-posts-short', text: `The roof at the end walls is taller than the longest stocked ${columns ? 'laminated column' : 'post'}, so those posts stop at the eave height under the end truss and the wall above is framed on the truss. Have the engineer confirm the end wall.` });
         }
       }
       if (stockFt === null) {
         errors.push(`The post at ${feetInches(atIn)} on the ${wall} wall needs to be `
-          + `${feetInches(topIn + rules.postEmbedmentIn)} long, which is longer than any stocked post.`);
+          + `${feetInches(topIn + rules.postEmbedmentIn)} long, which is longer than any stocked ${columns ? 'laminated column' : 'post'}.`);
       }
-      posts.push({ wall, atIn, ...planPoint(b, wall, atIn), topIn, stockFt });
+      posts.push({ wall, atIn, ...planPoint(b, wall, atIn), topIn, stockFt, ...(columns ? { column: true } : {}) });
     }
   }
+  if (columns && !errors.length) {
+    warnings.push({ code: 'laminated-columns', text: `The walls need posts longer than the longest solid post (${Math.max(...rules.postStockFt)} ft), so the wall posts are laminated columns. The list carries them as ${rules.columnSize}. Have the engineer set the column size and number of plies.` });
+  }
   return { posts, warnings, errors };
+}
+
+// True when a side wall post is longer than any solid post. End wall posts under the
+// roof slope do not count, because they can stop under the end truss.
+export function needsColumns(b, rules) {
+  const tallIn = Math.max(wallTopIn(b, 'front', 0), wallTopIn(b, 'back', 0));
+  return tallIn + rules.postEmbedmentIn > Math.max(...rules.postStockFt) * 12 + EPS;
 }
 
 export function placeTrusses(b) {

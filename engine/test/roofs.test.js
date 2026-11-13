@@ -134,3 +134,24 @@ test('the gable roof is unchanged', () => {
   assert.equal(qty(r, 'Rake Trim'), 8);
   assert.equal(r.summary.peakIn, 168);
 });
+
+// Walls too tall for solid posts. 22 ft wall + 4 ft in the ground = 26 ft, past the 24 ft solid post.
+// Side walls 32 ft at 8 ft: 5 posts each, 10 columns at 26 ft. End walls 24 ft at 8 ft: two posts each
+// between the corners, 8 ft in, where a 4 in 12 roof has climbed 32 in: 24 ft 8 in + 4 ft = 28 ft 8 in, a 30 ft column.
+test('walls past the longest solid post are framed with laminated columns', () => {
+  const tall = design({ ...size, eaveHeight: 22, pitch: 4 });
+  assert.equal(tall.ok, true);
+  assert.equal(qty(tall, 'Posts'), 0);
+  assert.equal(qty(tall, 'Laminated Columns', '26 ft'), 10);
+  assert.equal(qty(tall, 'Laminated Columns', '30 ft'), 4);
+  assert.equal(tall.warnings.filter((w) => w.code === 'laminated-columns').length, 1);
+  assert.equal(tall.cuts.some((c) => c.part === 'Posts'), false);
+  assert.equal(tall.cuts.filter((c) => c.part === 'Laminated Columns').reduce((s, c) => s + c.qty, 0), 14);
+  // 10 x 26 + 4 x 30 = 380 ft at the sample 9.00 a foot.
+  const line = priceJob(tall, SAMPLE_CATALOG, {}).lines.filter((l) => l.name === 'Laminated Columns');
+  assert.equal(line.reduce((s, l) => s + l.cost, 0), 380 * 9);
+  // A 20 ft wall still fits a 24 ft solid post, so nothing changes there.
+  const solid = design({ ...size, eaveHeight: 20, pitch: 4 });
+  assert.equal(qty(solid, 'Laminated Columns'), 0);
+  assert.equal(solid.warnings.some((w) => w.code === 'laminated-columns'), false);
+});

@@ -13,6 +13,7 @@ export const SAMPLE_CATALOG = {
   sample: true,
   rows: [
     { item: 'Posts', size: '6x6 treated', unit: 'ft', price: 4.5 },
+    { item: 'Laminated Columns', size: '3-ply 2x6 laminated', unit: 'ft', price: 9 },
     { item: 'Trusses', size: '', unit: 'ft', price: 9 },
     { item: 'Single Slope Trusses', size: '', unit: 'ft', price: 13.5 },
     { item: 'Gambrel Trusses', size: '', unit: 'ft', price: 16.5 },

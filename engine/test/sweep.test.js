@@ -49,14 +49,15 @@ function check(job) {
     for (const o of ops) if (!o.toGround && at.some((a) => a > o.startIn + 0.01 && a < o.endIn - 0.01) && !r.warnings.some((w) => w.openingIndex === o.index)) fail('post behind a window with no warning', job);
   }
   for (const p of posts) {
-    if (!R.postStockFt.includes(p.stockFt)) fail('post length is not one a yard stocks', job);
+    if (!(p.column ? R.columnStockFt : R.postStockFt).includes(p.stockFt)) fail('post length is not one a yard stocks', job);
     if (p.stockFt * 12 + 0.01 < p.topIn + R.postEmbedmentIn) fail('post is shorter than the wall plus the depth in the ground', job);
   }
   const tx = r.geometry.trusses.map((t) => t.x).sort((x, y) => x - y);
   if (Math.abs(tx[0]) > 0.01 || Math.abs(tx.at(-1) - b.lengthIn) > 0.01) fail('no truss at an end wall', job);
   for (let i = 1; i < tx.length; i++) if (tx[i] - tx[i - 1] > b.trussSpacingIn + 0.01) fail('gap between trusses wider than the truss spacing', job);
+  if (posts.some((p) => p.column) && !r.warnings.some((w) => w.code === 'laminated-columns')) fail('laminated columns with no warning', job);
   const sum = (name) => r.items.filter((i) => i.name === name).reduce((s, i) => s + i.qty, 0);
-  if (sum('Posts') !== posts.length) fail('post count on the material list differs from posts drawn', job);
+  if (sum('Posts') + sum('Laminated Columns') !== posts.length) fail('post count on the material list differs from posts drawn', job);
   if (r.summary.trusses !== tx.length) fail('truss count in summary differs from trusses drawn', job);
   if (JSON.stringify(design(job)) !== JSON.stringify(r)) fail('same building gave two different answers', job);
   try { const p = priceJob(r, SAMPLE_CATALOG, { markupPct: 20, taxPct: 7, laborPerSqFt: 4 }); if (!(p.total > 0) || !Number.isFinite(p.total)) fail('price total is not a positive number', job); } catch (e) { fail('pricing crash: ' + e.message, job); }

@@ -6,6 +6,8 @@
 export const defaultRules = {
   postEmbedmentIn:   { value: 48,   verified: true, note: 'Depth of post below grade', source: 'American Wood Council Post Frame Buildings (about 4 ft); Bannock County ID guide (48 in minimum); FBi Buildings. A minimum: frost depth or the engineer can make it deeper' },
   postStockFt:       { value: [10, 12, 14, 16, 18, 20, 24], verified: false, note: 'Post lengths a yard stocks' },
+  columnStockFt:     { value: [10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36], verified: true, note: 'Laminated column lengths, used when a wall needs a post longer than the longest solid one', source: 'Rigidply Rafters standard glulam columns (3-ply 2x6, 8 ft to 36 ft); Timber Technologies Titan Timbers stock (to 36 ft); Cumberland Supply column brochure (2 ft steps). Longer columns are made to order' },
+  columnSize:        { value: '3-ply 2x6 laminated', verified: false, note: 'The smallest common laminated column. The engineer sets the real size and number of plies for the wall height and loads' },
   postSize:          { value: '6x6 treated', verified: true, source: 'Bannock County ID and Kochville Township MI guides (6x6 minimum). Fits small and medium buildings; tall walls move to laminated columns' },
   endPostsStopAtTruss: { value: true, verified: false, note: 'End wall posts normally run up to the roof line. Where that is taller than any stocked post they stop at the eave height under the end truss. No source read confirms this as standard practice' },
   doorJambPostMinFt: { value: 6,    verified: false, note: 'Doors this wide or wider get a post at each jamb' },

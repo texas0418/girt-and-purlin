@@ -86,11 +86,15 @@ export function design(input, ruleOverrides) {
     }
   }
 
-  const postTally = {};
-  for (const p of [...posts, ...shedPosts, ...interior.posts]) postTally[p.stockFt] = (postTally[p.stockFt] ?? 0) + 1;
+  const postTally = {}, columnTally = {};
+  for (const p of [...posts, ...shedPosts, ...interior.posts]) {
+    const t = p.column ? columnTally : postTally;
+    t[p.stockFt] = (t[p.stockFt] ?? 0) + 1;
+  }
 
   const items = [
     ...lines('Framing', 'Posts', rules.postSize, postTally),
+    ...lines('Framing', 'Laminated Columns', rules.columnSize, columnTally),
     { group: 'Framing', name: TRUSS_NAMES[b.roof], size: `${b.widthIn / 12} ft span, ${b.roof === 'gambrel' ? `${GAMBREL.lowerPitch}/12 and ${GAMBREL.upperPitch}/12` : `${b.pitch}/12`}`, length: '', qty: trusses.length, ft: b.widthIn / 12 },
     ...lumber('Skirt Boards'),
     ...lumber('Wall Girts'),
