@@ -11,10 +11,19 @@ export function roofPanels(b, rules) {
   return tally;
 }
 
+// A wide door takes the place of the full panels that would have stood in it.
+// Walk doors and windows are cut out of full panels on site, so they change nothing
+// (Hansen Pole Buildings, Doors and Windows: field located, cut from the wall steel).
+export function doorOver(b, wall, left, right) {
+  return b.openings.find((o) => o.wall === wall && (o.type === 'slider' || o.type === 'overhead') && o.startIn <= left + EPS && o.endIn >= right - EPS);
+}
+
 // Gable-end panels are ordered at the height of their taller edge and cut
-// to the roof line on site.
+// to the roof line on site. A panel that stands wholly inside a wide door is
+// ordered short, to reach from the top of the door to the top of the wall;
+// those come back in `short`, since they never reach down to the wainscot.
 export function wallPanels(b, rules) {
-  const tally = {}, lit = litWalls(b);
+  const tally = {}, short = {}, lit = litWalls(b);
   for (const wall of closedWalls(b)) {
     const len = wallLengthIn(b, wall);
     const count = Math.ceil(len / rules.panelCoverageIn - EPS);
@@ -26,9 +35,22 @@ export function wallPanels(b, rules) {
       if (isGable(wall)) for (const p of b.line) if (p.y > left && p.y < right) tall = Math.max(tall, p.h);
       // Clear panels take the top of a wall with eave lights.
       if (lit.includes(wall)) tall -= rules.eaveLightIn;
-      add(tally, Math.ceil(tall - EPS));
+      const door = doorOver(b, wall, left, right);
+      if (!door) add(tally, Math.ceil(tall - EPS));
+      else if (tall - door.heightIn > EPS) add(short, Math.ceil(tall - door.heightIn - EPS));
     }
   }
+  return { tally, short };
+}
+
+// The steel that skins each sliding door: the door stands as tall as its
+// opening, and its overlap past the jambs fits inside the same panel widths.
+// Sources: Stanley National farm door catalog (door height the same as the
+// opening, 1.5 in overlap at each jamb); Hansen Pole Buildings (a 12 ft split
+// door is covered with two 3 ft widths of steel on each leaf).
+export function sliderPanels(b, rules) {
+  const tally = {};
+  for (const o of b.openings) if (o.type === 'slider') add(tally, Math.ceil(o.heightIn - EPS), Math.ceil(o.widthIn / rules.panelCoverageIn - EPS));
   return tally;
 }
 

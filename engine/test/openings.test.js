@@ -83,3 +83,48 @@ test('an opening wider than 12 ft gets the larger header', () => {
   const narrow = withOpenings({ type: 'overhead', wall: 'front', offset: 16, width: 12, height: 10 });
   assert.equal(narrow.items.find((i) => i.name === 'Headers').size, '2x10');
 });
+
+test('a wide door takes short panels above it and steel for its own face', () => {
+  const plainWalls = withOpenings();
+  // The front wall is 48 ft: 16 panels, 12 ft tall. A 12 ft door from 18 to 30 ft stands
+  // where panels 7 to 10 would, so those four are ordered 2 ft long to go above the 10 ft door.
+  const r = withOpenings({ type: 'slider', wall: 'front', offset: 18, width: 12, height: 10 });
+  assert.equal(qty(r, 'Wall Panels', '12 ft 0 in'), qty(plainWalls, 'Wall Panels', '12 ft 0 in') - 4);
+  assert.equal(qty(r, 'Wall Panels', '2 ft 0 in'), 4);
+  // The door is as tall as its opening and four panels wide.
+  assert.equal(qty(r, 'Sliding Door Panels', '10 ft 0 in'), 4);
+  // An overhead door gets the short panels but no steel of its own.
+  const overhead = withOpenings({ type: 'overhead', wall: 'front', offset: 18, width: 12, height: 10 });
+  assert.equal(qty(overhead, 'Wall Panels', '2 ft 0 in'), 4);
+  assert.equal(qty(overhead, 'Sliding Door Panels'), 0);
+  // Moved to 10 ft, the door runs from 10 to 22 ft. Only the panels at 12, 15 and 18 ft stand
+  // wholly inside it; the ones it cuts into at each jamb stay full length and are cut on site.
+  const off = withOpenings({ type: 'slider', wall: 'front', offset: 10, width: 12, height: 10 });
+  assert.equal(qty(off, 'Wall Panels', '2 ft 0 in'), 3);
+  assert.equal(qty(off, 'Sliding Door Panels', '10 ft 0 in'), 4);
+  // A door as tall as the wall leaves nothing above it.
+  const full = withOpenings({ type: 'overhead', wall: 'front', offset: 18, width: 12, height: 12 });
+  assert.equal(qty(full, 'Wall Panels'), qty(plainWalls, 'Wall Panels') - 4);
+  // On a gable end the piece count stays the same; four pieces are just shorter.
+  const gable = withOpenings({ type: 'slider', wall: 'right', offset: 9, width: 12, height: 10 });
+  assert.equal(qty(gable, 'Wall Panels'), qty(plainWalls, 'Wall Panels'));
+  assert.equal(qty(gable, 'Sliding Door Panels', '10 ft 0 in'), 4);
+});
+
+test('walk doors and windows are cut out of full panels', () => {
+  const plainWalls = withOpenings();
+  const r = withOpenings({ type: 'walk', wall: 'front', offset: 9, width: 3, height: 6 + 8 / 12 }, { type: 'window', wall: 'back', offset: 9, width: 3, height: 3 });
+  assert.deepEqual(r.items.filter((i) => i.name === 'Wall Panels'), plainWalls.items.filter((i) => i.name === 'Wall Panels'));
+});
+
+test('wainscot and wall liner follow a wide door', () => {
+  const door = { type: 'slider', wall: 'front', offset: 18, width: 12, height: 10 };
+  const r = design({ ...base, openings: [door], options: { wainscot: true, linerWalls: true } });
+  // 52 panels less the four in the door get a 3 ft wainscot piece; the pieces above the door stay 2 ft.
+  assert.equal(qty(r, 'Wainscot Panels', '3 ft 0 in'), 48);
+  assert.equal(qty(r, 'Wall Panels', '2 ft 0 in'), 4);
+  assert.equal(qty(r, 'Wall Panels', '9 ft 0 in'), 28);
+  // Liner: 52 panels 12 ft tall, less four, plus four 2 ft pieces above the door.
+  assert.equal(qty(r, 'Liner Panels', '12 ft 0 in'), 48);
+  assert.equal(qty(r, 'Liner Panels', '2 ft 0 in'), 4);
+});

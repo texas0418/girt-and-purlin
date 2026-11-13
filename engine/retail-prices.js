@@ -34,6 +34,7 @@ export const RETAIL_CATALOG = {
     michiana('Roof Panels', '', 'ft', 3.79, '29 gauge 40-Year Select painted panel, per foot'),
     michiana('Wall Panels', '', 'ft', 3.79, '29 gauge 40-Year Select painted panel, per foot'),
     michiana('Wainscot Panels', '', 'ft', 3.79, '29 gauge 40-Year Select painted panel, per foot'),
+    michiana('Sliding Door Panels', '', 'ft', 3.79, '29 gauge 40-Year Select painted panel, per foot'),
     michiana('Ridge Cap', '', 'each', 32.98, '10 in ridge cap, 10 ft 6 in piece'),
     michiana('Eave Trim', '', 'each', 15.97, 'Eave trim, sold as a 10 ft piece'),
     michiana('Rake Trim', '', 'each', 24.49, 'Rake and corner trim, 10 ft 6 in piece'),

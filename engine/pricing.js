@@ -44,6 +44,7 @@ export const SAMPLE_CATALOG = {
     { item: 'Liner Girts', size: '', unit: 'ft', price: 0.6 },
     { item: 'Ceiling Joists', size: '', unit: 'ft', price: 0.95 },
     { item: 'Wainscot Panels', size: '', unit: 'ft', price: 3.2 },
+    { item: 'Sliding Door Panels', size: '', unit: 'ft', price: 3.2 },
     { item: 'Wainscot Trim', size: '', unit: 'each', price: 18 },
     { item: 'Skylight Panels', size: '', unit: 'ft', price: 6 },
     { item: 'Eave Light Panels', size: '', unit: 'ft', price: 6 },

@@ -4,7 +4,7 @@ import { resolveRules, unverifiedRules } from './rules.js';
 import { placePosts, placeTrusses } from './framing.js';
 import { WALL_NAMES, lumberRuns, girtRowCount, girtTopIn, gableGirtRows, purlinRowsPerSide, purlinRows, planePurlinRows } from './runs.js';
 import { isGable, isOpen, closedWalls, GAMBREL } from './building.js';
-import { roofPanels, wallPanels, trim, closures, screws, areas } from './metal.js';
+import { roofPanels, wallPanels, sliderPanels, trim, closures, screws, areas } from './metal.js';
 import { feetInches, add } from './stock.js';
 import { cutList } from './cutlist.js';
 import { placeSheds, shedRuns, shedMetal } from './sheds.js';
@@ -57,10 +57,10 @@ export function design(input, ruleOverrides) {
   const runs = [...lumberRuns(b, rules, posts, trusses), ...shedRuns(b, rules, sheds, posts), ...finishRuns(b, rules, posts, trusses, sheds), ...interior.runs];
   const extra = shedMetal(b, rules, sheds);
   const merged = (base, more) => { for (const [k, n] of Object.entries(more)) add(base, k, n); return base; };
-  const mainRoof = roofPanels(b, rules);
+  const mainRoof = roofPanels(b, rules), mainWalls = wallPanels(b, rules);
   const finish = finishParts(b, rules, {
     posts: [...posts, ...shedPosts, ...interior.posts], trusses, sheds,
-    wallTally: merged(wallPanels(b, rules), extra.wall), roofTally: merged({ ...mainRoof }, extra.roof), mainRoofPanelIn: Math.max(...Object.keys(mainRoof).map(Number)),
+    wallTally: merged(mainWalls.tally, extra.wall), roofTally: merged({ ...mainRoof }, extra.roof), mainRoofPanelIn: Math.max(...Object.keys(mainRoof).map(Number)),
   });
   if (finish.errors.length) return { ok: false, errors: finish.errors, warnings, items: [] };
   warnings.push(...finish.warnings);
@@ -103,8 +103,9 @@ export function design(input, ruleOverrides) {
     ...lumber('Opening Blocking'),
     ...FINISH_LUMBER.flatMap((name) => lumber(name)),
     ...lines('Metal', 'Roof Panels', '', finish.roof, feetInches, inchesToFt),
-    ...lines('Metal', 'Wall Panels', '', finish.walls, feetInches, inchesToFt),
+    ...lines('Metal', 'Wall Panels', '', merged({ ...finish.walls }, mainWalls.short), feetInches, inchesToFt),
     ...lines('Metal', 'Wainscot Panels', '', finish.wainscot, feetInches, inchesToFt),
+    ...lines('Metal', 'Sliding Door Panels', '', sliderPanels(b, rules), feetInches, inchesToFt),
     ...finish.metal,
     ...lines('Interior', 'Liner Panels', '', finish.liner, feetInches, inchesToFt),
     ...Object.entries(merged(merged(trim(b, rules), extra.trim), finish.trim)).map(([name, qty]) => ({ group: 'Metal', name, size: '', length: feetInches(rules.trimPieceIn), qty, ft: rules.trimPieceIn / 12 })),

@@ -2,7 +2,7 @@
 // insulation, footings, the slab, ridge vent and skylight panels. Each part
 // is counted only when the job turns it on in its options.
 import { wallLengthIn, wallTopIn, isOpen, closedWalls, litWalls, CORNERS } from './building.js';
-import { wallAreaIn } from './metal.js';
+import { wallAreaIn, doorOver } from './metal.js';
 import { add, fitStock, spans, feetInches } from './stock.js';
 import { boards, openSpans, WALL_NAMES } from './runs.js';
 
@@ -177,7 +177,15 @@ export function finishParts(b, rules, { posts, trusses, sheds, wallTally, roofTa
   const liner = {};
   let linerSqFt = 0;
   if (o.linerWalls) {
-    for (const wall of closedWalls(b)) add(liner, up(b.eaveIn), up(wallLengthIn(b, wall) / rules.panelCoverageIn));
+    // Like the outside steel, a liner panel wholly inside a wide door only covers the wall above it.
+    for (const wall of closedWalls(b)) {
+      const len = wallLengthIn(b, wall);
+      for (let left = 0; left < len - EPS; left += rules.panelCoverageIn) {
+        const door = doorOver(b, wall, left, Math.min(left + rules.panelCoverageIn, len));
+        if (!door) add(liner, up(b.eaveIn));
+        else if (b.eaveIn - door.heightIn > EPS) add(liner, up(b.eaveIn - door.heightIn));
+      }
+    }
     linerSqFt += (closedIn * b.eaveIn) / 144;
     // Liner turns an inside corner only where two closed walls meet.
     const corners = CORNERS.filter((pair) => !pair.some((wall) => isOpen(b, wall))).length;
