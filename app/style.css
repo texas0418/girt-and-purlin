@@ -98,6 +98,7 @@ main { display: grid; grid-template-columns: 300px 1fr 360px; gap: 3px; padding:
 .seg { display: flex; gap: 1px; margin: 3px 2px 8px; border-radius: 5px; overflow: hidden; }
 .seg button { flex: 1; height: 28px; background: var(--widget); border: 0; color: var(--text); }
 .seg button:hover { background: var(--widget-hi); }
+.seg button:disabled, .seg button:disabled:hover { background: #444; color: var(--text-3); cursor: default; }
 .seg .on, .seg .on:hover { background: var(--accent); color: #fff; }
 .seg.stack { flex-wrap: wrap; }
 .seg.stack button { flex: 1 0 calc(50% - 1px); }

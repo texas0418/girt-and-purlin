@@ -77,3 +77,24 @@ test('invoice file for QuickBooks', async () => {
     '1001,"Smith, 30 x 48",11/02/2026,11/02/2026,"Labor, Crew",5000.50',
   ]);
 });
+
+test('invoice and estimate files for QuickBooks Desktop', async () => {
+  const { quickbooksIif } = await import('../pricing.js');
+  const lines = [['Building Package', 24000], ['Freight And Delivery', 0], ['Labor,\tCrew', 5000.5], ['Sales Tax', 1680.1]];
+  const job = { number: '1001', customer: 'Smith, John', date: new Date(2026, 10, 2), income: 'Construction Income', item: 'Post Frame Building' };
+  const invoice = quickbooksIif(lines, job);
+  assert.ok(invoice.endsWith('ENDTRNS\r\n'));
+  const rows = invoice.trimEnd().split('\r\n').map((r) => r.split('\t'));
+  assert.deepEqual(rows.map((r) => r[0]), ['!TRNS', '!SPL', '!ENDTRNS', 'TRNS', 'SPL', 'SPL', 'SPL', 'ENDTRNS']);
+  assert.deepEqual(rows[3], ['TRNS', '', 'INVOICE', '11/2/2026', 'Accounts Receivable', 'Smith, John', '', '30680.60', '1001', '', 'N', 'N', 'N']);
+  assert.deepEqual(rows[4], ['SPL', '', 'INVOICE', '11/2/2026', 'Construction Income', '', '', '-24000.00', '', 'Building Package', 'N', '-1', '24000.00', 'Post Frame Building', 'N']);
+  assert.equal(rows[5][9], 'Labor, Crew');
+  assert.equal(rows[3].length, rows[0].length);
+  assert.equal(rows[4].length, rows[1].length);
+  // The lines add up to the total, so QuickBooks sees a balanced entry.
+  assert.equal(rows.filter((r) => r[0] === 'SPL').reduce((sum, r) => sum + Math.round(r[7] * 100), 0), -3068060);
+
+  const estimate = quickbooksIif(lines, { ...job, kind: 'estimate' }).trimEnd().split('\r\n').map((r) => r.split('\t'));
+  assert.deepEqual(estimate[3].slice(2, 5), ['ESTIMATE', '11/2/2026', 'Estimates']);
+  assert.deepEqual(estimate[4].slice(11, 14), ['', '24000.00', 'Post Frame Building']);
+});

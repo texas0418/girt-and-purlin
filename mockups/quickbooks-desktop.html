@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QuickBooks Desktop Mockup</title>
+<style>
+  :root { --gap: #161616; --area: #303030; --field: #1f1f1f; --widget: #545454; --widget-hi: #656565; --text: #e6e6e6; --text-2: #b4b4b4; --text-3: #8a8a8a; --accent: #4772b3; }
+  body { margin: 0; padding: 24px; background: var(--gap); color: var(--text); font: 13px system-ui, sans-serif; font-stretch: 103%; display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; }
+  .col { width: 340px; }
+  .cap { color: var(--text-2); font-size: 12px; margin: 0 0 8px 2px; }
+  .panel { background: var(--area); border-radius: 6px; padding: 8px 6px 10px; }
+  h2 { font-size: 12px; font-weight: 600; margin: 10px 4px 4px; color: var(--text); }
+  h3 { font-size: 12px; font-weight: 400; margin: 10px 4px 2px; color: var(--text-2); }
+  .seg { display: flex; gap: 1px; margin: 3px 2px 8px; border-radius: 5px; overflow: hidden; }
+  .seg button { flex: 1; height: 28px; background: var(--widget); border: 0; color: var(--text); font: inherit; }
+  .seg button.off { color: var(--text-3); background: #444; }
+  .hint { padding: 8px 6px; color: var(--text-3); font-size: 12px; margin: 0; }
+  .hint.go { color: var(--text); background: #3b3327; border-radius: 5px; margin: 0 2px 6px; padding: 8px 10px; }
+  .lab { display: block; margin: 6px 2px; color: var(--text-2); font-size: 12px; }
+  .in { display: block; box-sizing: border-box; width: 100%; margin-top: 3px; padding: 6px 8px; background: #1d1d1d; border: 1px solid #3d3d3d; border-radius: 5px; color: var(--text); font: inherit; font-size: 13px; }
+  .in::placeholder { color: #6d6d6d; }
+</style></head><body>
+
+<div class="col"><p class="cap">Before The Names Are Typed In</p><div class="panel">
+  <h2>For Your Books</h2>
+  <h3>QuickBooks Online</h3>
+  <div class="seg"><button>Save Invoice</button></div>
+  <h3>QuickBooks Desktop</h3>
+  <label class="lab">Customer Name In QuickBooks<input class="in" value="Smith 30 x 48 Shop"></label>
+  <label class="lab">Income Account<input class="in" placeholder="As it reads in your chart of accounts"></label>
+  <label class="lab">Item<input class="in" placeholder="As it reads in your item list"></label>
+  <label class="lab">Receivable Account<input class="in" value="Accounts Receivable"></label>
+  <div class="seg"><button class="off">Save Estimate</button><button class="off">Save Invoice</button></div>
+  <p class="hint go">Type the income account and the item to save a file for QuickBooks Desktop.</p>
+</div></div>
+
+<div class="col"><p class="cap">Ready To Save</p><div class="panel">
+  <h2>For Your Books</h2>
+  <h3>QuickBooks Online</h3>
+  <div class="seg"><button>Save Invoice</button></div>
+  <h3>QuickBooks Desktop</h3>
+  <label class="lab">Customer Name In QuickBooks<input class="in" value="Smith, John"></label>
+  <label class="lab">Income Account<input class="in" value="Construction Income"></label>
+  <label class="lab">Item<input class="in" value="Post Frame Building"></label>
+  <label class="lab">Receivable Account<input class="in" value="Accounts Receivable"></label>
+  <div class="seg"><button>Save Estimate</button><button>Save Invoice</button></div>
+  <p class="hint">QuickBooks Desktop takes the file in under File, Utilities, Import, IIF Files. Back up your company file first, because an import has no undo and the same file taken in twice makes two entries. The three names must read exactly as they do in your QuickBooks. A customer name QuickBooks does not know gets added as a new customer. The file carries the same lines the customer sees, never your costs. Sales tax goes in as a plain line.</p>
+</div></div>
+
+</body></html>

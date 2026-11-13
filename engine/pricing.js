@@ -215,3 +215,25 @@ export function invoiceCsv(lines, { number, customer, date }) {
   return toCsv([['Invoice number', 'Customer', 'Invoice date', 'Due date', 'Item description', 'Item amount'],
     ...lines.filter(([, amount]) => amount > 0).map(([what, amount]) => [number, customer, day, day, what, amount.toFixed(2)])]);
 }
+
+// QuickBooks Desktop takes a tab-separated IIF file. The columns follow Intuit's own invoice and estimate samples.
+// The accounts and the item must already be in the builder's QuickBooks under exactly these names.
+const IIF_TRNS = ['TRNSID', 'TRNSTYPE', 'DATE', 'ACCNT', 'NAME', 'CLASS', 'AMOUNT', 'DOCNUM', 'MEMO', 'CLEAR', 'TOPRINT', 'NAMEISTAXABLE'];
+const IIF_SPL = ['SPLID', 'TRNSTYPE', 'DATE', 'ACCNT', 'NAME', 'CLASS', 'AMOUNT', 'DOCNUM', 'MEMO', 'CLEAR', 'QNTY', 'PRICE', 'INVITEM', 'TAXABLE'];
+const iifCell = (v) => String(v ?? '').replace(/[\t\r\n]+/g, ' ').trim();
+const iifRow = (key, cols, values) => [key, ...cols.map((c) => iifCell(values[c]))].join('\t');
+
+export function quickbooksIif(lines, { kind = 'invoice', number, customer, date, receivable = 'Accounts Receivable', income, item }) {
+  const type = kind === 'estimate' ? 'ESTIMATE' : 'INVOICE';
+  const day = `${date.getMonth() + 1}/${date.getDate()}/${date.getFullYear()}`;
+  const cents = lines.map(([what, amount]) => [what, Math.round(amount * 100)]).filter(([, c]) => c > 0);
+  const money = (c) => (c / 100).toFixed(2);
+  const head = { TRNSTYPE: type, DATE: day, CLEAR: 'N' };
+  return [
+    ['!TRNS', ...IIF_TRNS].join('\t'), ['!SPL', ...IIF_SPL].join('\t'), '!ENDTRNS',
+    iifRow('TRNS', IIF_TRNS, { ...head, ACCNT: type === 'ESTIMATE' ? 'Estimates' : receivable, NAME: customer,
+      AMOUNT: money(cents.reduce((sum, [, c]) => sum + c, 0)), DOCNUM: number, TOPRINT: 'N', NAMEISTAXABLE: 'N' }),
+    ...cents.map(([what, c]) => iifRow('SPL', IIF_SPL, { ...head, ACCNT: income, AMOUNT: `-${money(c)}`, MEMO: what,
+      QNTY: type === 'INVOICE' ? -1 : '', PRICE: money(c), INVITEM: item, TAXABLE: 'N' })),
+    'ENDTRNS', ''].join('\r\n');
+}

@@ -3,7 +3,7 @@ import { design } from '../engine/design.js';
 import { feetInches } from '../engine/stock.js';
 import { dxf } from '../engine/dxf.js';
 import { edgeOverhangIn, eaveDropIn } from '../engine/building.js';
-import { priceJob, paymentSchedule, parsePriceList, priceListCsv, builderPriceList, toCsv, invoiceCsv, SAMPLE_CATALOG } from '../engine/pricing.js';
+import { priceJob, paymentSchedule, parsePriceList, priceListCsv, builderPriceList, toCsv, invoiceCsv, quickbooksIif, SAMPLE_CATALOG } from '../engine/pricing.js';
 import { RETAIL_CATALOG } from '../engine/retail-prices.js';
 import { createView } from './scene.js';
 import { jobs, templates, company, priceLists, newId, designOf, STARTING_POINTS } from './office.js';
@@ -569,6 +569,7 @@ function leftPanel() {
       const on = l.supplier === catalog.supplier;
       return `<div class="op${on ? ' here' : ''}"><button data-list="${i}"><span>${esc(l.supplier)}<small>${l.rows.length} items${on ? ', in use' : ''}</small></span><em>${money(priceJob(result, l, state.pricing).total)}</em></button></div>`;
     }).join('');
+    const co = company.get(), qbReady = Boolean(co.qbIncome && co.qbItem);
     const extras = state.pricing.extras ?? [], pays = state.pricing.payments ?? [], plan = paymentSchedule(priced.total, pays);
     const alts = state.alts ? eachAlt((a, i) => `<div class="op${i === state.alt ? ' open' : ''}"><button data-alt="${i}"><span>${esc(a.name)}<small>${i === state.alt ? 'Showing now' : 'Click to show'}</small></span><em>${money(priced.total)}</em></button>
       ${i === state.alt ? `${textIn(`data-altname="${i}"`, 'Name', a.name, 'Option name')}<button class="btn remove" data-altdel="${i}">Remove This Option</button>` : ''}</div>`).join('') : '';
@@ -608,8 +609,17 @@ function leftPanel() {
       ${priced.freight ? row('Freight And Delivery', priced.freight) : ''}${priced.extraLines.map((e) => row(esc(e.name), e.amount)).join('')}${row('Total', priced.total, true)}
       ${priced.unpriced ? `<p class="hint go">${priced.unpriced} ${priced.unpriced === 1 ? 'line has' : 'lines have'} no price in this list and count as zero.</p>` : ''}
       <h2>For Your Books</h2>
-      <div class="seg stack"><button data-invoice>Save Invoice For QuickBooks</button></div>
+      <p class="lab">QuickBooks Online</p>
+      <div class="seg"><button data-invoice>Save Invoice</button></div>
       <p class="hint">A file QuickBooks Online takes in under Settings, Import Data, Invoices. It carries the same lines the customer sees, never your costs. The customer is filled in with the job name and the due date with today, so change both as you import. QuickBooks shows a step for matching columns. Sales tax goes in as a plain line, so leave QuickBooks' own tax off for this invoice.</p>
+      <p class="lab">QuickBooks Desktop</p>
+      ${textIn('data-qbcustomer', 'Customer Name In QuickBooks', state.qbCustomer ?? state.job, 'As it reads in your customer list')}
+      ${textIn('data-company="qbIncome"', 'Income Account', co.qbIncome ?? '', 'As it reads in your chart of accounts')}
+      ${textIn('data-company="qbItem"', 'Item', co.qbItem ?? '', 'As it reads in your item list')}
+      ${textIn('data-company="qbReceivable"', 'Receivable Account', co.qbReceivable ?? 'Accounts Receivable', 'Accounts Receivable')}
+      <div class="seg"><button data-iif="estimate"${qbReady ? '' : ' disabled'}>Save Estimate</button><button data-iif="invoice"${qbReady ? '' : ' disabled'}>Save Invoice</button></div>
+      ${qbReady ? `<p class="hint">QuickBooks Desktop takes the file in under File, Utilities, Import, IIF Files. Back up your company file first, because an import has no undo and the same file taken in twice makes two entries. The three names must read exactly as they do in your QuickBooks. A customer name QuickBooks does not know gets added as a new customer. The file carries the same lines the customer sees, never your costs. Sales tax goes in as a plain line.</p>`
+        : '<p class="hint go">Type the income account and the item to save a file for QuickBooks Desktop.</p>'}
       <h2>Options For The Customer</h2>${alts}
       ${(state.alts?.length ?? 0) < ALT_NAMES.length ? `<div class="seg"><button data-altadd>${state.alts ? 'Add Another Option' : 'Offer Good, Better, Best'}</button></div>` : ''}
       <p class="hint">Each option is its own version of this building. Changes go to the one that is showing and the others stay as they are. The proposal prints them all with their totals.</p>`;
@@ -822,9 +832,14 @@ document.addEventListener('click', (e) => {
   if ('engineer' in d) return openEngineer();
   const fileStem = state.job.replace(/[^\w]+/g, '-').replace(/^-|-$/g, '').toLowerCase() || 'building';
   if ('engdata' in d) return download(`${fileStem}-data.json`, engineerData(), 'application/json');
-  if ('invoice' in d) {
+  if ('invoice' in d || d.iif) {
     const now = new Date();
     const number = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
+    if (d.iif) {
+      const co = company.get();
+      return download(`${fileStem}-${d.iif}.iif`, quickbooksIif(priceLines(priced), { kind: d.iif, number, customer: state.qbCustomer ?? state.job, date: now,
+        receivable: co.qbReceivable || 'Accounts Receivable', income: co.qbIncome, item: co.qbItem }));
+    }
     return download(`${fileStem}-invoice.csv`, invoiceCsv(priceLines(priced), { number, customer: state.job, date: now }));
   }
   if ('dxf' in d) return download(`${fileStem}.dxf`, dxf(result), 'application/dxf');
@@ -1011,7 +1026,8 @@ document.addEventListener('change', (e) => {
     ui.sel = d.type;
     return apply({ [d.type]: to }, `${f.label} ${from} to ${to} ${f.unit === '/12' ? 'in 12' : f.unit}`);
   }
-  if (d.company) { company.set({ [d.company]: v.trim() }); return d.company === 'designerEmail' || d.company === 'name' ? paint() : null; }
+  if (d.company) { company.set({ [d.company]: v.trim() }); return d.company === 'designerEmail' || d.company === 'name' || d.company.startsWith('qb') ? paint() : null; }
+  if ('qbcustomer' in d) return later({ qbCustomer: v.trim() || undefined }, 'Customer name updated');
   if ('thingname' in d) return later({ things: things().map((t, i) => (i === ui.thing ? { ...t, name: v.trim() } : t)) }, 'Named');
   if (d.thingnum) return later({ things: things().map((t, i) => (i === ui.thing ? { ...t, [d.thingnum]: Math.min(Math.max(Number(v) || 0.5, 0.5), 200) } : t)) }, 'Size updated');
   if (d.builder) { ui.builder[d.builder] = d.builder === 'pct' ? Math.max(-100, Number(v) || 0) : v.trim(); return; }
