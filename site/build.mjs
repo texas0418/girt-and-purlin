@@ -61,7 +61,7 @@ function page(file, title, description, body) {
 </div>
 ${body}
 <div class="wrap">
-  <footer><span>Girt And Purlin</span>${MENU.map(([href, name]) => `<a href="${href}">${name}</a>`).join('')}<a href="../app/">Open The Designer</a></footer>
+  <footer><span>Girt And Purlin</span>${MENU.map(([href, name]) => `<a href="${href}">${name}</a>`).join('')}<a href="../app/">Open The Designer</a><a href="mailto:simon@simonbuilds.app">simon@simonbuilds.app</a></footer>
 </div>
 </body>
 </html>
@@ -273,7 +273,7 @@ ${head('The License, In Plain Words', 'Small shops use it without paying. Larger
   <section>
     <div class="rows still">
       <div><strong>Ten People Or Fewer</strong><span>Your company uses the whole program at no charge.</span></div>
-      <div><strong>More Than Ten People</strong><span>Your company buys a license.</span></div>
+      <div><strong>More Than Ten People</strong><span>Your company buys a license. To ask about one, write to <a href="mailto:simon@simonbuilds.app">simon@simonbuilds.app</a>.</span></div>
       <div><strong>Who Counts</strong><span>Employees and regular subcontractors, across the whole company. A parent company and sister companies count together.</span></div>
       <div><strong>Source-Available</strong><span>The code is public and you can read all of it. Because larger companies must pay, it is source-available and not open source.</span></div>
     </div>
