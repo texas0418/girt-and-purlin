@@ -166,8 +166,13 @@ export function normalize(input) {
     if (!list.includes(v)) { errors.push(`${name} is not one of the choices.`); return list[0]; }
     return v;
   };
+  const wallCover = pick(o.wallCover, ['steel', 'batten', 'lap'], 'Wall covering');
+  // Wainscot and eave lights are cut into steel wall panels, so wood walls carry neither.
+  const steelWalls = wallCover === 'steel';
   b.options = {
-    wainscotIn: (o.wainscot ?? input.colors?.wainscotOn) ? pick(o.wainscotIn, [36, 48], 'Wainscot height') : 0,
+    roofCover: pick(o.roofCover, ['steel', 'standing', 'shingles'], 'Roof covering'),
+    wallCover,
+    wainscotIn: steelWalls && (o.wainscot ?? input.colors?.wainscotOn) ? pick(o.wainscotIn, [36, 48], 'Wainscot height') : 0,
     gutters: !!(o.gutters ?? input.colors?.gutters),
     linerWalls: !!o.linerWalls,
     linerCeiling: !!o.linerCeiling,
@@ -179,7 +184,7 @@ export function normalize(input) {
     ridgeVent: !!o.ridgeVent,
     cupolas: !!o.cupolas,
     cupolaSizeIn: pick(o.cupolaSizeIn, [0, 24, 36, 48], 'Cupola size'),
-    eaveLights: pick(o.eaveLights, ['none', 'front', 'back', 'both'], 'Eave lights'),
+    eaveLights: steelWalls ? pick(o.eaveLights, ['none', 'front', 'back', 'both'], 'Eave lights') : 'none',
     skylights: o.skylights == null ? 0 : Math.round(num(o.skylights, 'Skylight panels', 0, 200)),
   };
 

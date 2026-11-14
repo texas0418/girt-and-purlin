@@ -89,6 +89,88 @@ function panelTextures() {
   return { normal, shade };
 }
 
+// A bump picture and a shade picture for one covering, from a height and a tone
+// given in inches on a tile wIn wide and hIn tall. Zero inches is the top of the tile.
+function reliefTextures(wIn, hIn, nw, nh, height, tone) {
+  const at = (x, y) => height((((x % nw) + nw) % nw) * wIn / nw, (((y % nh) + nh) % nh) * hIn / nh);
+  const normal = canvasTexture(nw, nh, (d) => {
+    for (let y = 0; y < nh; y++) for (let x = 0; x < nw; x++) {
+      const sx = (at(x + 1, y) - at(x - 1, y)) * nw / wIn / 2;
+      const sy = (at(x, y + 1) - at(x, y - 1)) * nh / hIn / 2;
+      const len = Math.hypot(sx, sy, 1);
+      d.set([127.5 - 127.5 * sx / len, 127.5 + 127.5 * sy / len, 127.5 + 127.5 / len, 255], (y * nw + x) * 4);
+    }
+  }, false);
+  const shade = canvasTexture(nw, nh, (d) => {
+    for (let y = 0; y < nh; y++) for (let x = 0; x < nw; x++) {
+      const v = Math.max(0, Math.min(255, 255 * tone(x * wIn / nw, y * hIn / nh, x, y)));
+      d.set([v, v, v, 255], (y * nw + x) * 4);
+    }
+  });
+  for (const t of [normal, shade]) t.repeat.set(12 / wIn, 12 / hIn);
+  return { normal, shade };
+}
+
+// The coverings other than ribbed steel, each measured in real inches.
+function coverTextures() {
+  const rand = seeded(41);
+  const list = (n, spread) => Array.from({ length: n }, () => 1 - rand() * spread);
+  const ramp = (v, from, to, low) => (v <= from ? low : v >= to ? 1 : low + (1 - low) * (v - from) / (to - from));
+
+  // Standing seam: a flat 16 inch pan with a 1 inch upright seam and no screws showing.
+  const panTint = list(8, 0.05);
+  const fromSeam = (x) => Math.abs((x % 16) - 8);
+  const seam = reliefTextures(128, 4, 1024, 4,
+    (x) => { const d = fromSeam(x); return d < 0.35 ? 1 : d < 0.9 ? (0.9 - d) / 0.55 : 0; },
+    (x) => { const d = fromSeam(x); return panTint[Math.floor(x / 16) % 8] * (d < 0.35 ? 1.03 : d < 1.1 ? 0.78 : 1); });
+
+  // Architectural shingles: 5 5/8 inches showing, with raised tabs of uneven width
+  // that throw a shadow on the layer under them.
+  const COURSE = 5.625;
+  const grit = list(512 * 256, 0.2);
+  const cuts = Array.from({ length: 4 }, () => {
+    const tabs = [];
+    for (let x = 0, up = rand() < 0.5; x < 36; up = !up) {
+      const w = Math.min(36 - x, 3 + rand() * 5);
+      tabs.push({ x, up, tint: 1 - rand() * 0.14 });
+      x += w;
+    }
+    return tabs;
+  });
+  const tab = (x, y) => {
+    const c = Math.floor(y / COURSE) % 4, t = cuts[c].findLast((k) => k.x <= x) ?? cuts[c][0];
+    return { ...t, within: y - Math.floor(y / COURSE) * COURSE, edge: x - t.x };
+  };
+  const shingles = reliefTextures(36, COURSE * 4, 512, 256,
+    (x, y) => { const s = tab(x, y); return (s.up ? 0.18 : 0) + 0.2 * s.within / COURSE; },
+    (x, y, px, py) => { const s = tab(x, y); return 0.95 * s.tint * grit[py * 512 + px] * (s.up ? 1 : 0.8 * ramp(s.edge, 0, 0.5, 0.7)) * ramp(s.within, 0.25, 1.3, 0.5); });
+
+  // Board and batten: 12 inch boards standing upright with a 3 1/2 inch batten over each joint.
+  const boardTint = list(8, 0.07), streak = list(1024, 0.06);
+  const fromJoint = (x) => { const s = x % 12; return Math.min(s, 12 - s); };
+  const batten = reliefTextures(96, 96, 1024, 8,
+    (x) => (fromJoint(x) < 1.75 ? 0.75 : 0),
+    (x, y, px) => { const d = fromJoint(x); return streak[px] * (d < 1.75 ? 1.02 : boardTint[Math.floor(x / 12) % 8] * ramp(d, 1.75, 2.6, 0.62)); });
+
+  // Lap siding: courses 6.84 inches tall, each one shading the top of the course under it.
+  const LAP = 6.84;
+  const lapTint = list(4, 0.04), grain = list(256, 0.05), butt = Array.from({ length: 4 }, () => rand() * 96);
+  const course = (y) => ({ c: Math.floor(y / LAP) % 4, within: y - Math.floor(y / LAP) * LAP });
+  const lap = reliefTextures(96, LAP * 4, 512, 256,
+    (x, y) => 0.4 * course(y).within / LAP,
+    (x, y, px, py) => { const s = course(y); return lapTint[s.c] * grain[py] * (Math.abs(x - butt[s.c]) < 0.12 ? 0.7 : 1) * ramp(s.within, 0.2, 1.1, 0.5); });
+
+  return { seam, shingles, batten, lap };
+}
+
+// A roof slab with its texture measured in feet, counted up from the low edge.
+function roofSlab(len, slope, flip) {
+  const geo = new THREE.BoxGeometry(1, 1, 1);
+  const uv = geo.attributes.uv;
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * len, (flip ? 1 - uv.getY(i) : uv.getY(i)) * slope);
+  return geo;
+}
+
 function speckle(base, spread, blotches = 0, size = 256) {
   const rand = seeded(7);
   return canvasTexture(size, size, (d, w, h) => {
@@ -310,7 +392,7 @@ export function createView(canvas, stage) {
   scene.add(ground, patches);
 
   const ribs = panelTextures();
-  const roofRibs = { normal: ribs.normal.clone(), shade: ribs.shade.clone() };
+  const covers = coverTextures();
   ribs.normal.repeat.set(1 / PANEL_FT, 1 / ROW_FT);
   ribs.shade.repeat.set(1 / PANEL_FT / TINT_PANELS, 1 / ROW_FT);
   // Painted steel: a little mirror in the metal under a glossy paint coat.
@@ -321,7 +403,8 @@ export function createView(canvas, stage) {
   const gravelMap = speckle([150, 146, 138], 0.4, 40);
   gravelMap.repeat.set(1 / 7, 1 / 7);
   const mats = {
-    wall: metal(ribs), wainscot: metal(ribs), roof: metal(roofRibs), shedRoof: metal(ribs), trim: metal(), cupolaRoof: metal(),
+    wall: metal(ribs), wainscot: metal(ribs), leaf: metal(ribs), roof: metal(ribs), shedRoof: metal(ribs), trim: metal(), cupolaRoof: metal(),
+    ridgeShingle: new THREE.MeshStandardMaterial({ roughness: 0.95, metalness: 0 }),
     door: new THREE.MeshStandardMaterial({ color: 0xe9e9e4, roughness: 0.55, metalness: 0.1 }),
     // Test-fit boxes: see-through so the framing behind still reads.
     fits: new THREE.MeshStandardMaterial({ color: 0x4772b3, roughness: 0.8, transparent: true, opacity: 0.4, depthWrite: false }),
@@ -338,7 +421,7 @@ export function createView(canvas, stage) {
     bark: new THREE.MeshStandardMaterial({ color: 0x4f4335, roughness: 1 }),
     leaves: [0x34492a, 0x3d532e, 0x2e4228].map((color) => new THREE.MeshStandardMaterial({ color, roughness: 1 })),
   };
-  for (const t of [ribs.normal, ribs.shade, roofRibs.normal, roofRibs.shade, grassMap, gravelMap, mottleMap]) {
+  for (const t of [ribs.normal, ribs.shade, ...Object.values(covers).flatMap((c) => [c.normal, c.shade]), grassMap, gravelMap, mottleMap]) {
     t.anisotropy = renderer.capabilities.getMaxAnisotropy();
   }
 
@@ -374,6 +457,18 @@ export function createView(canvas, stage) {
   };
   controls.addEventListener('change', draw);
   controls.addEventListener('start', () => { spinning++; });
+
+  // What each covering is made of: its pictures, then how much it shines.
+  const looks = {
+    steel: [ribs, 0.32, 0.42, 0.3], standing: [covers.seam, 0.32, 0.42, 0.3],
+    shingles: [covers.shingles, 0, 0.95, 0], batten: [covers.batten, 0, 0.8, 0], lap: [covers.lap, 0, 0.8, 0],
+  };
+  function dress(m, cover) {
+    const [maps, metalness, roughness, clearcoat] = looks[cover] ?? looks.steel;
+    if (m.map === maps.shade) return;
+    Object.assign(m, { map: maps.shade, normalMap: maps.normal, metalness, roughness, clearcoat });
+    m.needsUpdate = true;
+  }
 
   function clear(group) {
     group.traverse((o) => { if (o.geometry && !SHARED.has(o.geometry)) o.geometry.dispose(); });
@@ -589,7 +684,7 @@ export function createView(canvas, stage) {
         const z = 0.2, edge = 0.3;
         const leaf = sheet();
         leaf.quad(o.u0 - 0.2, o.v0 + 0.15, o.u1 + 0.2, o.v1 + 0.1, z);
-        const m = new THREE.Mesh(leaf.build(), mats.wall);
+        const m = new THREE.Mesh(leaf.build(), mats.leaf);
         m.castShadow = m.receiveShadow = true;
         g.add(m);
         box(g, mats.dark, w, h, 0.04, uc, vc, -0.05);
@@ -636,9 +731,8 @@ export function createView(canvas, stage) {
     const L = b.lengthIn / 12, W = b.widthIn / 12, oh = b.endOverhangIn / 12;
     const len = L + 2 * oh, t = 0.12;
     const shapes = b.planes.map((p) => ({ ...planeShape(b, p), p }));
-    const longest = Math.max(...shapes.map((s) => s.slope));
-    roofRibs.normal.repeat.set(len / PANEL_FT, longest / ROW_FT);
-    roofRibs.shade.repeat.set(len / PANEL_FT / TINT_PANELS, longest / ROW_FT);
+    // A shingle roof is capped with shingles, a steel one with trim.
+    const capMat = b.options?.roofCover === 'shingles' ? mats.ridgeShingle : mats.trim;
     const liftOf = (s) => t / 2 / Math.cos(s.a) + 0.02;
 
     // Skylight panels share out between the slopes that reach the top of the roof.
@@ -655,21 +749,21 @@ export function createView(canvas, stage) {
 
     for (const s of shapes) {
       const lift = liftOf(s), out = s.dir;
-      box(finished, mats.roof, len, t, s.slope, 0, s.midH + lift, s.midZ, s.dir * s.a);
+      box(finished, mats.roof, len, t, s.slope, 0, s.midH + lift, s.midZ, s.dir * s.a).geometry = roofSlab(len, s.slope, s.lowZ < s.highZ);
       for (const end of [1, -1]) {
         box(finished, mats.trim, 0.12, 0.6, s.slope, end * (len / 2 + 0.05), s.midH + lift - 0.22, s.midZ, s.dir * s.a);
       }
       if (s.p.highEdge === 'ridge') {
         const top = s.ridgeH + lift;
         if (s.dir === 1) {
-          box(finished, mats.trim, len + 0.16, 0.16, 0.26, 0, top + 0.09, s.ridgeZ);
+          box(finished, capMat, len + 0.16, 0.16, 0.26, 0, top + 0.09, s.ridgeZ);
           // A vented ridge stands taller than a plain cap, with a dark slot down each side.
           if (b.options?.ridgeVent) {
-            box(finished, mats.trim, len - 0.6, 0.22, 0.5, 0, top + 0.25, s.ridgeZ);
+            box(finished, capMat, len - 0.6, 0.22, 0.5, 0, top + 0.25, s.ridgeZ);
             box(finished, mats.dark, len - 0.8, 0.07, 0.56, 0, top + 0.17, s.ridgeZ);
           }
         }
-        box(finished, mats.trim, len + 0.12, 0.08, 0.95, 0, top + 0.08 - 0.475 * Math.sin(s.a), s.ridgeZ + out * 0.46 * Math.cos(s.a), s.dir * s.a);
+        box(finished, capMat, len + 0.12, 0.08, 0.95, 0, top + 0.08 - 0.475 * Math.sin(s.a), s.ridgeZ + out * 0.46 * Math.cos(s.a), s.dir * s.a);
       }
       if (s.p.highEdge === 'high') {
         // The top edge of a single slope: a fascia under it and a cap folded over it.
@@ -930,7 +1024,12 @@ export function createView(canvas, stage) {
     for (const g of [finished, framing, site]) clear(g);
     wallMeshes = [];
     bigDoors = [];
+    const steelWalls = (b.options?.wallCover ?? 'steel') === 'steel';
+    dress(mats.wall, b.options?.wallCover);
+    for (const m of [mats.roof, mats.shedRoof]) dress(m, b.options?.roofCover);
     mats.wall.color.set(colors.walls);
+    mats.leaf.color.set(colors.walls);
+    mats.ridgeShingle.color.set(colors.roof);
     mats.roof.color.set(colors.roof);
     mats.cupolaRoof.color.set(colors.roof);
     mats.shedRoof.color.set(colors.roof);
@@ -951,7 +1050,7 @@ export function createView(canvas, stage) {
     frontRef.updateMatrixWorld(true);
     for (const wall of ['front', 'back', 'left', 'right']) {
       if (b.walls?.[wall]?.open) continue;
-      const g = buildWall(b, wall, colors.wainscotOn);
+      const g = buildWall(b, wall, colors.wainscotOn && steelWalls);
       g.updateMatrixWorld(true);
       finished.add(g);
     }

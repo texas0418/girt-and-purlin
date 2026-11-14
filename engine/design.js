@@ -11,6 +11,7 @@ import { placeSheds, shedRuns, shedMetal } from './sheds.js';
 import { finishRuns, finishParts, FINISH_LUMBER } from './finish.js';
 import { placeInterior, INTERIOR_LUMBER } from './interior.js';
 import { trussParts } from './trusses.js';
+import { coverParts } from './coverings.js';
 
 // ft and sqFt are the numbers a price list multiplies by.
 function lines(group, name, size, tally, label = (k) => `${k} ft`, ft = (k) => k) {
@@ -37,7 +38,8 @@ export function design(input, ruleOverrides) {
   if (rules.postEmbedmentIn > shallowIn && shallowIn > 0) {
     warnings.push({ code: 'frost-deep', text: `Frost here goes ${feetInches(frostIn)} deep, so the posts are set ${feetInches(frostIn)} into the ground, not the usual ${feetInches(shallowIn)}. The posts are longer to suit.` });
   }
-  if (b.roof !== 'gambrel' && b.pitch < rules.minPanelPitch - 0.01) {
+  const { roofCover, wallCover } = b.options;
+  if (roofCover === 'steel' && b.roof !== 'gambrel' && b.pitch < rules.minPanelPitch - 0.01) {
     warnings.push({ code: 'roof-flat', text: `The roof is flatter than ${rules.minPanelPitch} in 12. Rib panels that flat need sealant in every lap, and most steel warranties do not cover them.` });
   }
   if (b.roof === 'mono' && b.riseIn > rules.monoTrussMaxRiseFt * 12 + 0.01) {
@@ -52,7 +54,7 @@ export function design(input, ruleOverrides) {
   if (trussType.errors.length) return { ok: false, errors: trussType.errors, warnings, items: [] };
   warnings.push(...trussType.warnings);
   const { sheds, errors: shedErrors, warnings: shedWarnings } = placeSheds(b, rules);
-  warnings.push(...shedWarnings);
+  warnings.push(...shedWarnings.filter((w) => roofCover === 'steel' || w.code !== 'shed-flat'));
   if (shedErrors.length) return { ok: false, errors: shedErrors, warnings, items: [] };
   const shedPosts = sheds.flatMap((s) => s.posts);
   const interior = placeInterior(b, rules, posts);
@@ -61,14 +63,28 @@ export function design(input, ruleOverrides) {
   const runs = [...lumberRuns(b, rules, posts, trusses), ...shedRuns(b, rules, sheds, posts), ...finishRuns(b, rules, posts, trusses, sheds), ...interior.runs];
   const extra = shedMetal(b, rules, sheds);
   const merged = (base, more) => { for (const [k, n] of Object.entries(more)) add(base, k, n); return base; };
-  const mainRoof = roofPanels(b, rules), mainWalls = wallPanels(b, rules);
+  // Standing seam panels are narrower than rib panels; shingles and wood walls take no panels at all.
+  const roofRules = roofCover === 'standing' ? { ...rules, panelCoverageIn: rules.seamCoverageIn } : rules;
+  if (roofCover === 'standing') extra.roof = shedMetal(b, roofRules, sheds).roof;
+  if (roofCover === 'shingles') extra.roof = {};
+  if (roofCover !== 'steel') extra.closures = {};
+  if (wallCover !== 'steel') extra.wall = {};
+  const mainRoof = roofCover === 'shingles' ? {} : roofPanels(b, roofRules);
+  const mainWalls = wallCover === 'steel' ? wallPanels(b, rules) : { tally: {}, short: {} };
+  const totalSqFt = { roofSqFt: areas(b).roofSqFt + extra.roofSqFt, wallSqFt: areas(b).wallSqFt + extra.wallSqFt };
+  const cover = coverParts(b, rules, { sheds, roofTally: merged({ ...mainRoof }, extra.roof), ...totalSqFt });
+  if (cover.errors.length) return { ok: false, errors: cover.errors, warnings, items: [] };
+  warnings.push(...cover.warnings);
+  const shellTrim = merged(trim(b, rules), extra.trim);
+  for (const name of cover.dropTrim) delete shellTrim[name];
+  if (wallCover !== 'steel') delete shellTrim['Inside Corner Trim'];
   const finish = finishParts(b, rules, {
     posts: [...posts, ...shedPosts, ...interior.posts], trusses, sheds,
     wallTally: merged(mainWalls.tally, extra.wall), roofTally: merged({ ...mainRoof }, extra.roof), mainRoofPanelIn: Math.max(...Object.keys(mainRoof).map(Number)),
   });
   if (finish.errors.length) return { ok: false, errors: finish.errors, warnings, items: [] };
   warnings.push(...finish.warnings);
-  const fasteners = screws(b, rules, extra, finish.screws);
+  const fasteners = screws(b, rules, extra, finish.screws, { roof: roofCover === 'steel', wall: wallCover === 'steel' });
 
   // Boards counted by part, then size, then stock length.
   const tally = {};
@@ -110,15 +126,16 @@ export function design(input, ruleOverrides) {
     ...lumber('Headers'),
     ...lumber('Opening Blocking'),
     ...FINISH_LUMBER.flatMap((name) => lumber(name)),
-    ...lines('Metal', 'Roof Panels', '', finish.roof, feetInches, inchesToFt),
+    ...lines('Metal', roofCover === 'standing' ? 'Standing Seam Panels' : 'Roof Panels', '', finish.roof, feetInches, inchesToFt),
     ...lines('Metal', 'Wall Panels', '', merged({ ...finish.walls }, mainWalls.short), feetInches, inchesToFt),
     ...lines('Metal', 'Wainscot Panels', '', finish.wainscot, feetInches, inchesToFt),
     ...lines('Metal', 'Sliding Door Panels', '', sliderPanels(b, rules), feetInches, inchesToFt),
     ...finish.metal,
     ...lines('Interior', 'Liner Panels', '', finish.liner, feetInches, inchesToFt),
-    ...Object.entries(merged(merged(trim(b, rules), extra.trim), finish.trim)).map(([name, qty]) => ({ group: 'Metal', name, size: '', length: feetInches(rules.trimPieceIn), qty, ft: rules.trimPieceIn / 12 })),
-    ...Object.entries(merged(closures(b, rules), extra.closures)).map(([name, qty]) => ({ group: 'Metal', name, size: '', length: feetInches(rules.closureStripIn), qty })),
-    { group: 'Metal', name: 'Panel Screws', size: `bag of ${rules.screwsPerBag}`, length: '', qty: fasteners.bags },
+    ...Object.entries(merged(shellTrim, finish.trim)).map(([name, qty]) => ({ group: 'Metal', name, size: '', length: feetInches(rules.trimPieceIn), qty, ft: rules.trimPieceIn / 12 })),
+    ...Object.entries(merged(roofCover === 'steel' ? closures(b, rules) : {}, extra.closures)).map(([name, qty]) => ({ group: 'Metal', name, size: '', length: feetInches(rules.closureStripIn), qty })),
+    ...(fasteners.bags ? [{ group: 'Metal', name: 'Panel Screws', size: `bag of ${rules.screwsPerBag}`, length: '', qty: fasteners.bags }] : []),
+    ...cover.items,
     ...b.openings.map((o) => ({
       group: 'Doors And Windows',
       name: { slider: 'Sliding Door', walk: 'Walk Door', overhead: 'Overhead Door', window: 'Window' }[o.type],

@@ -102,9 +102,10 @@ function perSquare(table, spacingIn) {
   return table[rows.find((r) => r <= spacingIn + EPS) ?? rows[rows.length - 1]];
 }
 
-export function screws(b, rules, extra = { roofSqFt: 0, wallSqFt: 0 }, more = 0) {
+// on says which surfaces are screwed-down steel; the others take no panel screws.
+export function screws(b, rules, extra = { roofSqFt: 0, wallSqFt: 0 }, more = 0, on = { roof: true, wall: true }) {
   const main = areas(b);
-  const roofSqFt = main.roofSqFt + extra.roofSqFt, wallSqFt = main.wallSqFt + extra.wallSqFt;
+  const roofSqFt = on.roof ? main.roofSqFt + extra.roofSqFt : 0, wallSqFt = on.wall ? main.wallSqFt + extra.wallSqFt : 0;
   const count = more + Math.ceil(
     (roofSqFt * perSquare(rules.screwsPerSquare, rules.purlinSpacingIn) + wallSqFt * perSquare(rules.screwsPerSquare, rules.girtSpacingIn)) / 100 - EPS,
   );

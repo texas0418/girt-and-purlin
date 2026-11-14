@@ -58,6 +58,8 @@ const SHED_FIELDS = {
 };
 // Finish choices. Each row is a title, the key in state.options, and the values with their button names.
 const OPTION_SETS = {
+  roofCover: ['Roof Covering', [['steel', 'Steel Panel'], ['standing', 'Standing Seam'], ['shingles', 'Shingles']]],
+  wallCover: ['Wall Covering', [['steel', 'Steel Panel'], ['batten', 'Board And Batten'], ['lap', 'Lap Siding']]],
   wainscotIn: ['Wainscot Height', [[36, '3 ft'], [48, '4 ft']]],
   linerWalls: ['Wall Liner', [[false, 'None'], [true, 'Steel Liner']]],
   linerCeiling: ['Ceiling Liner', [[false, 'None'], [true, 'Steel Liner']]],
@@ -74,7 +76,7 @@ const OPTION_SETS = {
 const ROOF_NAMES = { gable: 'Gable', mono: 'Single Slope', gambrel: 'Gambrel' };
 const roofOf = () => state.roof ?? 'gable';
 const trussOf = () => (roofOf() === 'gable' ? state.truss ?? 'common' : 'common');
-const OPTION_DEFAULTS = { wainscotIn: 36, linerWalls: false, linerCeiling: false, roofInsulation: 'none', wallInsulation: 'none', ceilingR: 0, footing: 'none', slab: false, ridgeVent: false, eaveLights: 'none', skylights: 0, cupolas: false, cupolaSizeIn: 0 };
+const OPTION_DEFAULTS = { roofCover: 'steel', wallCover: 'steel', wainscotIn: 36, linerWalls: false, linerCeiling: false, roofInsulation: 'none', wallInsulation: 'none', ceilingR: 0, footing: 'none', slab: false, ridgeVent: false, eaveLights: 'none', skylights: 0, cupolas: false, cupolaSizeIn: 0 };
 const WALL_FIELDS = {
   at: { label: 'From Left End', other: 'From Front Wall', step: 1, min: 2 },
   start: { label: 'Starts At', step: 1, min: 0 },
@@ -547,7 +549,12 @@ function leftPanel() {
       `<button data-loftend="${e}" class="${(f?.end ?? '') === e ? 'on' : ''}">${name}</button>`).join('')}</div>
       ${f ? Object.entries(LOFT_FIELDS).map(([k, fd]) => stepper(`data-loftfield="${k}"`, fd.label, feetInches(f[k] * 12), '', false)).join('') : ''}
       <p class="hint">A loft is a floor across one end of the building, side wall to side wall, with a straight stair down along the front wall. The list adds its posts, beam, joists, subfloor, stair and guard rail. Its beam, posts and footings are sized by your engineer.</p>`;
-    return `${fitPanel()}<h2>Interior Walls</h2>${rows}
+    const steelRoof = opt('roofCover') === 'steel', steelWalls = opt('wallCover') === 'steel';
+    return `${fitPanel()}${optionRow('roofCover', true)}
+      <p class="hint">Standing seam is a steel roof with no screws showing, and it needs a pitch of 3 in 12 or more. Shingles add roof sheathing, underlayment and drip edge to the list.</p>
+      ${optionRow('wallCover', true)}
+      <p class="hint">Wood and lap siding add wall sheathing and house wrap to the list.</p>
+      <h2>Interior Walls</h2>${rows}
       <div class="seg"><button data-partadd>Add An Interior Wall</button></div>
       <p class="hint">An interior wall is a stud wall from the floor to the underside of the trusses. It carries no roof. Each door is 3 ft wide. See the walls and loft in the Framing and Floor Plan views.</p>
       ${loftPart}
@@ -558,16 +565,16 @@ function leftPanel() {
       ${optionRow('footing', true)}${optionRow('slab')}
       <p class="hint">The slab is counted at 4 in thick with a plastic sheet under it. No mesh, bar or thickened edge is counted. That is your concrete man's call. A bolt-down bracket stands each post on top of the concrete, so no wood goes in the ground and the posts are ordered 4 ft shorter. The concrete under the brackets has to be made for them, and a bracket does not hold a post upright the way a buried post holds itself. That is engineer work.</p>
       ${optionRow('ridgeVent')}
-      <h2>Skylight Panels</h2>${stepper('data-optstep="skylights"', 'Clear Roof Panels', String(opt('skylights')), '', false)}
-      <p class="hint">Each skylight panel takes the place of one steel roof panel, eave to ridge.</p>
-      ${optionRow('eaveLights', true)}
+      ${steelRoof ? `<h2>Skylight Panels</h2>${stepper('data-optstep="skylights"', 'Clear Roof Panels', String(opt('skylights')), '', false)}
+      <p class="hint">Each skylight panel takes the place of one steel roof panel, eave to ridge.</p>` : ''}
+      ${steelWalls ? `${optionRow('eaveLights', true)}
       <p class="hint">A strip of clear panels 3 ft tall across the top of a side wall, in place of the steel there. Doors and windows on that wall have to stop below it.</p>
-      ${state.colors.wainscotOn ? optionRow('wainscotIn') : ''}
-      <p class="hint">Wainscot and gutters are switched on the Colors step.</p>`;
+      ${state.colors.wainscotOn ? optionRow('wainscotIn') : ''}` : ''}
+      <p class="hint">${steelWalls ? 'Wainscot and gutters are' : 'Gutters are'} switched on the Colors step.${steelRoof && steelWalls ? '' : ` ${[!steelRoof && 'Skylight panels go with a steel panel roof', !steelWalls && 'Eave lights and wainscot go with steel panel walls'].filter(Boolean).join('. ')}.`}</p>`;
   }
   if (ui.step === 'Colors') {
     const name = (hex) => PALETTE.find((p) => p[1] === hex)?.[0] ?? hex;
-    return COLOR_PARTS.map(([part, title]) => `<h2>${title}</h2>
+    return COLOR_PARTS.filter(([part]) => part !== 'wainscot' || opt('wallCover') === 'steel').map(([part, title]) => `<h2>${title}</h2>
       <p class="picked">${name(state.colors[part])}</p>
       <div class="swatches">${PALETTE.map(([n, hex]) =>
         `<button data-color="${part}" data-hex="${hex}" title="${n}" aria-label="${title} ${n}" style="background:${hex}" class="${state.colors[part] === hex ? 'on' : ''}"></button>`).join('')}</div>
@@ -661,7 +668,11 @@ function finishRows() {
     rows.push(`${inside.length} interior ${inside.length === 1 ? 'wall' : 'walls'}, ${feetInches(inside.reduce((n, p) => n + p.lengthIn, 0))} in all${doors ? `, ${doors} ${doors === 1 ? 'door' : 'doors'}` : ''}`);
   }
   if (loft) rows.push(`Loft at the ${loft.end} end, ${feetInches(loft.depthIn)} deep, floor ${feetInches(loft.heightIn)} up, with a stair`);
-  if (state.colors.wainscotOn) rows.push(`${optName('wainscotIn')} wainscot`);
+  const roofWords = { standing: 'Standing seam steel roof, no screws showing', shingles: 'Shingle roof over sheathing and underlayment' }[opt('roofCover')];
+  const wallWords = { batten: 'Board and batten siding over wall sheathing', lap: 'Lap siding over wall sheathing' }[opt('wallCover')];
+  if (roofWords) rows.push(roofWords);
+  if (wallWords) rows.push(wallWords);
+  if (state.colors.wainscotOn && !wallWords) rows.push(`${optName('wainscotIn')} wainscot`);
   const cupolas = result.geometry.cupolas ?? [];
   if (cupolas.length) rows.push(`${cupolas.length === 1 ? 'One' : 'Two'} ${cupolas[0].sizeIn} in ${cupolas.length === 1 ? 'cupola' : 'cupolas'} on the ridge`);
   const liner = [opt('linerWalls') && 'walls', opt('linerCeiling') && 'ceiling'].filter(Boolean);
@@ -697,7 +708,7 @@ function specRows() {
     ['Doors And Windows', openings || 'None'],
     ...(state.sheds.length ? [['Lean-Tos And Porches', state.sheds.map((s) => `${SHED_NAMES[s.kind]}, ${WALL_NAMES[s.wall].toLowerCase()} wall, ${num(s.depth)} x ${num(s.length)} ft${s.kind === 'leanto' && s.enclosed ? ', enclosed' : ''}`).join('<br>')]] : []),
     ...(finishRows().length ? [['Inside And Finish', finishRows().join('<br>')]] : []),
-    ['Colors', `${colorName(state.colors.walls)} walls, ${colorName(state.colors.roof)} roof, ${colorName(state.colors.trim)} trim${state.colors.wainscotOn ? `, ${colorName(state.colors.wainscot)} wainscot` : ''}`],
+    ['Colors', `${colorName(state.colors.walls)} walls, ${colorName(state.colors.roof)} roof, ${colorName(state.colors.trim)} trim${state.colors.wainscotOn && opt('wallCover') === 'steel' ? `, ${colorName(state.colors.wainscot)} wainscot` : ''}`],
   ];
 }
 
@@ -1004,6 +1015,9 @@ document.addEventListener('click', (e) => {
     // Blown insulation needs a ceiling under it, so the two switch together.
     if (d.opt === 'ceilingR' && value && !opt('linerCeiling')) change.linerCeiling = true;
     if (d.opt === 'linerCeiling' && !value) change.ceilingR = 0;
+    // Clear panels are steel roof and steel wall parts, so they go when the steel does.
+    if (d.opt === 'roofCover' && value !== 'steel') change.skylights = 0;
+    if (d.opt === 'wallCover' && value !== 'steel') change.eaveLights = 'none';
     return apply({ options: { ...state.options, ...change } }, `${OPTION_SETS[d.opt][0]} now ${OPTION_SETS[d.opt][1].find(([v]) => v === value)[1].toLowerCase()}`);
   }
   if (d.optstep) {
