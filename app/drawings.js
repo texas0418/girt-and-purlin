@@ -2,6 +2,7 @@
 import { wallLengthIn, wallTopIn, edgeOverhangIn, isGable, litWalls } from '../engine/building.js';
 import { spans, feetInches } from '../engine/stock.js';
 import { placeOnLot, feet } from '../engine/site.js';
+import { wingPoint } from '../engine/wings.js';
 
 export const SHEETS = [['front', 'Front Wall'], ['back', 'Back Wall'], ['left', 'Left End'], ['right', 'Right End'], ['roof', 'Roof Framing']];
 const DARK = { ink: '#dcdcdc', soft: '#8f8f8f', paper: '#262626', wood: '#3a3a3a' };
@@ -44,8 +45,10 @@ function wallSheet(result, wall, c) {
   const y = (heightIn) => top - heightIn / 12;
   const out = [];
 
-  const bury = rules.postEmbedmentIn / 12;
-  const corner = isGable(wall) ? [0, len * 12].map((atIn) => ({ atIn, topIn: wallTopIn(b, wall, atIn) })) : [];
+  // Stud walls stand on concrete: plates and studs, with nothing in the ground.
+  const stud = b.framing === 'stud', sw = stud ? result.geometry.studWalls?.[wall] ?? null : null;
+  const bury = stud ? 0 : rules.postEmbedmentIn / 12;
+  const corner = stud ? [] : isGable(wall) ? [0, len * 12].map((atIn) => ({ atIn, topIn: wallTopIn(b, wall, atIn) })) : [];
   const stand = [...posts.filter((p) => p.wall === wall), ...corner].sort((p, q) => u(p.atIn) - u(q.atIn));
   for (const p of stand) {
     const x = Math.min(Math.max(u(p.atIn), 0.25), len - 0.25);
@@ -63,15 +66,23 @@ function wallSheet(result, wall, c) {
   };
   const open = !!b.walls?.[wall]?.open;
   if (open) out.push(text(len / 2, y(wallIn / 2), 'Open Wall', 1.1, c.ink), text(len / 2, y(wallIn / 2) + unit * 1.4, 'Posts only: no skirt board, girts or steel', 0.8, c.soft));
-  else for (const [from, to] of spans(len * 12, gaps(0, true))) out.push(board(from, to - from, rules.skirtHeightIn / 2, rules.skirtHeightIn));
+  else if (!stud) for (const [from, to] of spans(len * 12, gaps(0, true))) out.push(board(from, to - from, rules.skirtHeightIn / 2, rules.skirtHeightIn));
   const heights = [];
-  for (const row of girtRows.filter((r) => r.wall === wall)) {
+  for (const row of girtRows.filter((r) => !stud && r.wall === wall)) {
     if (row.lengthIn) {
       out.push(board(row.startIn ?? (len * 12 - row.lengthIn) / 2, row.lengthIn, row.heightIn, 5.5));
     } else {
       for (const [from, to] of spans(len * 12, gaps(row.heightIn))) out.push(board(from, to - from, row.heightIn, 5.5));
     }
     heights.push(row.heightIn);
+  }
+  if (sw) {
+    const piece = (p) => `<rect x="${u(p.atIn) - 0.0625}" y="${y(p.toIn)}" width="0.125" height="${(p.toIn - p.fromIn) / 12}" fill="${c.wood}" stroke="${c.ink}" stroke-width="0.025"/>`;
+    for (const p of [...sw.studs, ...sw.shorts]) out.push(piece(p));
+    for (const [from, to] of sw.plates) out.push(board(from, to - from, 0.75, 1.5));
+    for (const down of [0.75, 2.25]) out.push(board(0, sw.lengthIn, sw.topIn - down, 1.5));
+    for (const p of sw.sills) out.push(board(p.startIn, p.endIn - p.startIn, p.atIn + 0.75, 1.5));
+    for (const h of sw.headers) out.push(`<rect x="${Math.min(u(h.startIn), u(h.endIn))}" y="${y(h.topIn)}" width="${(h.endIn - h.startIn) / 12}" height="${(h.topIn - h.bottomIn) / 12}" fill="${c.wood}" stroke="${c.ink}" stroke-width="0.05"/>`);
   }
   // Eave lights: the clear strip under the eave, hatched, with the girt that backs its joint.
   if (litWalls(b).includes(wall)) {
@@ -83,22 +94,34 @@ function wallSheet(result, wall, c) {
 
   // Opening labels stay inside the opening: a tall narrow door reads up its
   // height, and the lettering shrinks before it runs past an edge.
-  const label = (o, cx, cy, w, h) => {
+  const label = (o, cx, cy, w, h, tallIn) => {
     const turned = h > w * 1.5;
     const room = (turned ? h : w) - 0.4;
-    const words = [TYPES[o.type], `${short(o.widthIn)} x ${short(o.heightIn)}`];
+    const name = o.type === 'wing' ? `Opening To Wing ${o.wing + 1}` : o.inJoin ? `Door To Wing ${o.wing + 1}` : TYPES[o.type];
+    const words = [name, `${short(o.widthIn)} x ${short(tallIn)}`];
     const size = Math.min(w < 6 ? 0.65 : 0.9, ...words.map((s) => room / (s.length * 0.55 * unit)));
     const turn = turned ? `transform="rotate(-90 ${cx} ${cy})"` : '';
     return [text(cx, cy - (turned ? unit * size * 0.25 : 0), words[0], size, c.ink, turn),
       text(cx, cy + unit * size * (turned ? 0.95 : 1.2), words[1], size, c.soft, turn)];
   };
   for (const o of mine) {
-    const a = Math.min(u(o.startIn), u(o.endIn)), w = o.widthIn / 12, h = o.heightIn / 12;
-    const head = y(o.sillIn + o.heightIn);
+    // On a stud wall the header drawn above sets the top of the opening.
+    const headIn = sw?.headers.find((h) => h.startIn < o.startIn + 0.1 && h.endIn > o.endIn - 0.1)?.bottomIn ?? o.sillIn + o.heightIn;
+    const a = Math.min(u(o.startIn), u(o.endIn)), w = o.widthIn / 12, h = (headIn - o.sillIn) / 12;
+    const head = y(headIn);
     out.push(`<rect x="${a}" y="${head}" width="${w}" height="${h}" fill="${c.paper}" stroke="${c.ink}" stroke-width="0.1"/>`,
-      `<rect x="${a}" y="${head - 0.77}" width="${w}" height="0.77" fill="${c.wood}" stroke="${c.ink}" stroke-width="0.05"/>`,
-      ...label(o, a + w / 2, head + h / 2, w, h));
+      stud || (o.type === 'wing' && headIn + 9.25 > wallIn + 0.01) ? '' : `<rect x="${a}" y="${head - 0.77}" width="${w}" height="0.77" fill="${c.wood}" stroke="${c.ink}" stroke-width="0.05"/>`,
+      ...label(o, a + w / 2, head + h / 2, w, h, headIn - o.sillIn));
   }
+
+  // A wing shows as the dashed outline of its end where it meets this wall.
+  for (const wg of (result.geometry.wings ?? []).filter((g) => g.wall === wall)) {
+    const ridge = wg.eaveIn + (wg.widthIn / 2) * wg.pitch / 12, mid = (wg.startIn + wg.endIn) / 2;
+    out.push(`<path d="M ${u(wg.startIn)} ${top} L ${u(wg.startIn)} ${y(wg.eaveIn)} L ${u(mid)} ${y(ridge)} L ${u(wg.endIn)} ${y(wg.eaveIn)} L ${u(wg.endIn)} ${top}" fill="none" stroke="${c.ink}" stroke-width="0.07" stroke-dasharray="0.4 0.25"/>`,
+      text(u(mid), y(ridge) + unit * 1.1, `${wg.name} joins here`, 0.7, c.soft));
+  }
+  // On a wing, the end that meets the main building.
+  if (b.join && !isGable(wall)) out.push(text(u(0) + (MIRRORED[wall] ? -1 : 1) * unit * 0.3, y(wallIn) - unit * 0.6, 'Main building this end', 0.75, c.soft, `text-anchor="${MIRRORED[wall] ? 'end' : 'start'}"`).replace('text-anchor="middle" ', ''));
 
   // An awning shows as a dashed outline where it hangs on the wall.
   for (const a of (result.geometry.awnings ?? []).filter((a) => a.wall === wall)) {
@@ -114,7 +137,7 @@ function wallSheet(result, wall, c) {
   }
   out.push(line(-unit, top, len + unit, top, 0.05, c.soft), text(len + unit * 2.2, top + unit * 0.3, 'Grade', 0.8, c.soft));
 
-  const marks = [...new Set([0, len, ...stand.map((p) => u(p.atIn))].map((v) => Math.round(v * 1000) / 1000))].sort((p, q) => p - q);
+  const marks = [...new Set([0, len, ...(stud ? mine.flatMap((o) => [u(o.startIn), u(o.endIn)]) : stand.map((p) => u(p.atIn)))].map((v) => Math.round(v * 1000) / 1000))].sort((p, q) => p - q);
   // A length too wide for its own gap drops to a line below, so close posts never print over each other.
   const row1 = top + bury + unit * 2.2;
   const lastRight = [-Infinity];
@@ -127,16 +150,17 @@ function wallSheet(result, wall, c) {
   }
   const row2 = row1 + unit * (2.4 + Math.max(0, lastRight.length - 1) * 0.95);
   out.push(across(0, len, row2, `${short(len * 12)} overall`),
-    text(len / 2, row1 - unit * 1.5, 'Post centers', 0.75, c.soft),
+    text(len / 2, row1 - unit * 1.5, stud ? (mine.length ? 'Door and window edges' : '') : 'Post centers', 0.75, c.soft),
     upright(y(wallIn), top, -unit * 2, `${short(wallIn)} ${wallIn > b.eaveIn ? 'high wall' : 'eave'}`));
   if (peaked) out.push(upright(0, top, -unit * 4.4, `${short(b.eaveIn + b.riseIn)} peak`));
   for (const h of [...new Set(heights)].filter((v) => v <= wallIn)) {
     out.push(line(len + unit * 0.4, y(h), len + unit * 1.1, y(h)), text(len + unit * 1.4, y(h) + unit * 0.3, short(h), 0.75, c.soft, 'text-anchor="start"').replace('text-anchor="middle" ', ''));
   }
-  if (!open) out.push(text(len + unit * 1.4, y(wallIn) - unit * 1.2, 'Girt heights', 0.75, c.soft, 'text-anchor="start"').replace('text-anchor="middle" ', ''));
+  if (stud) out.push(text(len / 2, row2 + unit * 1.8, `Studs ${b.studSize}, ${b.studSpacingIn} in apart`, 0.8, c.soft), text(len / 2, row2 + unit * 3, 'Treated bottom plate bolted to the concrete, two top plates', 0.8, c.soft));
+  if (!open && !stud) out.push(text(len + unit * 1.4, y(wallIn) - unit * 1.2, 'Girt heights', 0.75, c.soft, 'text-anchor="start"').replace('text-anchor="middle" ', ''));
 
   const left = unit * 6.5, right = unit * 8;
-  return `<svg viewBox="${-left} ${-unit * 2} ${len + left + right} ${row2 + unit * 3.5}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Wall framing">${out.join('')}</svg>`;
+  return `<svg viewBox="${-left} ${-unit * 2} ${len + left + right} ${row2 + unit * (stud ? 6 : 3.5)}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Wall framing">${out.join('')}</svg>`;
 }
 
 function roofSheet(result, c) {
@@ -150,6 +174,30 @@ function roofSheet(result, c) {
   const { line, text, across, upright } = pen(c, unit);
   const out = [`<rect x="${-over}" y="${-side.back}" width="${L + 2 * over}" height="${W + side.back + side.front}" fill="${c.paper}" stroke="${c.ink}" stroke-width="0.1"/>`,
     `<rect x="0" y="0" width="${L}" height="${W}" fill="none" stroke="${c.soft}" stroke-width="0.05" stroke-dasharray="0.5 0.3"/>`];
+
+  // Wings: each roof drawn where it sits, with the valleys where it runs back onto the main roof.
+  const wings = result.geometry.wings ?? [];
+  const grow = { front: side.front, back: side.back, left: over, right: over };
+  const late = [];
+  for (const wg of wings) {
+    const wb = wg.result.geometry.building, wo = wb.overhangIn, far = wg.outIn + wb.endOverhangIn, v = wg.valley;
+    grow[wg.wall] = Math.max(grow[wg.wall], far / 12);
+    const at = (x, yIn) => { const p = wingPoint(b, wg, x, yIn); return [p.x / 12, yy(p.y)]; };
+    const seg = (x1, y1, x2, y2, w, color = c.ink, extra = '') => { const p = at(x1, y1), q = at(x2, y2); return line(p[0], p[1], q[0], q[1], w, color, extra); };
+    const corners = [[0, -wo], [far, -wo], [far, wg.widthIn + wo], [0, wg.widthIn + wo]].map(([x, yIn]) => at(x, yIn).join(','));
+    out.unshift(`<polygon points="${corners.join(' ')}" fill="${c.paper}" stroke="${c.ink}" stroke-width="0.1"/>`);
+    for (const p of wg.result.geometry.planes) {
+      const low = p.lowY - p.dir * p.lowOverIn, high = p.highY + p.dir * p.highOverIn;
+      for (let i = 1; i < p.purlinRows; i++) { const yIn = high + (low - high) * i / (p.purlinRows - 1); late.push(seg(0, yIn, far, yIn, 0.05, c.soft)); }
+    }
+    for (const t of wg.result.geometry.trusses) late.push(seg(t.x, -wo, t.x, wg.widthIn + wo, 0.16));
+    const mid = wg.widthIn / 2;
+    late.push(seg(v ? -v.backIn : 0, mid, far, mid, 0.04, c.ink, 'stroke-dasharray="1 0.3 0.2 0.3"'));
+    if (v) for (const sgn of [-1, 1]) late.push(seg(v.footOutIn, mid + sgn * v.footIn, -v.backIn, mid, 0.14));
+    const [cx, cy] = at(wg.outIn / 2, mid);
+    late.push(text(cx, cy - unit * 0.5, `${wg.name}, ${wg.result.geometry.trusses.length} trusses`, 0.75, c.soft));
+    if (v) { const [vx, vy] = at(-v.backIn, mid); late.push(text(vx, vy - unit * 0.5, `Valleys ${short(v.lengthIn)}`, 0.7, c.soft)); }
+  }
 
   const hip = result.geometry.hip;
   if (hip) {
@@ -192,8 +240,10 @@ function roofSheet(result, c) {
     out.push(text(x + w / 2, d.side === 'back' ? top - unit * 0.4 : top + tall + unit * 1.0, `${d.label}, ${short(d.widthIn)}`, 0.7, c.soft));
   }
 
+  out.push(...late);
+
   const xs = trusses.map((t) => t.x / 12).sort((p, q) => p - q);
-  const row1 = W + side.front + unit * 2.4, row2 = row1 + unit * 2.4;
+  const row1 = W + grow.front + unit * 2.4, row2 = row1 + unit * 2.4;
   if (xs.length > 1) out.push(across(xs[0], xs[1], row1, short((xs[1] - xs[0]) * 12), 0.8),
     text((xs[1] + xs[xs.length - 1]) / 2, row1 + unit * 0.3, `${xs.length} trusses, same spacing to the far end`, 0.8, c.soft));
   const counts = planes.map((p) => p.purlinRows);
@@ -202,13 +252,13 @@ function roofSheet(result, c) {
     : b.roof === 'mono' ? `${counts[0]} purlin rows`
       : `${counts[0]} purlin rows on each lower slope, ${counts[1]} on each upper slope`;
   out.push(across(-over, L + over, row2, `${short(result.geometry.purlinRowLengthIn)} ${hip ? 'eave to eave, the longest purlin row' : 'purlin rows'}`),
-    upright(0, W, -over - unit * 2, `${short(b.widthIn)} truss span`),
-    text(L / 2, -side.back - unit * 2.4, `${rowsNote}, ${rules.purlinSpacingIn} in apart up the slope`, 0.8, c.soft),
-    text(L / 2, -side.back - unit * 0.9, b.roof === 'mono' ? 'Back, high side' : 'Back', 0.8, c.soft),
-    text(L / 2, W + side.front + unit * 1.1, b.roof === 'mono' ? 'Front, low side' : 'Front', 0.8, c.soft));
+    upright(0, W, -grow.left - unit * 2, `${short(b.widthIn)} truss span`),
+    text(L / 2, -grow.back - unit * 2.4, `${rowsNote}, ${rules.purlinSpacingIn} in apart up the slope`, 0.8, c.soft),
+    text(L / 2, -grow.back - unit * 0.9, b.roof === 'mono' ? 'Back, high side' : 'Back', 0.8, c.soft),
+    text(L / 2, W + grow.front + unit * 1.1, b.roof === 'mono' ? 'Front, low side' : 'Front', 0.8, c.soft));
 
-  const left = over + unit * 5;
-  return `<svg viewBox="${-left} ${-over - unit * 4.5} ${L + left + over + unit * 2} ${row2 + over + unit * 7}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Roof framing">${out.join('')}</svg>`;
+  const left = grow.left + unit * 5, up = Math.max(over, grow.back) + unit * 4.5;
+  return `<svg viewBox="${-left} ${-up} ${L + left + grow.right + unit * 2} ${row2 + up + unit * 2.5}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Roof framing">${out.join('')}</svg>`;
 }
 
 // A cut through a lean-to or porch, looking along the main wall.
@@ -349,12 +399,18 @@ const title = (t) => t.replace(/(^|[\s-])([a-z])/g, (m, a, ch) => a + ch.toUpper
 
 // The fixed sheets plus one section for every lean-to and porch.
 export function sheetList(result) {
-  return [...SHEETS, ...result.geometry.sheds.map((s) => [`shed${s.index}`, title(s.label)]), ['site', 'Site Plan']];
+  const wings = (result.geometry.wings ?? []).flatMap((wg) => ['right', 'front', 'back'].map((wall) => [`wing${wg.index}${wall}`, `${wg.name}, ${{ right: 'Front Wall', front: 'Left Side', back: 'Right Side' }[wall]}`]));
+  return [...SHEETS, ...wings, ...result.geometry.sheds.map((s) => [`shed${s.index}`, title(s.label)]), ['site', 'Site Plan']];
 }
 
 export function drawing(result, sheet, light = false, site = {}) {
   const c = light ? LIGHT : DARK;
   if (sheet === 'site') return siteSheet(result, site, c);
+  const wing = /^wing(\d+)(right|front|back)$/.exec(sheet);
+  if (wing) {
+    const wg = (result.geometry.wings ?? []).find((g) => g.index === Number(wing[1]));
+    return wg ? wallSheet(wg.result, wing[2], c) : wallSheet(result, 'front', c);
+  }
   if (sheet.startsWith('shed')) {
     const s = result.geometry.sheds[Number(sheet.slice(4))];
     return s ? shedSheet(result, s, c) : wallSheet(result, 'front', c);

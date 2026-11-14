@@ -1,4 +1,4 @@
-// Runs about 6,000 buildings, from the smallest to the largest the engine accepts, with and
+// Runs about 7,500 buildings, from the smallest to the largest the engine accepts, with and
 // without doors and windows, and checks that every answer holds together. The buildings come
 // from a fixed seed, so every run tries the same ones.
 import { test } from 'node:test';
@@ -25,10 +25,13 @@ function check(job) {
     if (c.cutIn > c.stockFt * 12 + 0.01) fail(`cut "${c.part}" is longer than its board`, job);
   }
   const b = r.geometry.building, R = r.rules, posts = r.geometry.posts;
-  for (const wall of ['front', 'back', 'left', 'right']) {
+  const wings = r.geometry.wings ?? [];
+  // Stud walls have no posts to check, and a wall a wing joins is framed by the wing rules.
+  for (const wall of b.framing === 'stud' ? [] : ['front', 'back', 'left', 'right']) {
     const len = wall === 'front' || wall === 'back' ? b.lengthIn : b.widthIn;
     const at = posts.filter((p) => p.wall === wall).map((p) => p.atIn).sort((x, y) => x - y);
     const ops = b.openings.filter((o) => o.wall === wall);
+    if (ops.some((o) => o.wing !== undefined)) continue;
     if (at.some((a) => a < -0.01 || a > len + 0.01)) fail('post outside its wall', job);
     // corners may be listed on the neighboring wall, so only gaps between listed posts and the wall ends are checked
     const marks = [0, ...at, len];
@@ -57,10 +60,11 @@ function check(job) {
   for (let i = 1; i < tx.length; i++) if (tx[i] - tx[i - 1] > b.trussSpacingIn + 0.01) fail('gap between trusses wider than the truss spacing', job);
   if (posts.some((p) => p.column) && !r.warnings.some((w) => w.code === 'laminated-columns')) fail('laminated columns with no warning', job);
   const sum = (name) => r.items.filter((i) => i.name === name).reduce((s, i) => s + i.qty, 0);
-  if (sum('Posts') + sum('Laminated Columns') !== posts.length) fail('post count on the material list differs from posts drawn', job);
-  if (r.summary.trusses !== tx.length) fail('truss count in summary differs from trusses drawn', job);
+  const count = (key) => wings.reduce((t, w) => t + w.result.geometry[key].length, 0);
+  if (sum('Posts') + sum('Laminated Columns') !== posts.length + count('posts')) fail('post count on the material list differs from posts drawn', job);
+  if (r.summary.trusses !== tx.length + count('trusses')) fail('truss count in summary differs from trusses drawn', job);
   if (JSON.stringify(design(job)) !== JSON.stringify(r)) fail('same building gave two different answers', job);
-  try { const p = priceJob(r, SAMPLE_CATALOG, { markupPct: 20, taxPct: 7, laborPerSqFt: 4 }); if (!(p.total > 0) || !Number.isFinite(p.total)) fail('price total is not a positive number', job); } catch (e) { fail('pricing crash: ' + e.message, job); }
+  try { const p = priceJob(r, SAMPLE_CATALOG, { markupPct: 20, taxPct: 7, laborPerSqFt: 4 }); if (!(p.total > 0) || !Number.isFinite(p.total)) fail('price total is not a positive number', job); if ((b.framing === 'stud' || wings.length) && p.unpriced) fail('a stud wall or wing part has no sample price', job); } catch (e) { fail('pricing crash: ' + e.message, job); }
 }
 const base = () => ({ job: 'sweep', width: between(8, 100, 2), length: between(8, 400, 4), eaveHeight: between(6, 24), pitch: between(1, 12), overhang: pick([0, 12, 18, 24, 36]), postSpacing: pick([4, 6, 8, 10, 12, 16]), trussSpacing: pick([2, 4, 8, 12, 16]), roof: pick(['gable', 'gable', 'mono', 'gambrel', 'hip']) });
 for (let i = 0; i < 2000; i++) check(base());
@@ -76,9 +80,33 @@ for (let i = 0; i < 4000; i++) {
   }
   check(j);
 }
+// Stud walls and wings, on the sizes where they are likely.
+for (let i = 0; i < 1500; i++) {
+  const j = { ...base(), width: between(16, 60, 2), length: between(24, 120, 4), eaveHeight: between(8, 16) };
+  if (rnd() < 0.5) { j.framing = 'stud'; j.studSize = pick(['2x4', '2x6']); j.studSpacing = pick([16, 24]); }
+  j.openings = [];
+  for (let k = between(0, 3); k > 0; k--) {
+    const type = pick(['overhead', 'walk', 'window']), wall = pick(['front', 'back', 'left', 'right']), [ws, hs] = SIZES[type];
+    const len = wall === 'front' || wall === 'back' ? j.length : j.width, width = between(ws[0], Math.min(ws[1], 12));
+    const o = { type, wall, width, height: between(hs[0], Math.min(hs[1], 8)), offset: between(0, Math.max(0, len - width)) };
+    if (type === 'window') o.sill = 3;
+    j.openings.push(o);
+  }
+  if (i % 3) {
+    j.wings = [];
+    for (let k = between(1, 2); k > 0; k--) {
+      const wall = pick(['front', 'back', 'left', 'right']), len = wall === 'front' || wall === 'back' ? j.length : j.width, width = between(10, Math.max(10, Math.min(len, 40)), 2);
+      const w = { wall, width, start: between(0, Math.max(0, len - width)), out: between(8, 40, 4), eaveHeight: between(7, j.eaveHeight), pitch: between(2, 8), between: pick(['open', 'door', 'solid']), openings: [] };
+      if (rnd() < 0.6) w.openings.push({ type: 'walk', wall: pick(['end', 'left', 'right']), offset: 2, width: 3, height: 6.67 });
+      if (rnd() < 0.4) w.openings.push({ type: 'window', wall: pick(['end', 'left', 'right']), offset: 6, width: 2, height: 3, sill: 3 });
+      j.wings.push(w);
+    }
+  }
+  check(j);
+}
 for (const bad of [{}, { width: 'x' }, { width: 30, length: 48, eaveHeight: 12, openings: [{ type: 'walk', wall: 'front', offset: 999, width: 3, height: 6.67 }] }, { width: 30, length: 48, eaveHeight: 12, openings: [{}] }, { width: 30, length: 48, eaveHeight: 12, openings: [{ type: 'slider', wall: 'left', offset: 0, width: 40, height: 30 }] }, { width: NaN, length: Infinity, eaveHeight: -1 }]) check(bad);
 
-test('about 6,000 buildings, small to very large, all hold together', () => {
+test('about 7,500 buildings, small to very large, all hold together', () => {
   assert.equal(threw, 0, 'the engine crashed');
   assert.ok(okN > 900, 'too few buildings were designed for the sweep to mean anything');
   assert.deepEqual([...fails].map(([what, f]) => `${f.count} x ${what}: ${JSON.stringify(f.job)}`), []);

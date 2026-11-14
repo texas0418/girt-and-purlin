@@ -1,5 +1,5 @@
 // Keeps a copy of the app on the device so it opens with no connection.
-const CACHE = 'ridge-and-rafter-v55';
+const CACHE = 'ridge-and-rafter-v56';
 const FILES = [
   './', 'index.html', 'style.css', 'main.js', 'moved.js', 'lock.js', 'office.js', 'scene.js', 'plan.js', 'drawings.js', 'manifest.json',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-180.png',
@@ -7,6 +7,7 @@ const FILES = [
   '../engine/design.js',
   '../engine/sheds.js', '../engine/finish.js', '../engine/building.js', '../engine/framing.js', '../engine/metal.js', '../engine/cutlist.js',
   '../engine/pricing.js', '../engine/retail-prices.js', '../engine/rules.js', '../engine/stock.js', '../engine/runs.js', '../engine/interior.js', '../engine/dxf.js', '../engine/site.js', '../engine/fit.js', '../engine/license.js',
+  '../engine/wings.js', '../engine/studwalls.js', '../engine/additions.js', '../engine/coverings.js', '../engine/trusses.js',
 ];
 
 // A host can answer with a "checking your browser" page in place of the file. Only a plain 200 that is not

@@ -3,7 +3,7 @@ import { normalize } from './building.js';
 import { resolveRules, unverifiedRules } from './rules.js';
 import { placePosts, placeTrusses } from './framing.js';
 import { WALL_NAMES, lumberRuns, girtRowCount, girtTopIn, gableGirtRows, purlinRowsPerSide, purlinRows, planePurlinRows, hipPurlinRows } from './runs.js';
-import { isGable, isOpen, closedWalls, hipGeo, GAMBREL } from './building.js';
+import { isGable, isOpen, closedWalls, hipGeo, roofRunIn, GAMBREL } from './building.js';
 import { roofPanels, wallPanels, sliderPanels, trim, closures, screws, areas } from './metal.js';
 import { feetInches, add } from './stock.js';
 import { cutList } from './cutlist.js';
@@ -13,6 +13,8 @@ import { placeInterior, INTERIOR_LUMBER } from './interior.js';
 import { trussParts } from './trusses.js';
 import { coverParts } from './coverings.js';
 import { placeAdditions, additionRuns, additionMetal, additionItems } from './additions.js';
+import { studWalls } from './studwalls.js';
+import { joinRuns, joinMetal, placeWings, mergeWings } from './wings.js';
 
 // ft and sqFt are the numbers a price list multiplies by.
 function lines(group, name, size, tally, label = (k) => `${k} ft`, ft = (k) => k) {
@@ -32,11 +34,13 @@ export function design(input, ruleOverrides) {
   const frostIn = Math.ceil(b.loads.frostIn - 0.001), shallowIn = rules.postEmbedmentIn;
   if (shallowIn > 0 && frostIn > shallowIn) rules = { ...rules, postEmbedmentIn: frostIn };
 
-  const { posts, warnings, errors: postErrors } = placePosts(b, rules);
+  // Stud walls stand on concrete, so no posts go in the ground.
+  const stud = b.framing === 'stud';
+  const { posts, warnings, errors: postErrors } = stud ? { posts: [], warnings: [], errors: [] } : placePosts(b, rules);
   if (postErrors.length) return { ok: false, errors: postErrors, warnings, items: [] };
 
   const trusses = placeTrusses(b);
-  if (rules.postEmbedmentIn > shallowIn && shallowIn > 0) {
+  if (!stud && rules.postEmbedmentIn > shallowIn && shallowIn > 0) {
     warnings.push({ code: 'frost-deep', text: `Frost here goes ${feetInches(frostIn)} deep, so the posts are set ${feetInches(frostIn)} into the ground, not the usual ${feetInches(shallowIn)}. The posts are longer to suit.` });
   }
   const { roofCover, wallCover } = b.options;
@@ -54,7 +58,7 @@ export function design(input, ruleOverrides) {
     warnings.push({ code: 'hip-set', text: `Each end of a hip roof is framed with a hip set from the truss maker: flat-topped trusses that step down toward the end wall, with short jack trusses out to the wall and the corners. The list carries one set for each end, covering the ${hipLines} truss lines in the last ${feetInches(b.widthIn / 2)}. The truss maker designs the set, and the engineer confirms the carrier on each end wall.` });
     if (roofCover !== 'shingles') warnings.push({ code: 'hip-cut', text: 'The roof panels that meet a hip are listed at the length of their longer edge and are cut on the slant on site. Foam closures do not fit under the hip caps, because the ribs meet them at an angle; ask the steel supplier for the sealing tape they use there.' });
   }
-  const openNames = ['front', 'back', 'left', 'right'].filter((wall) => isOpen(b, wall));
+  const openNames = ['front', 'back', 'left', 'right'].filter((wall) => isOpen(b, wall) && !b.walls[wall].joined);
   if (openNames.length) {
     const list = openNames.map((wall) => WALL_NAMES[wall].toLowerCase()).join(', ').replace(/, ([^,]*)$/, ' and $1');
     warnings.push({ code: 'open-wall', text: `The ${list} ${openNames.length === 1 ? 'is' : 'are'} open. An open wall has no girts or steel to brace the frame, so the engineer has to size the beam over those posts and the bracing that takes the wall's place.` });
@@ -72,13 +76,18 @@ export function design(input, ruleOverrides) {
   const interior = placeInterior(b, rules, posts);
   if (interior.errors.length) return { ok: false, errors: interior.errors, warnings, items: [] };
   warnings.push(...interior.warnings);
-  const runs = [...lumberRuns(b, rules, posts, trusses), ...shedRuns(b, rules, sheds, posts), ...additionRuns(b, rules, added), ...finishRuns(b, rules, posts, trusses, sheds), ...interior.runs];
+  const studs = stud ? studWalls(b, rules) : null;
+  if (studs?.errors.length) return { ok: false, errors: studs.errors, warnings, items: [] };
+  if (studs) warnings.push(...studs.warnings);
+  const runs = [...lumberRuns(b, rules, posts, trusses), ...(studs?.runs ?? []), ...joinRuns(b, rules), ...shedRuns(b, rules, sheds, posts), ...additionRuns(b, rules, added), ...finishRuns(b, rules, posts, trusses, sheds), ...interior.runs];
+  // Boards that fasten across posts on a post building fasten across the studs here.
+  if (stud) for (const r of runs) if (r.note) r.note = r.note.replace('main wall posts', 'wall studs').replace('end wall posts', 'wall studs');
   const merged = (base, more) => { for (const [k, n] of Object.entries(more)) add(base, k, n); return base; };
   // Everything hung on or framed onto the building: lean-tos and porches, then awnings and dormers.
   const extraFor = (r) => {
-    const s = shedMetal(b, r, sheds), a = additionMetal(b, r, added);
-    for (const k of ['roof', 'wall', 'trim', 'closures']) merged(s[k], a[k]);
-    return { ...s, roofSqFt: s.roofSqFt + a.roofSqFt, wallSqFt: s.wallSqFt + a.wallSqFt, surfaces: a.surfaces };
+    const s = shedMetal(b, r, sheds), a = additionMetal(b, r, added), j = joinMetal(b, r);
+    for (const k of ['roof', 'wall', 'trim', 'closures']) { merged(s[k], a[k]); merged(s[k], j[k]); }
+    return { ...s, roofSqFt: s.roofSqFt + a.roofSqFt + j.roofSqFt, wallSqFt: s.wallSqFt + a.wallSqFt, surfaces: [...a.surfaces, ...j.surfaces] };
   };
   const extra = extraFor(rules);
   // Standing seam panels are narrower than rib panels; shingles and wood walls take no panels at all.
@@ -115,7 +124,7 @@ export function design(input, ruleOverrides) {
 
   // Where each girt row sits, for the picture and the drawings.
   const girtRows = [];
-  for (const wall of closedWalls(b)) {
+  for (const wall of stud ? [] : closedWalls(b)) {
     for (let i = 0; i < girtRowCount(b, rules, wall); i++) {
       girtRows.push({ wall, heightIn: Math.min(rules.skirtHeightIn + (i + 1) * rules.girtSpacingIn, girtTopIn(b, wall)) });
     }
@@ -135,6 +144,9 @@ export function design(input, ruleOverrides) {
     ...lines('Framing', 'Laminated Columns', rules.columnSize, columnTally),
     ...(commons ? [{ group: 'Framing', name: trussType.name ?? TRUSS_NAMES[b.roof], size: `${b.widthIn / 12} ft span, ${b.roof === 'gambrel' ? `${GAMBREL.lowerPitch}/12 and ${GAMBREL.upperPitch}/12` : `${b.pitch}/12`}${trussType.size}`, length: '', qty: commons, ft: b.widthIn / 12 }] : []),
     ...(hip ? [{ group: 'Framing', name: 'Hip Truss Sets', size: `${b.widthIn / 12} ft span, ${b.pitch}/12, ${hipLines} truss lines and the jacks for one end`, length: '', qty: 2, ft: (b.widthIn / 12) * hipLines }] : []),
+    ...lumber('Bottom Plates'),
+    ...lumber('Wall Studs'),
+    ...lumber('Top Plates'),
     ...lumber('Skirt Boards'),
     ...lumber('Wall Girts'),
     ...lumber('Roof Purlins'),
@@ -143,10 +155,12 @@ export function design(input, ruleOverrides) {
     ...lumber('Eave Beams'),
     ...lumber('Rafters'),
     ...lumber('Hip Rafters'),
+    ...lumber('Valley Boards'),
     ...lumber('Dormer Framing'),
     ...lumber('Dormer Rafters'),
     ...additionItems(b, rules, added).filter((i) => i.group === 'Framing'),
     ...lumber('Headers'),
+    ...lumber('Opening Framing'),
     ...lumber('Opening Blocking'),
     ...FINISH_LUMBER.flatMap((name) => lumber(name)),
     ...lines('Metal', roofCover === 'standing' ? 'Standing Seam Panels' : 'Roof Panels', '', finish.roof, feetInches, inchesToFt),
@@ -159,7 +173,7 @@ export function design(input, ruleOverrides) {
     ...Object.entries(merged(roofCover === 'steel' ? closures(b, rules) : {}, extra.closures)).map(([name, qty]) => ({ group: 'Metal', name, size: '', length: feetInches(rules.closureStripIn), qty })),
     ...(fasteners.bags ? [{ group: 'Metal', name: 'Panel Screws', size: `bag of ${rules.screwsPerBag}`, length: '', qty: fasteners.bags }] : []),
     ...cover.items,
-    ...b.openings.map((o) => ({
+    ...b.openings.filter((o) => o.type !== 'wing').map((o) => ({
       group: 'Doors And Windows',
       name: { slider: 'Sliding Door', walk: 'Walk Door', overhead: 'Overhead Door', window: 'Window' }[o.type],
       size: `${feetInches(o.widthIn)} x ${feetInches(o.heightIn)}`, length: '', qty: 1, sqFt: (o.widthIn * o.heightIn) / 144,
@@ -171,7 +185,7 @@ export function design(input, ruleOverrides) {
     ...trussType.items,
   ];
 
-  return {
+  const result = {
     ok: true, errors: [], warnings, items,
     summary: {
       floorSqFt: (b.widthIn * b.lengthIn) / 144,
@@ -182,11 +196,16 @@ export function design(input, ruleOverrides) {
       loftSqFt: interior.loft?.sqFt ?? 0, atticSqFt: trussType.attic?.sqFt ?? 0, linerSqFt: finish.linerSqFt, slabSqFt: finish.slabSqFt,
       screws: fasteners.count, roofSqFt: areas(b).roofSqFt + extra.roofSqFt, wallSqFt: areas(b).wallSqFt + extra.wallSqFt,
     },
-    geometry: { building: b, posts, trusses, girtRows, sheds, awnings: added.awnings, dormers: added.dormers, partitions: interior.partitions, loft: interior.loft, attic: trussType.attic, cupolas: finish.cupolas, planes: b.planes.map((p) => ({ ...p, purlinRows: planePurlinRows(p, rules) })), purlinRowLengthIn: b.lengthIn + 2 * b.endOverhangIn, hip: hip ? { ...hipGeo(b), commons, rows: hipPurlinRows(b, rules) } : null },
+    geometry: { building: b, posts, trusses, girtRows, sheds, awnings: added.awnings, dormers: added.dormers, partitions: interior.partitions, loft: interior.loft, attic: trussType.attic, cupolas: finish.cupolas, planes: b.planes.map((p) => ({ ...p, purlinRows: planePurlinRows(p, rules) })), purlinRowLengthIn: roofRunIn(b), studWalls: studs?.walls ?? null, wings: [], hip: hip ? { ...hipGeo(b), commons, rows: hipPurlinRows(b, rules) } : null },
     cuts: cutList(rules, [...(hip ? posts.map((p) => ({ ...p, where: WALL_NAMES[p.wall], sloped: false })) : posts), ...sheds.flatMap((sh) => sh.posts.map((p) => ({ ...p, where: sh.label, sloped: p.line !== 'outer' && p.line !== 'corner' }))), ...interior.posts], runs),
     rules,
     unverifiedRules: unverifiedRules(),
   };
+  if (!b.wings.length) return result;
+  // Each wing is designed as a building of its own, then folded into this one.
+  const placed = placeWings(b, input, ruleOverrides, design);
+  if (placed.errors.length) return { ok: false, errors: placed.errors, warnings, items: [] };
+  return mergeWings(result, placed.wings);
 }
 
 // Finds one line in a result, for tests and for the screen.

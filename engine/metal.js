@@ -1,5 +1,5 @@
 // Counts the steel: roof and wall panels, trim, and screws.
-import { wallLengthIn, wallTopIn, gableAreaIn, isGable, isOpen, closedWalls, litWalls, hipGeo, CORNERS } from './building.js';
+import { wallLengthIn, wallTopIn, gableAreaIn, isGable, isOpen, closedWalls, litWalls, hipGeo, roofRunIn, freeRakes, CORNERS } from './building.js';
 import { add } from './stock.js';
 
 const EPS = 0.01;
@@ -24,7 +24,7 @@ export function roofPanels(b, rules) {
     hipPanels(tally, b.widthIn + 2 * b.overhangIn, g.halfIn, g.k, rules, 2);
     return tally;
   }
-  const perPlane = Math.ceil((b.lengthIn + 2 * b.endOverhangIn) / rules.panelCoverageIn - EPS);
+  const perPlane = Math.ceil(roofRunIn(b) / rules.panelCoverageIn - EPS);
   const tally = {};
   for (const p of b.planes) add(tally, Math.ceil(p.slopeIn + rules.roofPanelExtraIn - EPS), perPlane);
   return tally;
@@ -34,7 +34,7 @@ export function roofPanels(b, rules) {
 // Walk doors and windows are cut out of full panels on site, so they change nothing
 // (Hansen Pole Buildings, Doors and Windows: field located, cut from the wall steel).
 export function doorOver(b, wall, left, right) {
-  return b.openings.find((o) => o.wall === wall && (o.type === 'slider' || o.type === 'overhead') && o.startIn <= left + EPS && o.endIn >= right - EPS);
+  return b.openings.find((o) => o.wall === wall && (o.type === 'slider' || o.type === 'overhead' || o.type === 'wing') && o.startIn <= left + EPS && o.endIn >= right - EPS);
 }
 
 // Gable-end panels are ordered at the height of their taller edge and cut
@@ -76,7 +76,7 @@ export function sliderPanels(b, rules) {
 export function trim(b, rules) {
   const covers = rules.trimPieceIn - rules.trimLapIn;
   const pieces = (runIn) => Math.ceil(runIn / covers - EPS);
-  const roofRun = b.lengthIn + 2 * b.endOverhangIn;
+  const roofRun = roofRunIn(b);
   let base = 0;
   for (const wall of closedWalls(b)) {
     const doors = b.openings.filter((o) => o.wall === wall && o.toGround).reduce((sum, o) => sum + o.widthIn, 0);
@@ -90,7 +90,7 @@ export function trim(b, rules) {
     if (g.ridgeIn > EPS) out['Ridge Cap'] = pieces(g.ridgeIn);
     out['Hip Cap'] = 4 * pieces(g.hipIn);
     out['Eave Trim'] = 2 * pieces(roofRun) + 2 * pieces(b.widthIn + 2 * b.overhangIn);
-    out['Corner Trim'] = CORNERS.filter((pair) => !pair.every((wall) => isOpen(b, wall))).length * pieces(b.eaveIn);
+    out['Corner Trim'] = CORNERS.filter((pair) => !pair.every((wall) => isOpen(b, wall)) && !pair.some((wall) => b.walls[wall].joined)).length * pieces(b.eaveIn);
     out['Base Trim'] = base;
     return out;
   }
@@ -98,10 +98,10 @@ export function trim(b, rules) {
   if (b.roof === 'mono') out['High Side Eave Trim'] = pieces(roofRun);
   if (edges('break')) out['Gambrel Flashing'] = pieces(roofRun) * edges('break');
   out['Eave Trim'] = pieces(roofRun) * edges('eave');
-  // Each plane gets its own rake piece at both ends of the building.
-  out['Rake Trim'] = b.planes.reduce((n, p) => n + pieces(p.slopeIn) * 2, 0);
+  // Each plane gets its own rake piece at each end of the building that finishes in the open.
+  out['Rake Trim'] = b.planes.reduce((n, p) => n + pieces(p.slopeIn) * freeRakes(b), 0);
   // A corner keeps its trim while either wall that meets there is closed.
-  out['Corner Trim'] = CORNERS.filter((pair) => !pair.every((wall) => isOpen(b, wall))).reduce((n, [side]) => n + pieces(wallTopIn(b, side, 0)), 0);
+  out['Corner Trim'] = CORNERS.filter((pair) => !pair.every((wall) => isOpen(b, wall)) && !pair.some((wall) => b.walls[wall].joined)).reduce((n, [side]) => n + pieces(wallTopIn(b, side, 0)), 0);
   out['Base Trim'] = base;
   return out;
 }
@@ -113,7 +113,7 @@ export function wallAreaIn(b) {
 
 export function areas(b) {
   if (b.roof === 'hip') return { roofSqFt: (b.lengthIn + 2 * b.overhangIn) * (b.widthIn + 2 * b.overhangIn) * hipGeo(b).k / 144, wallSqFt: wallAreaIn(b) / 144 };
-  const roofSqFt = b.planes.reduce((sum, p) => sum + p.slopeIn, 0) * (b.lengthIn + 2 * b.endOverhangIn) / 144;
+  const roofSqFt = b.planes.reduce((sum, p) => sum + p.slopeIn, 0) * roofRunIn(b) / 144;
   return { roofSqFt, wallSqFt: wallAreaIn(b) / 144 };
 }
 
@@ -128,7 +128,7 @@ export function closures(b, rules) {
     if (b.lengthIn - b.widthIn > EPS) out['Outside Closures'] = 2 * n(b.lengthIn - b.widthIn);
     return out;
   }
-  const strips = Math.ceil((b.lengthIn + 2 * b.endOverhangIn) / rules.closureStripIn - EPS) * b.planes.length;
+  const strips = Math.ceil(roofRunIn(b) / rules.closureStripIn - EPS) * b.planes.length;
   return { 'Inside Closures': strips, 'Outside Closures': strips };
 }
 

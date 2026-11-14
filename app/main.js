@@ -2,7 +2,8 @@ import './moved.js';
 import { design } from '../engine/design.js';
 import { feetInches } from '../engine/stock.js';
 import { dxf } from '../engine/dxf.js';
-import { edgeOverhangIn, eaveDropIn } from '../engine/building.js';
+import { edgeOverhangIn, eaveDropIn, STUD_SIZES } from '../engine/building.js';
+import { WING_WALLS, WING_WALL_NAMES } from '../engine/wings.js';
 import { priceJob, paymentSchedule, parsePriceList, priceListCsv, builderPriceList, toCsv, invoiceCsv, quickbooksIif, SAMPLE_CATALOG } from '../engine/pricing.js';
 import { RETAIL_CATALOG } from '../engine/retail-prices.js';
 import { createView } from './scene.js';
@@ -15,7 +16,7 @@ import { startLock, licenseLine } from './lock.js';
 
 const STORE = 'ridge-and-rafter.job.v1';
 const PRICE_STORE = 'ridge-and-rafter.prices.v1';
-const STEPS = ['Jobs', 'Size', 'Roof', 'Doors And Windows', 'Lean-Tos And Porches', 'Inside And Finish', 'Colors', 'Price', 'Drawings'];
+const STEPS = ['Jobs', 'Size', 'Roof', 'Doors And Windows', 'Lean-Tos And Porches', 'Wings', 'Inside And Finish', 'Colors', 'Price', 'Drawings'];
 const VIEWS = [['finished', 'Finished'], ['framing', 'Framing'], ['plan', 'Floor Plan']];
 const WALL_NAMES = { front: 'Front', back: 'Back', left: 'Left End', right: 'Right End' };
 const TYPE_NAMES = { slider: 'Sliding Door', overhead: 'Overhead Door', walk: 'Walk Door', window: 'Window' };
@@ -63,6 +64,17 @@ const AWNING_FIELDS = {
   width: { label: 'Width', step: 1, min: 3, max: 40 },
   pitch: { label: 'Roof Pitch', step: 1, min: 1, max: 12 },
 };
+const WING_FIELDS = {
+  start: { label: 'From Left End', step: 1, min: 0 },
+  width: { label: 'Width', step: 1, min: 8 },
+  out: { label: 'Sticks Out', step: 1, min: 8 },
+  eaveHeight: { label: 'Wall Height', step: 1, min: 6 },
+  pitch: { label: 'Roof Pitch', step: 1, min: 1, max: 12 },
+};
+const BETWEEN_NAMES = { open: 'Open Through', door: 'Wall With Door', solid: 'Solid Wall' };
+// A wing's three outside walls, as the job names them, and which way each is measured as seen from outside.
+const WING_SIDES = { end: ['Front', 'from left'], left: ['Left Side', 'from left'], right: ['Right Side', 'from right'] };
+const WING_STATE_WALL = Object.fromEntries(Object.entries(WING_WALLS).map(([k, v]) => [v, k]));
 const DORMER_FIELDS = {
   at: { label: 'From Left End', step: 1, min: 2 },
   width: { label: 'Width', step: 1, min: 3, max: 16 },
@@ -155,7 +167,7 @@ if (!state.id) { state.id = newId(); if (!shared) { try { localStorage.setItem(S
 let catalog = loadPrices();
 if (!shared && !designer && !catalog.sample && !catalog.retail && !priceLists.all().some((l) => l.supplier === catalog.supplier)) priceLists.put(catalog);
 let priced = priceJob(result, catalog, state.pricing);
-const ui = { delta: 0, notice: '', step: 'Size', view: 'finished', sheet: 'front', sel: null, opening: null, shed: null, dormer: null, part: null, thing: null, side: null, placing: null, jobrow: null, tplrow: null, confirm: null, changed: new Set(), last: '', problem: '', savedAt: null, builder: { name: '', pct: 0 } };
+const ui = { delta: 0, notice: '', step: 'Size', view: 'finished', sheet: 'front', sel: null, opening: null, shed: null, wing: null, wopening: null, bldg: null, dormer: null, part: null, thing: null, side: null, placing: null, jobrow: null, tplrow: null, confirm: null, changed: new Set(), last: '', problem: '', savedAt: null, builder: { name: '', pct: 0 } };
 if (unopened) { ui.lead = 'Your saved job could not be opened.'; ui.problem = `${unopened} The sample building is showing instead.`; }
 const view = createView($('view'), $('stage'));
 
@@ -252,7 +264,7 @@ function openJob(job, note) {
   state = next;
   result = tried;
   priced = priceJob(result, catalog, state.pricing);
-  Object.assign(ui, { changed: new Set(), last: note, delta: 0, problem: '', lead: '', opening: null, shed: null, dormer: null, thing: null, side: null, placing: null, jobrow: null, tplrow: null, confirm: null });
+  Object.assign(ui, { changed: new Set(), last: note, delta: 0, problem: '', lead: '', opening: null, shed: null, wing: null, wopening: null, bldg: null, dormer: null, thing: null, side: null, placing: null, jobrow: null, tplrow: null, confirm: null });
   $('job').value = state.job;
   save();
   view.update(result, state.colors, fits());
@@ -350,6 +362,13 @@ function setShed(index, change, note) {
   apply({ sheds: state.sheds.map((s, i) => (i === index ? { ...s, ...change } : s)) }, note);
 }
 
+const wings = () => state.wings ?? [];
+const stud = () => state.framing === 'stud';
+const setWing = (index, change, note) => apply({ wings: wings().map((w, i) => (i === index ? { ...w, ...change } : w)) }, note);
+const setWingOpening = (index, change, note) => setWing(ui.bldg, { openings: wings()[ui.bldg].openings.map((o, i) => (i === index ? { ...o, ...change } : o)) }, note);
+const wingWallText = (w) => (w.wall === 'front' || w.wall === 'back' ? `${WALL_NAMES[w.wall]} wall` : WALL_NAMES[w.wall].replace('End', 'end'));
+const wingLine = (w, i) => `Wing ${i + 1}, ${wingWallText(w).toLowerCase()}, ${num(w.width)} x ${num(w.out)} ft, ${num(w.eaveHeight)} ft walls, ${BETWEEN_NAMES[w.between ?? 'open'].toLowerCase()}`;
+const sizeText = (o) => `${num(o.width)} x ${num(o.height)}${Number.isInteger(o.width) && Number.isInteger(o.height) ? ' ft' : ''}`;
 const walls = () => state.partitions ?? [];
 // Things to test fit: boxes the size of whatever is going to live in the building.
 const things = () => state.things ?? [];
@@ -509,6 +528,11 @@ function leftPanel() {
   if (ui.step === 'Jobs') return jobsPanel();
   if (ui.step === 'Size') {
     return `<h2>Building Size</h2>${['width', 'length', 'eaveHeight', ...(roofOf() === 'gambrel' ? ['endOverhang'] : ['pitch', 'overhang', 'endOverhang'])].map(field).join('')}
+      <h2>Wall Framing</h2><div class="seg"><button data-framing="post" class="${stud() ? '' : 'on'}">Posts And Girts</button><button data-framing="stud" class="${stud() ? 'on' : ''}">Stud Walls</button></div>
+      ${stud() ? `${stepper('data-studsize', 'Stud Size', state.studSize ?? '2x6', '', false)}
+      <h2>Stud Spacing</h2><div class="seg">${[16, 24].map((v) => `<button data-studspacing="${v}" class="${(state.studSpacing ?? 16) === v ? 'on' : ''}">${v} in</button>`).join('')}</div>
+      <p class="hint">Stud walls stand on a concrete slab or foundation instead of posts set in the ground. Each wall gets a treated bottom plate, studs, two top plates and a header over every door and window. The trusses sit 2 ft apart on top of the walls.</p>
+      <p class="hint">The post choices (post spacing, post size, footings) are hidden while Stud Walls is picked. The concrete under the walls is your engineer's to design and is not counted here.</p>` : `
       <h2>Post Spacing</h2>${choice('postSpacing', [6, 8, 10, 12], 'ft')}
       <h2>Truss Spacing</h2>${choice('trussSpacing', [2, 4, 8], 'ft')}
       <h2>Wall By Wall</h2>${Object.entries(WALL_NAMES).map(([w, name]) => {
@@ -518,7 +542,7 @@ function leftPanel() {
           <div class="seg"><button data-sideopen="0" class="${wallOf(w).open ? '' : 'on'}">Closed In</button><button data-sideopen="1" class="${wallOf(w).open ? 'on' : ''}">Open</button></div>
           <div class="seg">${[6, 8, 10, 12].map((v) => `<button data-sidepost="${v}" class="${wallOf(w).postSpacing === v ? 'on' : ''}">${v} ft</button>`).join('')}</div>
           <p class="hint">Posts on this wall alone. An open wall keeps its posts and roof and leaves off the boards and steel, the way a hay shed or equipment shelter is built.</p></div>`;
-      }).join('')}
+      }).join('')}`}
       <h2>Site Conditions</h2>${loadsPanel()}
       <p class="hint">Drag the picture to look around the building. Scroll or pinch to move closer. The material list follows every change.</p>`;
   }
@@ -561,7 +585,17 @@ function leftPanel() {
       <p class="hint">Lean-tos, porches and awnings are on their own step.</p>`;
   }
   if (ui.step === 'Doors And Windows') {
-    const rows = state.openings.map((o, i) => {
+    const wg = ui.bldg == null ? null : wings()[ui.bldg];
+    const which = wings().length ? `<h2>Which Building</h2><div class="seg"><button data-bldg="main" class="${wg ? '' : 'on'}">Main</button>${wings().map((_, i) => `<button data-bldg="${i}" class="${ui.bldg === i ? 'on' : ''}">Wing ${i + 1}</button>`).join('')}</div>` : '';
+    const rows = wg ? wg.openings.map((o, i) => {
+      const head = `<button data-wopen="${i}"><span>${TYPE_NAMES[o.type]}<small>${WING_WALL_NAMES[WING_WALLS[o.wall]]}, ${feetInches(o.offset * 12)} ${WING_SIDES[o.wall][1]}</small></span><em>${sizeText(o)}</em></button>`;
+      if (ui.wopening !== i) return `<div class="op">${head}</div>`;
+      const keys = o.type === 'window' ? ['offset', 'width', 'height', 'sill'] : ['offset', 'width', 'height'];
+      return `<div class="op open">${head}
+        <div class="seg">${Object.entries(WING_SIDES).map(([w, [name]]) => `<button data-wwall="${w}" class="${o.wall === w ? 'on' : ''}">${name}</button>`).join('')}</div>
+        ${keys.map((k) => stepper(`data-wopfield="${k}"`, OPENING_FIELDS[k].label, feetInches(o[k] * 12), '', false)).join('')}
+        <button class="btn remove" data-wremove="${i}">Remove</button></div>`;
+    }).join('') : state.openings.map((o, i) => {
       const from = o.wall === 'front' || o.wall === 'back' ? 'from the left end' : 'from the front';
       const head = `<button data-open="${i}"><span>${TYPE_NAMES[o.type]}<small>${WALL_NAMES[o.wall]} wall, ${feetInches(o.offset * 12)} ${from}</small></span><em>${num(o.width)} x ${num(o.height)}</em></button>`;
       if (ui.opening !== i) return `<div class="op">${head}</div>`;
@@ -572,13 +606,14 @@ function leftPanel() {
         ${keys.map((k) => stepper(`data-opfield="${k}"`, OPENING_FIELDS[k].label, feetInches(o[k] * 12), '', false)).join('')}
         <button class="btn remove" data-remove="${i}">Remove</button></div>`;
     }).join('');
-    return `<h2>Add One</h2>
+    return `${which}<h2>Add One</h2>
       <div class="seg stack">${Object.entries(TYPE_NAMES).map(([t, name]) =>
         `<button data-place="${t}" class="${ui.placing === t ? 'on' : ''}">${name}</button>`).join('')}</div>
       <p class="hint${ui.placing ? ' go' : ''}">${ui.placing
         ? `Now click a wall in the picture where the ${TYPE_NAMES[ui.placing].toLowerCase()} goes.`
         : 'Pick a type, then click a wall in the picture to place it.'}</p>
-      <h2>On This Building</h2>${rows || '<p class="hint">Nothing yet.</p>'}`;
+      <h2>${wg ? `On Wing ${ui.bldg + 1}` : 'On This Building'}</h2>${rows || '<p class="hint">Nothing yet.</p>'}
+      ${which ? '<p class="hint">Each wing has three outside walls of its own. The wall where it meets the main building is set on the Wings tab.</p>' : ''}`;
   }
   if (ui.step === 'Lean-Tos And Porches') {
     const rows = state.sheds.map((s, i) => {
@@ -622,6 +657,26 @@ function leftPanel() {
       <p class="hint">A wraparound porch runs along two or more walls and turns the corners. An awning is a small roof over a door or window, hung off the wall on brackets with no posts.</p>
       <h2>On This Building</h2>${rows || '<p class="hint">Nothing yet.</p>'}`;
   }
+  if (ui.step === 'Wings') {
+    const rows = wings().map((w, i) => {
+      const g = result.geometry.wings?.[i];
+      const head = `<button data-wingopen="${i}"><span>Wing ${i + 1}<small>${wingWallText(w)}, ${num(w.width)} x ${num(w.out)} ft, gable roof</small></span><em>${g?.shape ?? ''}</em></button>`;
+      if (ui.wing !== i) return `<div class="op">${head}</div>`;
+      const label = (k) => (k === 'start' && (w.wall === 'left' || w.wall === 'right') ? 'From Front Wall' : WING_FIELDS[k].label);
+      return `<div class="op open">${head}
+        <h2>Joins The</h2>
+        <div class="seg">${Object.entries(WALL_NAMES).map(([k, name]) => `<button data-wingwall="${k}" class="${w.wall === k ? 'on' : ''}">${name}</button>`).join('')}</div>
+        ${Object.keys(WING_FIELDS).map((k) => stepper(`data-wingfield="${k}"`, label(k), k === 'pitch' ? String(w[k]) : feetInches(w[k] * 12), k === 'pitch' ? '/12' : '', false)).join('')}
+        <h2>Between The Two</h2>
+        <div class="seg">${Object.entries(BETWEEN_NAMES).map(([k, name]) => `<button data-wingbetween="${k}" class="${(w.between ?? 'open') === k ? 'on' : ''}">${name}</button>`).join('')}</div>
+        <button class="btn remove" data-wingremove="${i}">Remove</button></div>`;
+    }).join('');
+    return `<h2>Add One</h2>
+      <div class="seg"><button data-wingadd>Add A Wing</button></div>
+      <p class="hint">A wing is a second building joined to the main one, with its own size, wall height and roof. Put it on a side wall to make an L or a T. Put it on an end wall to carry the building on at a different size.</p>
+      <h2>On This Building</h2>${rows || '<p class="hint">Nothing yet.</p>'}
+      <p class="hint">A wing follows the main building for wall framing, coverings and colors. Its ridge cannot stand higher than the main ridge. Lean-tos and porches stay on the main building for now.</p>`;
+  }
   if (ui.step === 'Inside And Finish') {
     const rows = walls().map((p, i) => {
       const head = `<button data-partopen="${i}"><span>Interior Wall ${i + 1}<small>${p.axis === 'across' ? 'Front to back' : 'End to end'}, ${p.doors} ${p.doors === 1 ? 'door' : 'doors'}, ${p.sheathed ? 'sheathed' : 'studs only'}</small></span><em>${num(p.length)} ft</em></button>`;
@@ -650,7 +705,7 @@ function leftPanel() {
       <p class="hint">A steel liner is the bright panel on the inside of the walls or under the trusses. The list adds its panels, trim, screws and the framing it fastens to.</p>
       ${optionRow('roofInsulation')}${optionRow('wallInsulation', true)}${optionRow('ceilingR', true)}
       <p class="hint">Bubble is a thin foil roll that stops dripping under a steel roof. Blown insulation lies on top of a ceiling liner, so picking it turns the ceiling liner on.</p>
-      ${optionRow('footing', true)}${optionRow('slab')}
+      ${stud() ? '' : optionRow('footing', true)}${optionRow('slab')}
       <p class="hint">The slab is counted at 4 in thick with a plastic sheet under it. No mesh, bar or thickened edge is counted. That is your concrete man's call. A bolt-down bracket stands each post on top of the concrete, so no wood goes in the ground and the posts are ordered 4 ft shorter. The concrete under the brackets has to be made for them, and a bracket does not hold a post upright the way a buried post holds itself. That is engineer work.</p>
       ${optionRow('ridgeVent')}
       ${steelRoof ? `<h2>Skylight Panels</h2>${stepper('data-optstep="skylights"', 'Clear Roof Panels', String(opt('skylights')), '', false)}
@@ -736,7 +791,7 @@ function leftPanel() {
   }
   return `<h2>Drawings</h2>
     <div class="seg stack">${sheetList(result).map(([k, n]) => `<button data-sheet="${k}" class="${ui.sheet === k ? 'on' : ''}">${n}</button>`).join('')}</div>
-    ${ui.sheet === 'site' ? sitePanel() : `<p class="hint">Walls are drawn from outside the building. ${result.rules?.postEmbedmentIn === 0 ? 'The posts stand on brackets at floor level.' : 'Dashed lines show the part of each post in the ground.'}</p>`}
+    ${ui.sheet === 'site' ? sitePanel() : `<p class="hint">Walls are drawn from outside the building. ${stud() ? 'Stud walls stand on concrete, so nothing goes in the ground.' : result.rules?.postEmbedmentIn === 0 ? 'The posts stand on brackets at floor level.' : 'Dashed lines show the part of each post in the ground.'}</p>`}
     <h2>Print</h2>
     <div class="seg stack"><button data-sheets="all">All Sheets</button><button data-sheets="cuts">Cut List Only</button><button data-checksheet>Delivery Check Sheet</button></div>
     <h2>For CAD</h2>
@@ -783,7 +838,7 @@ const ownSpacing = () => Object.keys(WALL_NAMES).filter((w) => wallOf(w).postSpa
 function specRows() {
   const colorName = (hex) => PALETTE.find((c) => c[1] === hex)?.[0] ?? hex;
   const counts = {};
-  for (const o of state.openings) {
+  for (const o of [...state.openings, ...wings().flatMap((w) => w.openings ?? [])]) {
     const k = `${TYPE_NAMES[o.type]}|${num(o.width)} x ${num(o.height)}`;
     counts[k] = (counts[k] ?? 0) + 1;
   }
@@ -791,10 +846,11 @@ function specRows() {
   return [
     ['Size', `${state.width} ft wide, ${state.length} ft long, ${state.eaveHeight} ft walls`],
     ['Roof', `${ROOF_NAMES[roofOf()]}, ${roofOf() === 'gambrel' ? `${result.rules.gambrelLowerPitch} in 12 and ${result.rules.gambrelUpperPitch} in 12 slopes` : `${state.pitch} in 12 pitch`}, ${overhangText()}`],
-    ['Frame', `Posts every ${state.postSpacing} ft${ownSpacing().length ? ` (${ownSpacing().map((w) => `${wallOf(w).postSpacing} ft on the ${sideName(w).toLowerCase()}`).join(', ')})` : ''}, ${trussOf() === 'common' ? '' : `${TRUSS_NAMES[trussOf()].toLowerCase()} `}trusses every ${state.trussSpacing} ft`],
+    stud() ? ['Frame', `${state.studSize ?? '2x6'} stud walls on concrete, studs every ${state.studSpacing ?? 16} in, trusses every 2 ft`] : ['Frame', `Posts every ${state.postSpacing} ft${ownSpacing().length ? ` (${ownSpacing().map((w) => `${wallOf(w).postSpacing} ft on the ${sideName(w).toLowerCase()}`).join(', ')})` : ''}, ${trussOf() === 'common' ? '' : `${TRUSS_NAMES[trussOf()].toLowerCase()} `}trusses every ${state.trussSpacing} ft`],
     ...(openSides().length ? [['Open Walls', `${openSides().map((w) => sideName(w)).join(', ')}: posts and roof only, no steel`]] : []),
     ['Doors And Windows', openings || 'None'],
     ...(state.sheds.length ? [['Lean-Tos And Porches', state.sheds.map(shedText).join('<br>')]] : []),
+    ...(wings().length ? [['Wings', wings().map(wingLine).join('<br>')]] : []),
     ...(result.geometry.dormers.length ? [['Dormers', result.geometry.dormers.map((m) => `${m.label}, ${dormerText(m).toLowerCase()}, ${feetInches(m.widthIn)} wide`).join('<br>')]] : []),
     ...(finishRows().length ? [['Inside And Finish', finishRows().join('<br>')]] : []),
     ['Colors', `${colorName(state.colors.walls)} walls, ${colorName(state.colors.roof)} roof, ${colorName(state.colors.trim)} trim${state.colors.wainscotOn && opt('wallCover') === 'steel' ? `, ${colorName(state.colors.wainscot)} wainscot` : ''}`],
@@ -818,13 +874,14 @@ function paintShared() {
 }
 
 // Warnings the program can fix by itself come first; the rest are notes.
-const firstWarning = () => result.warnings.find((w) => w.openingIndex !== undefined) || result.warnings[0];
+const firstWarning = () => result.warnings.find((w) => w.openingIndex !== undefined || w.wingOpening !== undefined) || result.warnings[0];
 
 function paint() {
   if (shared) return paintShared();
   document.body.classList.toggle('designer', Boolean(designer));
   $('nav').innerHTML = STEPS.filter((s) => !designer || !['Jobs', 'Price', 'Drawings'].includes(s)).map((s) => `<button data-nav="${s}" class="${ui.step === s ? 'on' : ''}">${s}</button>`).join('');
   $('views').innerHTML = VIEWS.map(([k, n]) => `<button data-view="${k}" class="${ui.view === k ? 'on' : ''}">${n}</button>`).join('');
+  if (ui.bldg != null && !wings()[ui.bldg]) { ui.bldg = null; ui.wopening = null; }
   $('left').innerHTML = leftPanel();
   $('stage').classList.toggle('placing', Boolean(ui.placing));
   $('saved').textContent = ui.savedAt
@@ -832,7 +889,7 @@ function paint() {
     : 'Saved on this device';
 
   const s = result.summary;
-  $('readout').textContent = `${s.floorSqFt.toLocaleString()} sq ft   ${s.posts} posts   ${s.trusses} trusses`;
+  $('readout').textContent = `${Math.round(s.floorSqFt + (s.wingSqFt ?? 0)).toLocaleString()} sq ft   ${stud() ? 'stud walls' : `${s.posts} posts`}   ${s.trusses} trusses`;
 
   const sheet = ui.step === 'Drawings', plan = ui.view === 'plan';
   $('views').hidden = sheet;
@@ -849,7 +906,7 @@ function paint() {
     check.innerHTML = `<span><b>${ui.lead || 'That will not fit.'}</b> ${esc(ui.problem)}</span><button data-dismiss>OK</button>`;
   } else if (warning) {
     const more = result.warnings.length > 1 ? ` (1 of ${result.warnings.length})` : '';
-    check.innerHTML = `<span><b>Check this${more}.</b> ${esc(warning.text)}</span>${warning.openingIndex === undefined ? '' : '<button data-fix>Fix It For Me</button>'}`;
+    check.innerHTML = `<span><b>Check this${more}.</b> ${esc(warning.text)}</span>${warning.openingIndex === undefined && warning.wingOpening === undefined ? '' : '<button data-fix>Fix It For Me</button>'}`;
   }
 
   if (designer) {
@@ -989,6 +1046,15 @@ document.addEventListener('click', (e) => {
     const label = d.choice === 'postSpacing' ? 'Post spacing' : 'Truss spacing';
     return apply({ [d.choice]: Number(d.value) }, `${label} ${state[d.choice]} to ${d.value} ft`);
   }
+  if (d.framing) {
+    if (d.framing === (state.framing ?? 'post')) return;
+    return apply(d.framing === 'stud' ? { framing: 'stud', studSize: state.studSize ?? '2x6', studSpacing: state.studSpacing ?? 16 } : { framing: 'post' }, d.framing === 'stud' ? 'Walls now stud walls on concrete' : 'Walls now posts and girts');
+  }
+  if ('studsize' in d) {
+    const to = STUD_SIZES[(STUD_SIZES.indexOf(state.studSize ?? '2x6') + Number(d.dir) + STUD_SIZES.length) % STUD_SIZES.length];
+    return apply({ studSize: to }, `Studs now ${to}`);
+  }
+  if (d.studspacing) return Number(d.studspacing) === (state.studSpacing ?? 16) ? null : apply({ studSpacing: Number(d.studspacing) }, `Studs now ${d.studspacing} in apart`);
   if (d.side) { ui.side = ui.side === d.side ? null : d.side; return paint(); }
   if (d.sideopen || d.sidepost) {
     const w = ui.side, own = { ...(state.walls?.[w] ?? {}) };
@@ -1002,6 +1068,59 @@ document.addEventListener('click', (e) => {
     ui.placing = ui.placing === d.place ? null : d.place;
     if (ui.placing && ui.view === 'plan') { ui.view = 'finished'; view.setMode('finished'); }
     return paint();
+  }
+  if (d.bldg) { ui.bldg = d.bldg === 'main' ? null : Number(d.bldg); ui.opening = ui.wopening = null; return paint(); }
+  if (d.wopen) { ui.wopening = ui.wopening === Number(d.wopen) ? null : Number(d.wopen); return paint(); }
+  if (d.wwall) {
+    const o = wings()[ui.bldg].openings[ui.wopening];
+    return setWingOpening(ui.wopening, { wall: d.wwall, offset: 2 }, `${TYPE_NAMES[o.type]} moved to the ${WING_WALL_NAMES[WING_WALLS[d.wwall]].toLowerCase()}`);
+  }
+  if (d.wopfield) {
+    const o = wings()[ui.bldg].openings[ui.wopening], f = OPENING_FIELDS[d.wopfield];
+    const to = Math.max(0, o[d.wopfield] + f.step * Number(d.dir));
+    return setWingOpening(ui.wopening, { [d.wopfield]: to }, `${TYPE_NAMES[o.type]} ${f.label.toLowerCase()} now ${feetInches(to * 12)}`);
+  }
+  if (d.wremove) {
+    const o = wings()[ui.bldg].openings[Number(d.wremove)];
+    ui.wopening = null;
+    return setWing(ui.bldg, { openings: wings()[ui.bldg].openings.filter((_, i) => i !== Number(d.wremove)) }, `${TYPE_NAMES[o.type]} removed from wing ${ui.bldg + 1}`);
+  }
+  if ('wingadd' in d) {
+    // The far end of the front wall first, which makes an L, then anywhere a wing fits.
+    const tries = [], pitch = roofOf() === 'gambrel' ? 4 : state.pitch;
+    for (const wall of ['front', 'back', 'right', 'left']) {
+      const len = wallLen(wall), side = wall === 'front' || wall === 'back';
+      for (const eaveHeight of [...new Set([Math.min(state.eaveHeight, 10), 8, 6])].filter((v) => v <= state.eaveHeight)) {
+        for (const width of [24, 20, 16, 12, 8].filter((v) => v <= len)) {
+          for (const start of new Set([len - width, 0, Math.floor((len - width) / 2)])) tries.push({ wall, start, width, out: side ? 20 : 16, eaveHeight, pitch, between: 'open', openings: [] });
+        }
+      }
+    }
+    const fit = firstFit('wings', tries);
+    if (!fit) { ui.lead = ''; ui.problem = 'No wall has room for a wing. Move or remove a door, lean-to or porch on one wall first.'; return paint(); }
+    ui.wing = wings().length;
+    return apply({ wings: [...wings(), fit] }, `Wing added to the ${wingWallText(fit).toLowerCase()}`);
+  }
+  if (d.wingopen) { ui.wing = ui.wing === Number(d.wingopen) ? null : Number(d.wingopen); return paint(); }
+  if (d.wingwall) {
+    const w = wings()[ui.wing], len = wallLen(d.wingwall), width = Math.min(w.width, len);
+    if (d.wingwall === w.wall) return;
+    const rest = wings().filter((_, i) => i !== ui.wing);
+    const tries = [...new Set([len - width, 0, Math.floor((len - width) / 2)])].map((start) => ({ ...w, wall: d.wingwall, start, width }));
+    const fit = tries.find((t) => design({ ...state, wings: [...rest.slice(0, ui.wing), t, ...rest.slice(ui.wing)] }).ok) ?? tries[0];
+    return setWing(ui.wing, fit, `Wing ${ui.wing + 1} moved to the ${wingWallText(fit).toLowerCase()}`);
+  }
+  if (d.wingfield) {
+    const w = wings()[ui.wing], f = WING_FIELDS[d.wingfield];
+    const to = Math.min(f.max ?? Infinity, Math.max(f.min, w[d.wingfield] + f.step * Number(d.dir)));
+    const shown = d.wingfield === 'pitch' ? `${to} in 12` : feetInches(to * 12);
+    return setWing(ui.wing, { [d.wingfield]: to }, `Wing ${ui.wing + 1} ${(d.wingfield === 'start' ? 'position' : f.label).toLowerCase()} now ${shown}`);
+  }
+  if (d.wingbetween) return setWing(ui.wing, { between: d.wingbetween }, `Wing ${ui.wing + 1} now ${BETWEEN_NAMES[d.wingbetween].toLowerCase()}`);
+  if (d.wingremove) {
+    const n = Number(d.wingremove);
+    ui.wing = ui.bldg = ui.wopening = null;
+    return apply({ wings: wings().filter((_, i) => i !== n) }, `Wing ${n + 1} removed`);
   }
   if (d.open) { ui.opening = ui.opening === Number(d.open) ? null : Number(d.open); return paint(); }
   if (d.wall) {
@@ -1195,6 +1314,12 @@ document.addEventListener('click', (e) => {
     return apply({ colors: { ...state.colors, [d.extra]: on } }, `${d.extra === 'gutters' ? 'Gutters' : 'Pickup'} ${on ? 'on' : 'off'}`);
   }
   if ('dismiss' in d) { ui.problem = ''; ui.lead = ''; return paint(); }
+  if ('fix' in d && firstWarning().wingOpening !== undefined) {
+    const w = firstWarning(), o = wings()[w.wing].openings[w.wingOpening];
+    const moved = (byIn) => wings().map((g, i) => (i === w.wing ? { ...g, openings: g.openings.map((x, n) => (n === w.wingOpening ? { ...x, offset: o.offset + byIn / 12 } : x)) } : g));
+    const fits = [w.wingSlideByIn, w.wingOtherSlideByIn].find((byIn) => byIn !== undefined && design({ ...state, wings: moved(byIn) }).ok);
+    return apply({ wings: moved(fits ?? w.wingSlideByIn ?? 0) }, `${TYPE_NAMES[o.type]} on wing ${w.wing + 1} moved to ${w.code === 'door-edge-off-post' ? 'meet' : 'clear'} the post`);
+  }
   if ('fix' in d) {
     const w = firstWarning(), o = state.openings[w.openingIndex];
     const moved = (byIn) => state.openings.map((x, i) => (i === w.openingIndex ? { ...x, offset: o.offset + byIn / 12 } : x));
@@ -1211,6 +1336,18 @@ $('view').addEventListener('pointerup', (e) => {
   const hit = view.pick(e.clientX, e.clientY);
   if (!hit) return;
   const type = ui.placing, size = NEW_OPENING[type];
+  if (hit.wing != null && wings()[hit.wing]) {
+    const g = wings()[hit.wing], wall = WING_STATE_WALL[hit.wall];
+    if (!wall) return;
+    const span = wall === 'end' ? g.width : g.out;
+    const at = Math.max(0, Math.min(span - size.width, Math.round((hit.at - size.width / 2) * 2) / 2));
+    ui.bldg = hit.wing;
+    ui.wopening = g.openings.length;
+    setWing(hit.wing, { openings: [...g.openings, { type, wall, offset: at, ...size }] }, `${TYPE_NAMES[type]} added to wing ${hit.wing + 1}, ${WING_WALL_NAMES[hit.wall].toLowerCase()}`);
+    if (ui.problem) ui.wopening = null; else ui.placing = null;
+    return paint();
+  }
+  ui.bldg = null;
   const wallLength = hit.wall === 'front' || hit.wall === 'back' ? state.length : state.width;
   const offset = Math.max(0, Math.min(wallLength - size.width, Math.round((hit.at - size.width / 2) * 2) / 2));
   ui.opening = state.openings.length;
@@ -1484,8 +1621,9 @@ function drawingPages() {
   const names = Object.fromEntries(sheetList(result));
   const sheds = result.geometry.sheds.map((s) => `shed${s.index}`);
   const pairs = sheds.flatMap((k, i) => (i % 2 ? [] : [sheds.slice(i, i + 2)]));
+  const wingSets = (result.geometry.wings ?? []).flatMap((w) => [[`wing${w.index}right`, `wing${w.index}front`], [`wing${w.index}back`]]);
   const how = (k) => (k === 'roof' ? ', seen from above' : k.startsWith('shed') ? ', cut through looking along the main wall' : ', seen from outside');
-  return [['front', 'back'], ['left', 'right'], ['roof'], ...pairs].map((set) => `<div class="page sheet">${sheetHead('Framing Drawings')}
+  return [['front', 'back'], ['left', 'right'], ['roof'], ...pairs, ...wingSets].map((set) => `<div class="page sheet">${sheetHead('Framing Drawings')}
     ${set.map((k) => `<h3>${names[k]}${how(k)}</h3>${drawing(result, k, true)}`).join('')}
     <p class="fine">Built from framing rules that have not been checked against a builder's guide yet. Not an engineered drawing.</p></div>`).join('')
     + sitePage()
@@ -1507,7 +1645,8 @@ function engineerData() {
     madeWith: 'Ridge And Rafter',
     note: 'A description of the building as drawn. Not an engineered design. No loads were calculated. Lengths are in inches, measured along each wall from the front-left corner (front and back walls) or from the front wall (end walls).',
     job: state.job, date: new Date().toISOString().slice(0, 10),
-    building: g.building, posts: g.posts, leanTosAndPorches: g.sheds, awnings: g.awnings, dormers: g.dormers, interiorWalls: g.partitions, loft: g.loft, trusses: g.trusses, girtRows: g.girtRows, purlinRowLengthIn: g.purlinRowLengthIn,
+    building: g.building, wallFraming: g.building.framing, studWalls: g.studWalls ?? undefined, posts: g.posts,
+    wings: (g.wings ?? []).map(({ result: r, ...w }) => ({ ...w, building: r.geometry.building, posts: r.geometry.posts, trusses: r.geometry.trusses, girtRows: r.geometry.girtRows, studWalls: r.geometry.studWalls ?? undefined })), leanTosAndPorches: g.sheds, awnings: g.awnings, dormers: g.dormers, interiorWalls: g.partitions, loft: g.loft, trusses: g.trusses, girtRows: g.girtRows, purlinRowLengthIn: g.purlinRowLengthIn,
     framingAsDrawn: result.rules, summary: result.summary,
   }, null, 2);
 }
@@ -1525,31 +1664,43 @@ function openEngineer() {
   const picture = view.snapshot();
   const { building: b, posts } = result.geometry;
   const r = result.rules, sum = result.summary;
+  const studs = b.framing === 'stud', wingsG = result.geometry.wings ?? [], spacingFt = b.trussSpacingIn / 12;
   const blank = (label, hint) => `<dt>${label}</dt><dd contenteditable spellcheck="false">${hint}</dd>`;
   const pitchText = b.roof === 'gambrel' ? `${r.gambrelLowerPitch} in 12 lower slopes, ${r.gambrelUpperPitch} in 12 upper slopes, break ${feetInches(b.line[1].y)} in from each side wall and ${feetInches(b.line[1].h)} above the ground` : `${state.pitch} in 12`;
   const planes = result.geometry.planes, extras = result.geometry;
   const purlinText = b.roof === 'hip' ? `${planes[0].purlinRows} level rows on each of the four slopes, each row shorter than the one below it` : b.roof === 'gable' ? `${planes[0].purlinRows} rows each side` : b.roof === 'mono' ? `${planes[0].purlinRows} rows` : `${planes[0].purlinRows} rows on each lower slope and ${planes[1].purlinRows} on each upper slope`;
   const facts = [
-    ['Shape', `Rectangle with a ${{ gable: 'gable roof, ridge running the long way', mono: 'single-slope roof, low along the front wall and high along the back', gambrel: 'gambrel roof, ridge running the long way', hip: 'hip roof sloping down to all four walls, ridge running the long way' }[b.roof]}${b.sheds.length ? `, plus ${b.sheds.length} single-slope ${b.sheds.length === 1 ? 'addition' : 'additions'}` : ''}${extras.awnings.length ? `, ${extras.awnings.length} ${extras.awnings.length === 1 ? 'awning' : 'awnings'}` : ''}${extras.dormers.length ? `, ${extras.dormers.length} ${extras.dormers.length === 1 ? 'dormer' : 'dormers'}` : ''}`],
+    ['Shape', `Rectangle with a ${{ gable: 'gable roof, ridge running the long way', mono: 'single-slope roof, low along the front wall and high along the back', gambrel: 'gambrel roof, ridge running the long way', hip: 'hip roof sloping down to all four walls, ridge running the long way' }[b.roof]}${b.sheds.length ? `, plus ${b.sheds.length} single-slope ${b.sheds.length === 1 ? 'addition' : 'additions'}` : ''}${extras.awnings.length ? `, ${extras.awnings.length} ${extras.awnings.length === 1 ? 'awning' : 'awnings'}` : ''}${extras.dormers.length ? `, ${extras.dormers.length} ${extras.dormers.length === 1 ? 'dormer' : 'dormers'}` : ''}${wingsG.length ? `, ${wingsG.length} joined ${wingsG.length === 1 ? 'wing' : 'wings'}` : ''}`],
+    ...(studs ? [['Wall Framing', 'Stud walls on a concrete slab or foundation']] : []),
     ['Width', `${state.width} ft`], ['Length', `${state.length} ft`],
     ['Wall Height', `${state.eaveHeight} ft, ground to ${b.roof === 'mono' ? 'the low eave' : 'eave'}`],
     ['Peak Height', `${feetInches(b.eaveIn + b.riseIn)}, ground to ${b.roof === 'mono' ? 'the top of the high wall' : 'ridge'}`],
     ['Roof Pitch', pitchText], ['Overhang', b.roof === 'gambrel' ? `${b.endOverhangIn} in at each end wall, none along the side walls` : b.endOverhangIn === b.overhangIn ? `${b.overhangIn} in, all four sides` : `${b.overhangIn} in along the side walls, ${b.endOverhangIn} in at each end wall`],
-    ['Floor Area', `${Math.round(sum.floorSqFt).toLocaleString('en-US')} sq ft`],
+    ['Floor Area', `${Math.round(sum.floorSqFt).toLocaleString('en-US')} sq ft${sum.wingSqFt ? `, plus ${Math.round(sum.wingSqFt).toLocaleString('en-US')} sq ft in the wings` : ''}`],
     ...(finishRows().length ? [['Inside And Finish', finishRows().join(', ')]] : []),
   ];
   const loftG = result.geometry.loft;
   const carriers = result.items.some((i) => i.name === 'Truss Carriers');
   const headerSizes = [...new Set(result.items.filter((i) => i.name === 'Headers').map((i) => i.size))];
   const members = [
-    ['Posts', r.postSize, `Every ${state.postSpacing} ft along each wall${ownSpacing().map((w) => `, ${wallOf(w).postSpacing} ft on the ${sideName(w).toLowerCase()}`).join('')}, ${posts.length} in all, ${r.postEmbedmentIn ? `set ${feetInches(r.postEmbedmentIn)} into the ground` : 'standing on bolt-down brackets on the concrete'}`],
-    [{ scissor: 'Scissor Trusses', attic: 'Attic Trusses' }[b.truss] ?? { gable: 'Trusses', mono: 'Single Slope Trusses', gambrel: 'Gambrel Trusses', hip: 'Trusses And Hip Sets' }[b.roof], `${state.width} ft span, ${b.roof === 'gambrel' ? 'gambrel profile' : `${state.pitch} in 12`}${b.truss === 'scissor' ? `, ${b.ceilingPitch} in 12 ceiling` : b.truss === 'attic' ? `, ${feetInches(b.atticRoomIn)} room` : ''}`, `Every ${state.trussSpacing} ft, ${sum.trusses} truss lines in all${b.roof === 'hip' ? `. Full trusses stand only under the ridge. The lines within ${feetInches(b.widthIn / 2)} of each end wall are a hip set from the truss maker, with jack trusses out to the end wall and corners` : ''}`],
-    ['Skirt Board', r.skirtSize, openSides().length ? 'One row at the ground on each closed wall' : 'One row at the ground, all four walls'],
+    ...(studs ? [
+      ['Bottom Plates', `${b.studSize} treated`, 'One row on the concrete under every wall, stopped at each door. The anchor bolts are not sized or counted'],
+      ['Wall Studs', b.studSize, `Every ${b.studSpacingIn} in along each wall, three at each corner, with full-height studs and shorter studs under the header beside each opening`],
+      ['Top Plates', b.studSize, 'Two rows on every wall, joints stepped apart'],
+    ] : [['Posts', r.postSize, `Every ${state.postSpacing} ft along each wall${ownSpacing().map((w) => `, ${wallOf(w).postSpacing} ft on the ${sideName(w).toLowerCase()}`).join('')}, ${posts.length} in all, ${r.postEmbedmentIn ? `set ${feetInches(r.postEmbedmentIn)} into the ground` : 'standing on bolt-down brackets on the concrete'}`]]),
+    [{ scissor: 'Scissor Trusses', attic: 'Attic Trusses' }[b.truss] ?? { gable: 'Trusses', mono: 'Single Slope Trusses', gambrel: 'Gambrel Trusses', hip: 'Trusses And Hip Sets' }[b.roof], `${state.width} ft span, ${b.roof === 'gambrel' ? 'gambrel profile' : `${state.pitch} in 12`}${b.truss === 'scissor' ? `, ${b.ceilingPitch} in 12 ceiling` : b.truss === 'attic' ? `, ${feetInches(b.atticRoomIn)} room` : ''}`, `Every ${spacingFt} ft, ${result.geometry.trusses.length} truss lines in all${b.roof === 'hip' ? `. Full trusses stand only under the ridge. The lines within ${feetInches(b.widthIn / 2)} of each end wall are a hip set from the truss maker, with jack trusses out to the end wall and corners` : ''}`],
+    ...(studs ? [] : [['Skirt Board', r.skirtSize, openSides().length ? 'One row at the ground on each closed wall' : 'One row at the ground, all four walls']]),
     ...(openSides().length ? [['Open Walls', openSides().map((w) => sideName(w)).join(', '), 'Posts only: no skirt board, girts or steel. Bracing for these walls is not designed here']] : []),
-    ['Wall Girts', r.girtSize, `Every ${r.girtSpacingIn} in up the wall, on the outside face of the posts, joined on posts`],
+    ...(studs ? [] : [['Wall Girts', r.girtSize, `Every ${r.girtSpacingIn} in up the wall, on the outside face of the posts, joined on posts`]]),
     ['Roof Purlins', r.purlinSize, `Every ${r.purlinSpacingIn} in up the slope, ${purlinText}, joined on trusses`],
     ...(carriers ? [['Truss Carriers', r.trussCarrierSize, `Two boards along the top of the ${[...new Set(result.cuts.filter((c) => c.part === 'Truss Carriers').map((c) => c.where.toLowerCase()))].join(' and ')}, under the trusses, joined on posts${openSides().length ? '. On an open wall this beam is the only tie between the posts and its size is not checked here' : ''}`]] : []),
     ...(headerSizes.length ? [['Headers', headerSizes.join(' and '), `Two boards over each door and window${headerSizes.length > 1 ? `, the larger size over openings wider than ${r.wideHeaderOverFt} ft` : ''}`]] : []),
+    ...wingsG.map((w) => {
+      const wr = w.result, where = w.wall === 'front' || w.wall === 'back' ? `${feetInches(w.startIn)} from the left end` : `${feetInches(w.startIn)} from the front wall`;
+      const join = { open: 'The main wall is left out across the wing', door: 'The main wall stays, with a walk door through it', solid: 'The main wall stays, with no way through' }[w.between];
+      return [w.name, `${feetInches(w.widthIn)} wide, ${feetInches(w.outIn)} out, ${feetInches(w.eaveIn)} walls`,
+        `${w.shape}. Joins the ${sideName(w.wall).toLowerCase()}, ${where}. Gable roof at ${w.pitch} in 12, ridge running out from the main building. ${join}. ${studs ? 'Stud walls like the main building' : `${wr.geometry.posts.length} posts`}, ${wr.geometry.trusses.length} truss lines every ${wr.geometry.building.trussSpacingIn / 12} ft${w.valley ? `. Its roof laps onto the main roof and meets it at two valleys about ${feetInches(w.valley.lengthIn)} long, each on a ${r.valleyBoardSize} board laid on the main roof` : ''}`];
+    }),
     ...result.geometry.sheds.flatMap((s) => {
       const name = s.label[0].toUpperCase() + s.label.slice(1);
       return [
@@ -1570,7 +1721,7 @@ function openEngineer() {
       ['Loft Posts', r.postSize, `${loftG.posts.length} posts, ${r.postEmbedmentIn ? `set ${feetInches(r.postEmbedmentIn)} into the ground` : 'on bolt-down brackets'} like the wall posts`],
       ['Loft Stair', `${r.stairStringers} stringers, ${r.stairStringerSize}`, `${loftG.stair.risers} risers of ${(loftG.stair.riseIn / loftG.stair.risers).toFixed(2)} in, ${loftG.stair.treads} treads of ${r.stairTreadIn} in, ${feetInches(loftG.stair.widthIn)} wide, along the front wall`],
     ] : []),
-    ['Roof And Walls', 'Ribbed steel panel', `${r.panelCoverageIn} in coverage, screwed to the purlins and girts`],
+    ['Roof And Walls', 'Ribbed steel panel', `${r.panelCoverageIn} in coverage, screwed to the purlins and ${studs ? 'through the wall sheathing into the studs' : 'girts'}`],
   ];
   const first = `<div class="page sheet eng">
     ${companyHead('Engineer Package')}
@@ -1589,6 +1740,8 @@ function openEngineer() {
     <h3>What We Need From You</h3>
     <p>The program that made this package lays out the frame and counts the material. It does not size anything for load. It has no footing design, no bracing, no truss design and no connection details. Any pads, collars or slab in the material list are counted from common sizes and are not sized for this site. Those are yours, along with any stamped drawings the permit office asks for.</p>
     ${b.options.footing === 'bracket' ? `<p>The posts stand on bolt-down steel brackets, not in the ground. A buried post resists wind by its grip in the soil. A bracketed post gets that from the bracket, its anchors and the concrete under it, and from bracing in the frame. The bracket model, the anchors, the thickened edge or piers under them, and the bracing are all yours to specify. The list counts one bracket per post and nothing else.</p>` : ''}
+    ${studs ? `<p>The walls are stud walls on concrete. The program warns when a wall stands taller than the ${r.studMaxHeightFt} ft covered by the building code's stud table for houses (IRC Table R602.3(5)) and does nothing else to size the studs. The full-height studs beside each opening are counted from IRC Table R602.7.5. The header sizes, the shorter studs under them, the foundation, the anchor bolts, the wall bracing and the tie from each truss to the top plates are yours to design.</p>` : ''}
+    ${wingsG.length ? `<p>Each wing is laid out as a building of its own that shares one wall with the main building. Where a wing roof laps onto the main roof, the valley boards are placeholders. The snow that drifts into the valleys and against the taller wall, and the load the wing roof puts on the main purlins and trusses, are not designed. Where the join is open, the main wall is left out across the wing and the header drawn over that opening is a placeholder: that span carries main roof load and needs a beam or girder truss, and posts under it, designed for it.</p>` : ''}
     ${b.sheds.length ? `<p>Each lean-to and porch roof starts below the main eave, so its rafters and upper purlins have to carry snow that slides off the main roof and drifts against the wall above. The rafter, ledger and beam sizes shown are placeholders with no published table behind them.</p>` : ''}
     ${b.roof === 'hip' ? `<p>The hip ends are counted as one hip set from the truss maker for each end. The two boards drawn along the top of each end wall, under the jack trusses, are our own assumption and have no table behind them. The hip rafters in the picture stand in for the truss maker's hip girder and jacks.</p>` : ''}
     ${b.sheds.some((s) => s.wrap != null) ? `<p>The wraparound porch turns each corner on a hip rafter that runs from the building corner out to a corner post. The hip rafter size and the jack rafters beside it are placeholders with no published table behind them.</p>` : ''}
@@ -1597,15 +1750,17 @@ function openEngineer() {
     ${loftG ? `<p>The loft joist size comes from a house floor span table for a 40 lb per sq ft live load. Storage or shop use can call for more. The loft beam, its posts and the ledger fastening are placeholders with no table behind them. The loft adds floor load to the end wall posts and their footings, and its own posts need footings sized for it. The stair stringers are drawn in one length with no support under the middle, which notched stringers this long normally need.</p>` : ''}
     <h3>Doors And Windows</h3>
     ${b.openings.length ? `<table class="cuts"><thead><tr><th>Opening</th><th>Wall</th><th>Starts At</th><th>Width</th><th>Height</th><th>Sill</th></tr></thead>
-      <tbody>${b.openings.map((o) => `<tr><td>${TYPE_NAMES[o.type]}</td><td>${WALL_NAMES[o.wall]}</td><td>${feetInches(o.startIn)}</td><td>${feetInches(o.widthIn)}</td><td>${feetInches(o.heightIn)}</td><td>${o.toGround ? 'At the ground' : feetInches(o.sillIn)}</td></tr>`).join('')}</tbody></table>` : '<p>None.</p>'}
-    <p class="fine">Front and back walls are measured from the left corner as you face the front wall. End walls are measured from the front wall.</p>
+      <tbody>${[...b.openings.map((o) => ({ ...o, what: o.type === 'wing' ? `Opening Into Wing ${o.wing + 1}` : o.inJoin ? `Walk Door Into Wing ${o.wing + 1}` : TYPE_NAMES[o.type], on: WALL_NAMES[o.wall] })), ...wingsG.flatMap((w) => w.result.geometry.building.openings.map((o) => ({ ...o, what: TYPE_NAMES[o.type], on: `${w.name}, ${WING_WALL_NAMES[o.wall].toLowerCase()}` })))].map((o) => `<tr><td>${o.what}</td><td>${o.on}</td><td>${feetInches(o.startIn)}</td><td>${feetInches(o.widthIn)}</td><td>${feetInches(o.heightIn)}</td><td>${o.toGround ? 'At the ground' : feetInches(o.sillIn)}</td></tr>`).join('')}</tbody></table>` : '<p>None.</p>'}
+    <p class="fine">Front and back walls are measured from the left corner as you face the front wall. End walls are measured from the front wall.${wingsG.length ? ' On a wing, the side walls are measured out from the main building, and the front wall of the wing from its left as you face it.' : ''}</p>
   </div>`;
-  const third = `<div class="page sheet eng">${sheetHead('Post Layout')}
+  const anyPosts = posts.length || wingsG.some((w) => w.result.geometry.posts.length) || result.geometry.sheds.some((sh) => sh.posts.length) || loftG;
+  const third = `<div class="page sheet eng">${sheetHead(studs ? 'Wall Layout' : 'Post Layout')}
     <h3>Seen from above, front wall at the bottom</h3>${floorPlan(result, true)}
-    <table class="cuts posts"><thead><tr><th>Wall</th><th>At</th><th>Top Above Ground</th><th>Post Length</th></tr></thead>
+    ${!anyPosts ? '' : `<table class="cuts posts"><thead><tr><th>Wall</th><th>At</th><th>Top Above Ground</th><th>Post Length</th></tr></thead>
       <tbody>${posts.map((p) => `<tr><td>${WALL_NAMES[p.wall]}</td><td>${feetInches(p.atIn)}</td><td>${feetInches(p.topIn)}</td><td>${p.stockFt} ft</td></tr>`).join('')}
+      ${wingsG.flatMap((w) => w.result.geometry.posts.map((p) => `<tr><td>${w.name}, ${WING_WALL_NAMES[p.wall].toLowerCase()}</td><td>${feetInches(p.atIn)}</td><td>${feetInches(p.topIn)}</td><td>${p.stockFt} ft</td></tr>`)).join('')}
       ${result.geometry.sheds.flatMap((s) => s.posts.map((p) => `<tr><td>${s.label[0].toUpperCase() + s.label.slice(1)}</td><td>${feetInches(p.atIn)} along, ${feetInches(p.outIn)} out</td><td>${feetInches(p.topIn)}</td><td>${p.stockFt} ft</td></tr>`)).join('')}
-      ${(loftG?.posts ?? []).map((p) => `<tr><td>Loft</td><td>${feetInches(p.y)} from the front wall, ${feetInches(p.x)} from the left end</td><td>${feetInches(p.topIn)}</td><td>${p.stockFt} ft</td></tr>`).join('')}</tbody></table>
+      ${(loftG?.posts ?? []).map((p) => `<tr><td>Loft</td><td>${feetInches(p.y)} from the front wall, ${feetInches(p.x)} from the left end</td><td>${feetInches(p.topIn)}</td><td>${p.stockFt} ft</td></tr>`).join('')}</tbody></table>`}
   </div>`;
   $('proposal').innerHTML = `<div class="bar"><span>Click any gray text on the first page to type your own. The data file is the same building as numbers, for the engineer's own software.</span>
     <button class="btn" data-close>Close</button><button class="btn" data-engdata>Save Data File</button><button class="btn solid" data-print>Print Or Save As PDF</button></div>${first}${second}${third}${drawingPages()}`;

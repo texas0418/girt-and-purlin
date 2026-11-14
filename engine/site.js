@@ -3,6 +3,8 @@
 // is taken as a rectangle, and no setback is assumed. Lot feet run X from the
 // left lot line and Y from the front lot line.
 
+import { wingPoint } from './wings.js';
+
 export const FACINGS = { front: 'The Front Lot Line', left: 'The Left Lot Line', back: 'The Back Lot Line', right: 'The Right Lot Line' };
 export const SITE_DEFAULTS = { lotWidth: 0, lotDepth: 0, fromLeft: 0, fromFront: 0, facing: 'front', setFront: 0, setSide: 0, setBack: 0, north: '' };
 
@@ -19,7 +21,7 @@ export function placeOnLot(geometry, input = {}) {
   const site = { ...SITE_DEFAULTS, ...input };
   const b = geometry.building, L = b.lengthIn / 12, W = b.widthIn / 12;
   const turn = TURN[site.facing] ?? TURN.front;
-  // Each part as a box in building feet: the main building, then every lean-to and porch.
+  // Each part as a box in building feet: the main building, then every lean-to, porch and wing.
   const parts = [{ label: 'Building', main: true, box: [0, 0, L, W] }];
   for (const s of geometry.sheds ?? []) {
     // A wraparound porch also covers the square outside each building corner it turns.
@@ -27,6 +29,10 @@ export function placeOnLot(geometry, input = {}) {
     const a = s.startIn / 12 - (own.includes(-1) ? D : 0), e = s.endIn / 12 + (own.includes(1) ? D : 0);
     const box = { front: [a, -D, e, 0], back: [a, W, e, W + D], left: [-D, a, 0, e], right: [L, a, L + D, e] }[s.wall];
     parts.push({ label: s.label[0].toUpperCase() + s.label.slice(1), main: false, open: !s.enclosed, box });
+  }
+  for (const wg of geometry.wings ?? []) {
+    const p = wingPoint(b, wg, 0, 0), q = wingPoint(b, wg, wg.outIn, wg.widthIn);
+    parts.push({ label: wg.name, main: false, wing: true, box: [Math.min(p.x, q.x) / 12, Math.min(p.y, q.y) / 12, Math.max(p.x, q.x) / 12, Math.max(p.y, q.y) / 12] });
   }
   const turned = parts.map((p) => {
     const [x0, y0] = turn(p.box[0], p.box[1]), [x1, y1] = turn(p.box[2], p.box[3]);

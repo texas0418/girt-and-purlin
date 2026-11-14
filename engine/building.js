@@ -22,7 +22,10 @@ export const GAMBREL = { lowerPitch: defaultRules.gambrelLowerPitch.value, upper
 // The two walls each wall meets, at the start and at the end of its own measure.
 const START_CORNER = { front: 'left', back: 'left', left: 'front', right: 'front' };
 const END_CORNER = { front: 'right', back: 'right', left: 'back', right: 'back' };
-const NAMES = { slider: 'sliding door', walk: 'walk door', overhead: 'overhead door', window: 'window' };
+export const STUD_SIZES = ['2x4', '2x6'];
+export const STUD_SPACINGS = [16, 24];
+export const WING_DOOR = { widthIn: 36, heightIn: 80 };
+const NAMES = { wing: 'wing opening', slider: 'sliding door', walk: 'walk door', overhead: 'overhead door', window: 'window' };
 
 export function normalize(input) {
   const errors = [];
@@ -45,14 +48,28 @@ export function normalize(input) {
     openings: [],
     sheds: [],
   };
+  // Stud walls stand on concrete: plates and studs take the place of posts and girts.
+  b.framing = input.framing ?? 'post';
+  if (b.framing !== 'post' && b.framing !== 'stud') { errors.push('Wall framing is not one of the choices.'); b.framing = 'post'; }
+  if (b.framing === 'stud') {
+    b.studSize = input.studSize ?? '2x6';
+    if (!STUD_SIZES.includes(b.studSize)) { errors.push('Stud size is not one of the choices.'); b.studSize = '2x6'; }
+    b.studSpacingIn = input.studSpacing ?? 16;
+    if (!STUD_SPACINGS.includes(b.studSpacingIn)) { errors.push('Stud spacing is not one of the choices.'); b.studSpacingIn = 16; }
+    // Trusses on a stud wall sit 2 ft apart, each one over or beside a stud.
+    b.trussSpacingIn = 24;
+  }
+  // A wing is designed as a building of its own whose left end meets the main building. join says how.
+  b.join = input.join ?? null;
   // Wall by wall: a wall can be left open, with no girts or steel, and can carry its own post spacing.
   b.walls = {};
   for (const wall of WALLS) {
     const w = input.walls?.[wall] ?? {};
-    b.walls[wall] = { open: !!w.open, postSpacingIn: w.postSpacing == null ? b.postSpacingIn : num(w.postSpacing, `Post spacing on the ${wall} wall`, 4, 16) * 12 };
+    b.walls[wall] = { open: !!w.open || (!!b.join && wall === 'left'), joined: !!b.join && wall === 'left', postSpacingIn: w.postSpacing == null ? b.postSpacingIn : num(w.postSpacing, `Post spacing on the ${wall} wall`, 4, 16) * 12 };
   }
   // Site figures the builder gets from the permit office. Zero means not typed in.
   const l = input.loads ?? {};
+  if (b.framing === 'stud' && WALLS.some((wall) => b.walls[wall].open && !b.walls[wall].joined)) errors.push('Stud walls cannot have an open wall. Close the wall in, or go back to posts and girts.');
   b.loads = {
     snowPsf: num(l.snow ?? 0, 'Snow load', 0, 400), windMph: num(l.wind ?? 0, 'Wind speed', 0, 250),
     frostIn: num(l.frost ?? 0, 'Frost depth', 0, 96), exposure: String(l.exposure ?? '').trim().slice(0, 40),
@@ -103,6 +120,48 @@ export function normalize(input) {
     b.openings.push(op);
   });
 
+  // Wings: a second building joined to a wall of this one. The geometry is checked in wings.js;
+  // here each one leaves its mark on the wall it joins.
+  b.wings = [];
+  (input.wings ?? []).forEach((w, i) => {
+    const name = `Wing ${i + 1}`;
+    if (b.join) { errors.push('A wing cannot carry a wing of its own.'); return; }
+    if (!WALLS.includes(w.wall)) { errors.push(`${name} is not on a wall.`); return; }
+    const wallLen = wallLengthIn(b, w.wall);
+    const wg = {
+      index: i, wall: w.wall,
+      startIn: num(w.start ?? 0, `${name} position`, 0, 400) * 12,
+      widthIn: num(w.width, `${name} width`, 8, 100) * 12,
+      outIn: num(w.out, `${name} depth`, 8, 200) * 12,
+      eaveIn: num(w.eaveHeight, `${name} wall height`, 6, 24) * 12,
+      pitch: num(w.pitch ?? 4, `${name} roof pitch`, 1, 12),
+      between: ['open', 'door', 'solid'].includes(w.between) ? w.between : 'open',
+      openings: Array.isArray(w.openings) ? w.openings : [],
+    };
+    wg.endIn = wg.startIn + wg.widthIn;
+    const hostTop = isGable(wg.wall) ? b.eaveIn : wallTopIn(b, wg.wall, 0);
+    let fits = true;
+    if (b.walls[wg.wall].open) { errors.push(`${name} joins an open wall. Close the wall in, or put the wing on another wall.`); fits = false; }
+    if (wg.endIn > wallLen + 0.01) { errors.push(`${name} runs past the end of the wall it joins. Make it narrower or slide it over.`); fits = false; }
+    if (wg.eaveIn > hostTop + 0.01) { errors.push(`${name} has walls taller than the wall it joins. Lower its wall height to ${Math.floor(hostTop / 12)} ft or less.`); fits = false; }
+    if (b.wings.some((o) => o.wall === wg.wall && wg.startIn < o.endIn - 0.01 && o.startIn < wg.endIn - 0.01)) { errors.push(`${name} overlaps another wing on that wall.`); fits = false; }
+    if (b.openings.some((o) => o.wall === wg.wall && wg.startIn < o.endIn - 0.01 && o.startIn < wg.endIn - 0.01)) { errors.push(`A door or window on the ${wg.wall} wall sits where ${name} joins the building. Move it, or move the wing.`); fits = false; }
+    b.wings.push(wg);
+    if (!fits) return;
+    // Open through: the wall is left out across the wing, framed like a wide door with no door in it.
+    if (wg.between === 'open') {
+      b.openings.push({ index: 1000 + i, type: 'wing', wall: wg.wall, startIn: wg.startIn, widthIn: wg.widthIn, endIn: wg.endIn, heightIn: wg.eaveIn, sillIn: 0, toGround: true, wing: i });
+    }
+    // Wall with door: the wall stays, with a walk door through it in the middle of the nearest gap between posts.
+    if (wg.between === 'door') {
+      const bays = Math.max(1, Math.ceil(wallLen / b.walls[wg.wall].postSpacingIn - 0.01)), bayIn = wallLen / bays;
+      const mid = (wg.startIn + wg.endIn) / 2;
+      const bayMid = (Math.min(bays - 1, Math.floor(mid / bayIn)) + 0.5) * bayIn;
+      const startIn = Math.min(Math.max((b.framing === 'stud' ? mid : bayMid) - WING_DOOR.widthIn / 2, wg.startIn + 6), wg.endIn - 6 - WING_DOOR.widthIn);
+      b.openings.push({ index: 1000 + i, type: 'walk', wall: wg.wall, startIn, widthIn: WING_DOOR.widthIn, endIn: startIn + WING_DOOR.widthIn, heightIn: WING_DOOR.heightIn, sillIn: 0, toGround: true, wing: i, inJoin: true });
+    }
+  });
+
   // Lean-tos and porches. The roof starts dropIn below the main eave and falls away from the wall.
   // A wraparound porch is one porch on each wall it covers, joined at the corners.
   const underRoofIn = (wall) => (edgeOverhangIn(b, wall) > 0 ? eaveDropIn(b, wall) + 6 : 0);
@@ -135,6 +194,7 @@ export function normalize(input) {
     if (b.sheds.some((other) => other.wall === sh.wall && sh.startIn < other.endIn - 0.01 && other.startIn < sh.endIn - 0.01)) {
       errors.push(`${name} overlaps another addition on that wall.`);
     }
+    if (b.wings.some((w) => w.wall === sh.wall && sh.startIn < w.endIn - 0.01 && w.startIn < sh.endIn - 0.01)) errors.push(`${name} sits where a wing joins the building. Move one of them.`);
     b.sheds.push(sh);
   };
   (input.sheds ?? []).forEach((s, i) => {
@@ -182,6 +242,7 @@ export function normalize(input) {
     if (a.highIn > roomIn + 0.01) errors.push(`${name} would reach up into the main roof. Make it flatter, or have it stick out less.`);
     const hits = (other) => other.wall === a.wall && a.startIn < other.endIn - 0.01 && other.startIn < a.endIn - 0.01;
     if (b.sheds.some(hits) || b.awnings.some(hits)) errors.push(`${name} overlaps another addition on that wall.`);
+    if (b.wings.some((w) => w.wall === a.wall && a.startIn < w.endIn - 0.01 && w.startIn < a.endIn - 0.01)) errors.push(`${name} sits where a wing joins the building. Move one of them.`);
     b.awnings.push(a);
   });
 
@@ -200,6 +261,7 @@ export function normalize(input) {
     dm.endIn = dm.atIn + dm.widthIn;
     if (dm.atIn < 24 - 0.01 || dm.endIn > b.lengthIn - 24 + 0.01) errors.push(`${name} has to sit at least 2 ft in from each end of the building.`);
     if (b.dormers.some((o) => o.side === dm.side && dm.atIn < o.endIn + 24 - 0.01 && o.atIn < dm.endIn + 24 - 0.01)) errors.push(`${name} is closer than 2 ft to another dormer.`);
+    if (b.wings.some((w) => w.wall === dm.side && dm.atIn < w.endIn + 24 - 0.01 && w.startIn < dm.endIn + 24 - 0.01)) errors.push(`${name} sits where the roof of a wing meets this roof. Move one of them.`);
     b.dormers.push(dm);
   });
 
@@ -255,7 +317,7 @@ export function normalize(input) {
     roofInsulation: pick(o.roofInsulation, ['none', 'bubble', 'fiberglass'], 'Roof insulation'),
     wallInsulation: pick(o.wallInsulation, ['none', 'bubble', 'wrap', 'fiberglass'], 'Wall insulation'),
     ceilingR: pick(o.ceilingR, [0, 19, 30, 38, 49, 60], 'Ceiling insulation'),
-    footing: pick(o.footing, ['none', 'pad', 'collar', 'bracket'], 'Footing'),
+    footing: b.framing === 'stud' ? 'none' : pick(o.footing, ['none', 'pad', 'collar', 'bracket'], 'Footing'),
     slab: !!o.slab,
     ridgeVent: !!o.ridgeVent,
     cupolas: !!o.cupolas,
@@ -266,6 +328,12 @@ export function normalize(input) {
 
   return { building: b, errors };
 }
+
+// Where the roof starts and how far it runs along the building. A wing's roof starts at the wall it joins.
+export const roofStartIn = (b) => (b.join ? 0 : -b.endOverhangIn);
+export const roofRunIn = (b) => b.lengthIn + b.endOverhangIn - roofStartIn(b);
+// Ends of the roof that finish in the open air with a rake.
+export const freeRakes = (b) => (b.join ? 1 : 2);
 
 export function wallLengthIn(b, wall) {
   return wall === 'front' || wall === 'back' ? b.lengthIn : b.widthIn;

@@ -1,6 +1,7 @@
 // The 3D picture of the building. Everything here is in feet, Y up, with the
 // front wall facing +Z and the building centered on the origin.
 import * as THREE from 'three';
+import { valley, wingPoint } from '../engine/wings.js';
 import { OrbitControls } from './vendor/OrbitControls.js';
 import { Sky } from './vendor/Sky.js';
 
@@ -474,8 +475,9 @@ export function createView(canvas, stage) {
   contact.renderOrder = 2;
   scene.add(contact);
 
-  const finished = new THREE.Group();
-  const framing = new THREE.Group();
+  // These two are swapped for a holder while a wing is being built, so the same code draws it in place.
+  let finished = new THREE.Group();
+  let framing = new THREE.Group();
   const site = new THREE.Group();
   const setting = new THREE.Group();
   const truck = buildTruck(mats);
@@ -485,6 +487,9 @@ export function createView(canvas, stage) {
   let wallMeshes = [];
   let bigDoors = [];
   let settingKey = '';
+  // While a wing is being built: how far it is turned, and which wing it is.
+  let turned = 0;
+  let wingIndex = null;
   let mode = 'finished';
   let fitted = false;
   let queued = false;
@@ -776,6 +781,7 @@ export function createView(canvas, stage) {
     const Lw = gable ? W : L;
     const flip = wall === 'back' || wall === 'left';
     const g = wallGroup(b, wall);
+    finished.add(g);
     // Under a hip roof an end wall stops level at the eave like a side wall.
     const peaked = gable && b.roof !== 'hip';
     // A side wall stands as tall as the roof line over it. An end wall is square to the
@@ -784,7 +790,8 @@ export function createView(canvas, stage) {
     const H = (gable ? b.eaveIn : wall === 'front' ? b.line[0].h : last.h) / 12;
     const crest = b.line.map((p) => [flip ? W - p.y / 12 : p.y / 12, p.h / 12]).sort((p, q) => p[0] - q[0]);
 
-    const ops = b.openings.filter((o) => o.wall === wall).map((o) => {
+    // A door through the wall inside a wing does not show from outside.
+    const ops = b.openings.filter((o) => o.wall === wall && !o.inJoin).map((o) => {
       const s = o.startIn / 12, e = o.endIn / 12;
       return { type: o.type, u0: flip ? Lw - e : s, u1: flip ? Lw - s : e, v0: o.sillIn / 12, v1: (o.sillIn + o.heightIn) / 12 };
     });
@@ -820,7 +827,7 @@ export function createView(canvas, stage) {
       if (part.empty) continue;
       const m = new THREE.Mesh(part.build(), mat);
       m.castShadow = m.receiveShadow = true;
-      m.userData = { wall, flip, Lw };
+      m.userData = { wall, flip, Lw, wing: wingIndex };
       g.add(m);
       wallMeshes.push(m);
     }
@@ -839,6 +846,8 @@ export function createView(canvas, stage) {
     if (!peaked) band(shades.eave, 1.8, H - 0.9, true);
 
     for (const o of ops) {
+      // The way through into a wing is a plain hole in the wall.
+      if (o.type === 'wing') continue;
       const w = o.u1 - o.u0, h = o.v1 - o.v0, uc = (o.u0 + o.u1) / 2, vc = (o.v0 + o.v1) / 2;
       // Frames run from behind the wall face to in front of it, so the opening has depth.
       const frame = (wide = 0.3, deep = 0.24, z = 0.04) => {
@@ -902,8 +911,8 @@ export function createView(canvas, stage) {
       if (o.v0 === 0 && w >= 6) {
         const apron = pad(site, mats.gravel, w + 6, 16, 0.07);
         apron.position.copy(g.localToWorld(new THREE.Vector3(uc, 0.07, 8)));
-        apron.rotation.y = g.rotation.y;
-        bigDoors.push({ g, w, uc, Lw });
+        apron.rotation.y = g.rotation.y + turned;
+        bigDoors.push({ g, w, uc, Lw, turn: g.rotation.y + turned });
       }
     }
     return g;
@@ -924,11 +933,15 @@ export function createView(canvas, stage) {
 
   function buildRoof(b, gutters, cupolas) {
     const L = b.lengthIn / 12, W = b.widthIn / 12, oh = b.endOverhangIn / 12;
-    const len = L + 2 * oh, t = 0.12;
+    // A wing's roof starts at the wall it joins, with no overhang at that end.
+    const start = b.join ? 0 : -oh, len = L + oh - start, cx = (start + oh) / 2, t = 0.12;
+    const ends = b.join ? [1] : [1, -1];
+    // The ridge cap of a wing carries on back to where its valleys meet on the main roof.
+    const v = b.join ? valley(b) : null, capBack = v ? v.backIn / 12 : 0;
     const shapes = b.planes.map((p) => ({ ...planeShape(b, p), p }));
     // A shingle roof is capped with shingles, a steel one with trim.
     const capMat = b.options?.roofCover === 'shingles' ? mats.ridgeShingle : mats.trim;
-    const liftOf = (s) => t / 2 / Math.cos(s.a) + 0.02;
+    const liftOf = (s) => t / 2 / Math.cos(s.a) + 0.02 + (b.join?.flush ? 0.012 : 0);
     const hip = b.roof === 'hip';
     if (hip) hipRoof(b, shapes[0], capMat, gutters);
     // Skylights on a hip roof stay under the ridge, clear of the hips.
@@ -948,21 +961,23 @@ export function createView(canvas, stage) {
 
     for (const s of shapes) {
       const lift = liftOf(s), out = s.dir;
-      if (!hip) box(finished, mats.roof, len, t, s.slope, 0, s.midH + lift, s.midZ, s.dir * s.a).geometry = roofSlab(len, s.slope, s.lowZ < s.highZ);
-      for (const end of hip ? [] : [1, -1]) {
-        box(finished, mats.trim, 0.12, 0.6, s.slope, end * (len / 2 + 0.05), s.midH + lift - 0.22, s.midZ, s.dir * s.a);
+      if (!hip) box(finished, mats.roof, len, t, s.slope, cx, s.midH + lift, s.midZ, s.dir * s.a).geometry = roofSlab(len, s.slope, s.lowZ < s.highZ);
+      for (const end of hip ? [] : ends) {
+        box(finished, mats.trim, 0.12, 0.6, s.slope, cx + end * (len / 2 + 0.05), s.midH + lift - 0.22, s.midZ, s.dir * s.a);
       }
+      // Flashing where a wing roof stops against a taller wall.
+      if (b.join?.type === 'wall' && !b.join.flush) box(finished, mats.trim, 0.1, 0.5, s.slope, -L / 2 + 0.05, s.midH + lift + 0.2, s.midZ, s.dir * s.a);
       if (s.p.highEdge === 'ridge' && !hip) {
         const top = s.ridgeH + lift;
         if (s.dir === 1) {
-          box(finished, capMat, len + 0.16, 0.16, 0.26, 0, top + 0.09, s.ridgeZ);
+          box(finished, capMat, len + capBack + 0.16, 0.16, 0.26, cx - capBack / 2, top + 0.09, s.ridgeZ);
           // A vented ridge stands taller than a plain cap, with a dark slot down each side.
           if (b.options?.ridgeVent) {
-            box(finished, capMat, len - 0.6, 0.22, 0.5, 0, top + 0.25, s.ridgeZ);
-            box(finished, mats.dark, len - 0.8, 0.07, 0.56, 0, top + 0.17, s.ridgeZ);
+            box(finished, capMat, len - 0.6, 0.22, 0.5, cx, top + 0.25, s.ridgeZ);
+            box(finished, mats.dark, len - 0.8, 0.07, 0.56, cx, top + 0.17, s.ridgeZ);
           }
         }
-        box(finished, capMat, len + 0.12, 0.08, 0.95, 0, top + 0.08 - 0.475 * Math.sin(s.a), s.ridgeZ + out * 0.46 * Math.cos(s.a), s.dir * s.a);
+        box(finished, capMat, len + capBack + 0.12, 0.08, 0.95, cx - capBack / 2, top + 0.08 - 0.475 * Math.sin(s.a), s.ridgeZ + out * 0.46 * Math.cos(s.a), s.dir * s.a);
       }
       if (s.p.highEdge === 'high') {
         // The top edge of a single slope: a fascia under it and a cap folded over it.
@@ -975,12 +990,12 @@ export function createView(canvas, stage) {
       }
       if (s.p.lowEdge !== 'eave') continue;
       const eaveY = s.lowH + lift;
-      box(finished, mats.trim, len + 0.2, 0.6, 0.12, 0, eaveY - 0.24, s.lowZ + out * 0.04);
+      box(finished, mats.trim, len + 0.2, 0.6, 0.12, cx, eaveY - 0.24, s.lowZ + out * 0.04);
       if (!gutters) continue;
       const gz = Math.abs(s.lowZ) + 0.1 + 0.21;
-      box(finished, mats.trim, len + 0.1, 0.38, 0.42, 0, eaveY - 0.24, out * gz);
-      box(finished, mats.dark, len, 0.02, 0.3, 0, eaveY - 0.045, out * gz);
-      for (const end of [1, -1]) {
+      box(finished, mats.trim, len + 0.1, 0.38, 0.42, cx, eaveY - 0.24, out * gz);
+      box(finished, mats.dark, len, 0.02, 0.3, cx, eaveY - 0.045, out * gz);
+      for (const end of ends) {
         const x = end * (L / 2 - 0.7), wallZ = W / 2 + 0.17, reach = gz - wallZ;
         const elbowed = reach > 0.35;
         const pipeTop = elbowed ? eaveY - 1.25 : eaveY - 0.4;
@@ -989,6 +1004,19 @@ export function createView(canvas, stage) {
           box(finished, mats.trim, 0.3, 0.24, Math.hypot(reach, 0.82) + 0.2, x, pipeTop + 0.41, out * (wallZ + reach / 2), -out * Math.atan2(0.82, reach));
         }
         box(finished, mats.trim, 0.3, 0.24, 0.7, x, 0.36, out * (wallZ + 0.3), out * 0.5);
+      }
+    }
+
+    // A wing roof that stands higher than the main eave runs back onto the main slope, between two valleys.
+    if (v) {
+      const up = 0.02 + t / Math.cos(shapes[0].a), x0 = -L / 2, ridgeY = v.ridgeIn / 12 + up;
+      const apex = [x0 - v.backIn / 12, ridgeY, 0];
+      for (const sgn of [1, -1]) {
+        const foot = [x0 + v.footOutIn / 12, (v.ridgeIn - v.footIn * b.pitch / 12) / 12 + up, sgn * v.footIn / 12];
+        flat(finished, mats.roof, v.footOutIn >= 0
+          ? [[x0, ridgeY, 0], apex, [x0, (v.ridgeIn - v.atWallIn * b.pitch / 12) / 12 + up, sgn * v.atWallIn / 12]]
+          : [[x0, ridgeY, 0], apex, foot, [x0, foot[1], foot[2]]]);
+        bar(finished, mats.trim, [foot[0], foot[1] + 0.03, foot[2]], [apex[0], apex[1] + 0.03, 0], 0.6, 0.05);
       }
     }
 
@@ -1037,6 +1065,7 @@ export function createView(canvas, stage) {
     };
     for (const wall of ['front', 'back', 'left', 'right']) {
       const side = wall === 'front' || wall === 'back';
+      if (b.framing === 'stud') continue;
       if (!isOpen(wall)) along(wall, (side ? L : W) - (inside ? 0.3 : 0), 0.3, 0.6, mats.treated);
       // The beam that ties the posts of an open side wall together.
       else if (side) along(wall, L, (wall === 'front' ? b.line[0].h : b.line[b.line.length - 1].h) / 12 - 0.47, 0.94, mats.wood, 0, 0.25, -set);
@@ -1046,6 +1075,20 @@ export function createView(canvas, stage) {
       // Rows above the eave on an end wall stop where they meet the roof.
       const centered = row.lengthIn ? zOf(row.startIn + row.lengthIn / 2) : 0;
       along(row.wall, row.lengthIn ? row.lengthIn / 12 - (inside ? 0.6 : 0) : full, row.heightIn / 12 - 0.23, 0.46, mats.wood, centered);
+    }
+    // Stud walls: a treated plate on the concrete, studs, two top plates, and a header over each opening.
+    const deep = b.studSize === '2x4' ? 0.29 : 0.46;
+    const piece = (wall, mat, midIn, runIn, lowIn, highIn) => {
+      const tall = (highIn - lowIn) / 12, y = (lowIn + highIn) / 24;
+      if (wall === 'front' || wall === 'back') box(group, mat, runIn / 12, tall, deep, midIn / 12 - L / 2, y, (wall === 'front' ? 1 : -1) * (W / 2 - deep / 2));
+      else box(group, mat, deep, tall, runIn / 12, (wall === 'right' ? 1 : -1) * (L / 2 - deep / 2), y, zOf(midIn));
+    };
+    for (const [wall, sw] of Object.entries(b.framing === 'stud' ? result.geometry.studWalls ?? {} : {})) {
+      for (const p of [...sw.studs, ...sw.shorts]) piece(wall, mats.wood, p.atIn, 1.5, p.fromIn, p.toIn);
+      for (const [from, to] of sw.plates) piece(wall, mats.treated, (from + to) / 2, to - from, 0, 1.5);
+      piece(wall, mats.wood, sw.lengthIn / 2, sw.lengthIn, sw.topIn - 3, sw.topIn);
+      for (const h of sw.headers) piece(wall, mats.wood, (h.startIn + h.endIn) / 2, h.endIn - h.startIn, h.bottomIn, h.topIn);
+      for (const p of sw.sills) piece(wall, mats.wood, (p.startIn + p.endIn) / 2, p.endIn - p.startIn, p.atIn, p.atIn + 1.5);
     }
     const shapes = planes.map((p) => ({ ...planeShape(b, p), p }));
     const hip = b.roof === 'hip';
@@ -1112,8 +1155,15 @@ export function createView(canvas, stage) {
       const rows = s.p.purlinRows;
       for (let i = 0; i < rows; i++) {
         const k = rows > 1 ? i / (rows - 1) : 0.5;
-        box(group, mats.wood, rowLen, 0.125, 0.29, 0, s.highH + (s.lowH - s.highH) * k + 0.2 - drop, s.highZ + (s.lowZ - s.highZ) * k, s.dir * s.a);
+        box(group, mats.wood, rowLen, 0.125, 0.29, b.join && !inside ? b.endOverhangIn / 24 : 0, s.highH + (s.lowH - s.highH) * k + 0.2 - drop, s.highZ + (s.lowZ - s.highZ) * k, s.dir * s.a);
       }
+    }
+    // A wing: valley boards laid on the main roof, and the ridge carried back to where they meet.
+    const v = b.join && !inside ? valley(b) : null;
+    if (v) {
+      const x0 = -L / 2, apex = [x0 - v.backIn / 12, v.ridgeIn / 12 + 0.1, 0];
+      for (const sgn of [1, -1]) bar(group, mats.wood, [x0 + v.footOutIn / 12, (v.ridgeIn - v.footIn * b.pitch / 12) / 12 + 0.1, sgn * v.footIn / 12], apex, 0.46, 0.125);
+      bar(group, mats.wood, [x0, apex[1], 0], apex, 0.125, 0.46);
     }
   }
 
@@ -1236,11 +1286,13 @@ export function createView(canvas, stage) {
       // Start low and close, about eye height from the driveway corner.
       const half = THREE.MathUtils.degToRad(camera.fov / 2);
       const tightest = Math.min(half, Math.atan(Math.tan(half) * camera.aspect));
-      const reach = (Math.hypot(L, W) / 2 + H * 0.6) / Math.sin(tightest) * 0.9;
+      // Wings push the picture back far enough to take them in.
+      const out = (...walls) => walls.reduce((sum, wall) => sum + Math.max(0, ...(b.wings ?? []).filter((w) => w.wall === wall).map((w) => w.outIn / 12)), 0);
+      const reach = (Math.hypot(L + out('left', 'right'), W + out('front', 'back')) / 2 + H * 0.6) / Math.sin(tightest) * 0.9;
       camera.position.copy(new THREE.Vector3(0.7, 0.045, 1).normalize().multiplyScalar(reach)).add(controls.target);
       fitted = true;
     }
-    const span = Math.max(L, W) * 0.8 + H * 2 + 34 + Math.max(0, ...b.sheds.map((s) => s.depthIn / 12));
+    const span = Math.max(L, W) * 0.8 + H * 2 + 34 + Math.max(0, ...b.sheds.map((s) => s.depthIn / 12), ...(b.wings ?? []).map((w) => w.outIn / 12));
     sun.position.copy(sunDir).multiplyScalar(260);
     Object.assign(sun.shadow.camera, { left: -span, right: span, top: span, bottom: -span, near: 20, far: 600 });
     sun.shadow.camera.updateProjectionMatrix();
@@ -1267,7 +1319,9 @@ export function createView(canvas, stage) {
 
     const L = b.lengthIn / 12, W = b.widthIn / 12;
     pad(site, mats.gravel, L + 4, W + 4, 0.05);
-    if (b.options?.slab) box(site, mats.slab, L - 0.1, 0.3, W - 0.1, 0, 0.15, 0);
+    // Stud walls always stand on concrete.
+    const slab = b.options?.slab || b.framing === 'stud';
+    if (slab) box(site, mats.slab, L - 0.1, 0.3, W - 0.1, 0, 0.15, 0);
     // With a wall open the inside shows, so the steel is seen from both faces and the frame stands inside it.
     const anyOpen = ['front', 'back', 'left', 'right'].some((wall) => b.walls?.[wall]?.open);
     for (const m of [mats.wall, mats.wainscot]) {
@@ -1278,9 +1332,7 @@ export function createView(canvas, stage) {
     frontRef.updateMatrixWorld(true);
     for (const wall of ['front', 'back', 'left', 'right']) {
       if (b.walls?.[wall]?.open) continue;
-      const g = buildWall(b, wall, colors.wainscotOn && steelWalls);
-      g.updateMatrixWorld(true);
-      finished.add(g);
+      buildWall(b, wall, colors.wainscotOn && steelWalls).updateMatrixWorld(true);
     }
     buildRoof(b, colors.gutters, result.geometry.cupolas ?? []);
     buildFraming(result);
@@ -1289,6 +1341,35 @@ export function createView(canvas, stage) {
     for (const s of result.geometry.sheds) buildShed(b, s);
     for (const w of result.geometry.awnings ?? []) buildAwning(b, w);
     for (const d of result.geometry.dormers ?? []) buildDormer(b, d);
+    // Wings: each one is drawn as a building of its own, turned and set against the wall it joins.
+    const roots = [finished, framing];
+    for (const wg of result.geometry.wings ?? []) {
+      const wb = wg.result.geometry.building, c = wingPoint(b, wg, wg.outIn / 2, wg.widthIn / 2);
+      const holder = (parent) => {
+        const h = new THREE.Group();
+        h.position.set(c.x / 12 - L / 2, 0, W / 2 - c.y / 12);
+        h.rotation.y = wg.turns * Math.PI / 2;
+        parent.add(h);
+        h.updateMatrixWorld(true);
+        return h;
+      };
+      const ground = holder(site);
+      pad(ground, mats.gravel, wg.outIn / 12 + 4, wg.widthIn / 12 + 4, 0.048);
+      if (slab) box(ground, mats.slab, wg.outIn / 12, 0.3, wg.widthIn / 12 - 0.1, 0.05, 0.149, 0);
+      finished = holder(roots[0]);
+      framing = holder(roots[1]);
+      turned = finished.rotation.y;
+      wingIndex = wg.index;
+      try {
+        for (const wall of ['front', 'back', 'right']) buildWall(wb, wall, colors.wainscotOn && steelWalls).updateMatrixWorld(true);
+        buildRoof(wb, colors.gutters, []);
+        buildFraming(wg.result);
+      } finally {
+        [finished, framing] = roots;
+        turned = 0;
+        wingIndex = null;
+      }
+    }
     if (settingKey !== `${L}x${W}`) {
       settingKey = `${L}x${W}`;
       buildContact(L, W);
@@ -1300,14 +1381,14 @@ export function createView(canvas, stage) {
     if (main && main.w >= 8) {
       const drive = pad(site, mats.gravel, main.w + 3, 90, 0.06);
       drive.position.copy(main.g.localToWorld(new THREE.Vector3(main.uc, 0.06, 16 + 44)));
-      drive.rotation.y = main.g.rotation.y;
+      drive.rotation.y = main.turn;
     }
     truck.visible = !!colors.truck;
     if (truck.visible) {
       const g = main ? main.g : frontRef;
       const beside = main ? (main.uc - main.w / 2 - 8 > 2 ? main.uc - main.w / 2 - 8 : main.uc + main.w / 2 + 8) : L * 0.25;
       truck.position.copy(g.localToWorld(new THREE.Vector3(beside, 0.07, 15)));
-      truck.rotation.y = g.rotation.y + Math.PI / 2 - 0.3;
+      truck.rotation.y = (main ? main.turn : 0) + Math.PI / 2 - 0.3;
     }
     frameCamera(b);
     setMode(mode);
@@ -1337,9 +1418,9 @@ export function createView(canvas, stage) {
     ray.setFromCamera(new THREE.Vector2(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1), camera);
     const hit = ray.intersectObjects(wallMeshes, false)[0];
     if (!hit) return null;
-    const { wall, flip, Lw } = hit.object.userData;
+    const { wall, flip, Lw, wing } = hit.object.userData;
     const u = hit.object.parent.worldToLocal(hit.point.clone()).x;
-    return { wall, at: flip ? Lw - u : u };
+    return { wall, at: flip ? Lw - u : u, wing };
   }
 
   // A still picture of the current view, for the proposal.

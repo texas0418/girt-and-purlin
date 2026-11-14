@@ -2,12 +2,12 @@
 // The material count and the cut list both read this, so they always agree.
 // A joint between two boards lands on a post (walls) or a truss (roof), and
 // the joints step over from one row to the next so they never line up.
-import { wallLengthIn, wallTopIn, roofSpanAbove, isGable, isOpen, hipGeo, WALLS } from './building.js';
+import { wallLengthIn, wallTopIn, roofSpanAbove, isGable, isOpen, hipGeo, roofStartIn, WALLS } from './building.js';
 import { fitStock, spans } from './stock.js';
 
 const EPS = 0.01;
 export const WALL_NAMES = { front: 'Front wall', back: 'Back wall', left: 'Left end', right: 'Right end' };
-export const OPENING_NAMES = { slider: 'sliding door', walk: 'walk door', overhead: 'overhead door', window: 'window' };
+export const OPENING_NAMES = { slider: 'sliding door', walk: 'walk door', overhead: 'overhead door', window: 'window', wing: 'wing opening' };
 
 // Length of the first roof plane up its slope, overhang included.
 export function slopeIn(b) { return b.planes[0].slopeIn; }
@@ -93,7 +93,11 @@ export function lumberRuns(b, rules, posts, trusses) {
   const stock = rules.lumberStockFt;
   const put = (part, size, where, pieces, note = '') => runs.push({ part, size, where, note, pieces });
 
-  for (const wall of WALLS) {
+  // Stud walls are framed in studwalls.js; nothing here hangs on posts.
+  const stud = b.framing === 'stud';
+  // A wing open to the main building has no posts of its own at the joined end: its first truss sits on the main wall.
+  const carried = trusses.filter((t) => !(b.join?.sharedPosts && t.x < EPS));
+  for (const wall of stud ? [] : WALLS) {
     const len = wallLengthIn(b, wall);
     // Corner posts belong to the long walls but the end wall boards land on them too.
     const supports = [0, len, ...posts.filter((p) => p.wall === wall).map((p) => p.atIn)];
@@ -122,7 +126,7 @@ export function lumberRuns(b, rules, posts, trusses) {
         put('Truss Carriers', rules.trussCarrierSize, WALL_NAMES[wall], boards(0, len, supports, stock, ply === 1), 'Two boards side by side at the top of the posts, under the hip end trusses');
       }
     }
-    if (!isGable(wall) && (open || needsCarrier(wall, posts, trusses))) {
+    if (!isGable(wall) && (open || needsCarrier(wall, posts, carried))) {
       for (let ply = 0; ply < 2; ply++) {
         put('Truss Carriers', rules.trussCarrierSize, WALL_NAMES[wall], boards(0, len, supports, stock, ply === 1), open ? 'Two boards side by side at the top of the posts, the only tie along the open wall' : 'Two boards side by side at the top of the posts');
       }
@@ -136,13 +140,13 @@ export function lumberRuns(b, rules, posts, trusses) {
       put('Roof Purlins', rules.purlinSize, r.end ? 'Roof, hip ends' : 'Roof', boards(r.startIn, r.endIn, r.end ? jackAt : trussAt, stock, r.row % 2 === 1), r.insetIn > EPS ? 'Ends cut on the slant at the hips' : '');
     }
   } else for (let i = 0; i < purlinRows(b, rules); i++) {
-    put('Roof Purlins', rules.purlinSize, 'Roof', boards(-b.endOverhangIn, b.lengthIn + b.endOverhangIn, trussAt, stock, i % 2 === 1));
+    put('Roof Purlins', rules.purlinSize, 'Roof', boards(roofStartIn(b), b.lengthIn + b.endOverhangIn, trussAt, stock, i % 2 === 1));
   }
 
   for (const o of b.openings) {
     const where = `${WALL_NAMES[o.wall]}, ${OPENING_NAMES[o.type]}`;
-    for (let i = 0; i < 2; i++) put('Headers', headerSizeFor(o, rules), where, boards(0, o.widthIn, [], stock));
-    if (o.type === 'window') put('Opening Blocking', rules.girtSize, where, boards(0, o.widthIn, [], stock), 'Under the sill');
+    if (!stud) for (let i = 0; i < 2; i++) put('Headers', headerSizeFor(o, rules), where, boards(0, o.widthIn, [], stock));
+    if (o.type === 'window' && !stud) put('Opening Blocking', rules.girtSize, where, boards(0, o.widthIn, [], stock), 'Under the sill');
     if (o.type === 'slider') put('Opening Blocking', rules.girtSize, where, boards(0, o.widthIn * 2, [], stock), 'Backs the door track');
   }
   return runs;

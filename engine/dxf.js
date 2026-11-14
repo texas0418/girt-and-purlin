@@ -6,6 +6,7 @@
 // took each inch for a millimeter; with it the building opens at full size.
 import { WALLS, isGable, isOpen, wallLengthIn, wallTopIn, roofSpanAbove } from './building.js';
 import { WALL_NAMES } from './runs.js';
+import { wingPoint, WING_WALL_NAMES } from './wings.js';
 
 const POST_IN = 5.5;
 const GAP_IN = 120;
@@ -70,6 +71,20 @@ export function dxf(result) {
     for (const d of [...p.doors].sort((a, c) => a.startIn - c.startIn)) { seg(at, d.startIn); at = d.endIn; }
     seg(at, p.endIn);
   }
+  // Each wing: its three outside walls, left open across doors, and its posts.
+  for (const wg of g.wings ?? []) {
+    const wb = wg.result.geometry.building;
+    const at = (x, y) => { const p = wingPoint(b, wg, x, y); return [p.x, p.y]; };
+    const ends = { front: (a) => at(a, 0), back: (a) => at(a, wb.widthIn), right: (a) => at(wb.lengthIn, a) };
+    for (const wall of ['front', 'back', 'right']) {
+      const seg = (layer, a, c) => line(layer, ...ends[wall](a), ...ends[wall](c));
+      let from = 0;
+      for (const o of wb.openings.filter((o) => o.wall === wall && o.type !== 'window').sort((p, q) => p.startIn - q.startIn)) { seg('PLAN-WINGS', from, o.startIn); from = o.endIn; }
+      seg('PLAN-WINGS', from, wallLengthIn(wb, wall));
+    }
+    for (const p of wg.result.geometry.posts) square('PLAN-POSTS', ...at(inside(p.x, wb.lengthIn), inside(p.y, wb.widthIn)));
+    text('TEXT', ...at(wb.lengthIn / 2, wb.widthIn / 2), 6, `${wg.name}, ${n(wb.widthIn / 12)} x ${n(wb.lengthIn / 12)} ft`);
+  }
   if (g.loft) {
     const f = g.loft, st = f.stair;
     line('PLAN-LOFT', f.edgeX, 0, f.edgeX, W);
@@ -81,14 +96,16 @@ export function dxf(result) {
     }
     text('TEXT', Math.min(f.edgeX, f.wallX) + 12, W / 2, 6, `Loft floor ${n(f.heightIn)} in up`);
   }
-  const deepFront = Math.max(0, ...g.sheds.filter((s) => s.wall === 'front').map((s) => s.depthIn), ...(g.awnings ?? []).filter((a) => a.wall === 'front').map((a) => a.outIn));
+  const wingFront = (g.wings ?? []).filter((wg) => wg.wall === 'front').map((wg) => wg.outIn);
+  const deepFront = Math.max(0, ...wingFront, ...g.sheds.filter((s) => s.wall === 'front').map((s) => s.depthIn), ...(g.awnings ?? []).filter((a) => a.wall === 'front').map((a) => a.outIn));
   text('TEXT', 0, -deepFront - 30, 8, `Floor plan, ${n(L / 12)} x ${n(W / 12)} ft, front wall at the bottom. Units are inches.`);
 
   // The four walls in a row under the plan, each seen from outside.
   const peak = Math.max(...b.line.map((p) => p.h));
   const baseY = -deepFront - GAP_IN - peak;
   let x0 = 0;
-  for (const wall of WALLS) {
+  const row = (g, b, walls, baseY, name) => {
+   for (const wall of walls) {
     const len = wallLengthIn(b, wall);
     const u = (atIn) => x0 + (MIRRORED[wall] ? len - atIn : atIn);
     const top = isGable(wall) && b.roof !== 'hip' ? b.line.map((p) => [p.y, p.h]) : [[0, wallTopIn(b, wall, 0)], [len, wallTopIn(b, wall, 0)]];
@@ -106,12 +123,25 @@ export function dxf(result) {
       if (span) line('ELEV-GIRTS', u(span[0]), baseY + row.heightIn, u(span[1]), baseY + row.heightIn);
     }
     for (const a of (g.awnings ?? []).filter((a) => a.wall === wall)) rect('ELEV-AWNINGS', u(a.startIn), baseY + a.lowIn, u(a.endIn), baseY + a.highIn);
+    const sw = g.studWalls?.[wall];
+    if (sw) {
+      for (const [a, c] of sw.plates) rect('ELEV-STUDS', u(a), baseY, u(c), baseY + 1.5);
+      rect('ELEV-STUDS', u(0), baseY + sw.topIn - 3, u(len), baseY + sw.topIn);
+      for (const st of [...sw.studs, ...sw.shorts]) line('ELEV-STUDS', u(st.atIn), baseY + st.fromIn, u(st.atIn), baseY + st.toIn);
+      for (const h of sw.headers) rect('ELEV-STUDS', u(h.startIn), baseY + h.bottomIn, u(h.endIn), baseY + h.topIn);
+      for (const sl of sw.sills) line('ELEV-STUDS', u(sl.startIn), baseY + sl.atIn, u(sl.endIn), baseY + sl.atIn);
+    }
     for (const o of b.openings.filter((o) => o.wall === wall)) {
       rect('ELEV-OPENINGS', u(o.startIn), baseY + o.sillIn, u(o.endIn), baseY + o.sillIn + o.heightIn);
     }
-    text('TEXT', x0, baseY - 30, 8, `${WALL_NAMES[wall]}, from outside${isOpen(b, wall) ? ', open wall: posts only' : ''}`);
+    text('TEXT', x0, baseY - 30, 8, `${name(wall)}, from outside${isOpen(b, wall) ? ', open wall: posts only' : ''}`);
     x0 += len + GAP_IN;
-  }
+   }
+  };
+  row(g, b, WALLS, baseY, (wall) => WALL_NAMES[wall]);
+  // The outside walls of each wing, in a second row.
+  x0 = 0;
+  for (const wg of g.wings ?? []) row(wg.result.geometry, wg.result.geometry.building, ['right', 'front', 'back'], baseY - GAP_IN - peak, (wall) => `${wg.name}, ${WING_WALL_NAMES[wall].toLowerCase()}`);
 
   out.push('0', 'ENDSEC', '0', 'EOF');
   return out.join('\r\n') + '\r\n';

@@ -5,7 +5,7 @@
 import { feetInches } from './stock.js';
 
 const WALLS = { front: 'front wall', back: 'back wall', left: 'left end', right: 'right end' };
-const DOORS = { slider: 'Sliding door', overhead: 'Overhead door', walk: 'Walk door' };
+const DOORS = { slider: 'Sliding door', overhead: 'Overhead door', walk: 'Walk door', wing: 'Wing opening' };
 // A 6x6 post, taken off the gap between post centers on an open wall.
 const POST_IN = 6;
 // The beam drawn over the posts of an open side wall is a 2x12 on edge.

@@ -152,6 +152,10 @@ export const defaultRules = {
   dormerStudSpacingIn: { value: 16, verified: false },
   dormerRafterSize:  { value: '2x6', verified: false, note: 'Dormer rafters, ridge board and the boards laid under each valley. A placeholder for the engineer' },
   dormerRafterSpacingIn: { value: 24, verified: false },
+  studMaxHeightFt:   { value: 10, verified: true, note: 'Tallest stud wall the building code table covers when the wall carries a roof and ceiling only, for 2x4 and 2x6 studs up to 24 in apart. Taller walls are the engineer\'s to size', source: 'Table R602.3(5), bearing walls supporting a roof-ceiling assembly only, read from the California Residential Code copy at gocodebook.com (the IRC table)' },
+  studKingsBySpanFt: { value: [[4, 1], [8, 2], [14, 3], [18, 4]], verified: true, note: 'Full-height studs at each side of an opening, by the width of the opening in feet', source: 'Table R602.7.5, column for wind under 140 mph Exposure B, read from the California Residential Code copy at gocodebook.com (the IRC table)' },
+  studJackDoubleOverFt: { value: 6, verified: false, note: 'Openings wider than this get two shorter studs under each end of the header, not one. A placeholder for the engineer; the code sets it by header span and load in Table R602.7(1)' },
+  valleyBoardSize:   { value: '2x6', verified: false, note: 'The board laid on the main roof under each valley where a wing roof meets it. A placeholder for the engineer' },
   closureStripIn:    { value: 36,   verified: true, note: 'Foam closure strips are 3 ft long', source: 'Fabral guide p.15; A.B. Martin guide' },
 };
 

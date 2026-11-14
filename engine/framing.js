@@ -27,19 +27,25 @@ export function placePosts(b, rules) {
   const stock = columns ? rules.columnStockFt : rules.postStockFt;
 
   for (const wall of WALLS) {
+    // The end of a wing that meets the main building has no posts of its own.
+    if (b.walls[wall].joined) continue;
     const len = wallLengthIn(b, wall);
     let spots = evenSpots(len, b.walls[wall].postSpacingIn);
     // Corner posts belong to the long walls, so gable ends skip them.
     if (isGable(wall)) spots = spots.slice(1, -1);
+    // A wing open to the main building stands on the main wall's posts at the joined end.
+    else if (b.join?.sharedPosts) spots = spots.filter((sp) => sp > EPS);
 
     for (const o of b.openings.filter((op) => op.wall === wall)) {
       const inside = spots.filter((s) => s > o.startIn + EPS && s < o.endIn - EPS);
-      const wideDoor = o.toGround && o.widthIn >= rules.doorJambPostMinFt * 12 - EPS;
+      const wideDoor = o.type === 'wing' || (o.toGround && o.widthIn >= rules.doorJambPostMinFt * 12 - EPS);
       if (wideDoor) {
         spots = spots.filter((s) => !inside.includes(s));
         for (const jamb of [o.startIn, o.endIn]) {
           const atCorner = jamb < 6 || jamb > len - 6;
           if (isGable(wall) && atCorner) continue;
+          // The opening into a wing sets its own posts: a regular post within a few inches gives way to it.
+          if (o.type === 'wing' && !atCorner) spots = spots.filter((sp) => Math.abs(sp - jamb) >= 6 || sp < EPS || sp > len - EPS);
           const near = spots.find((s) => Math.abs(s - jamb) < 6);
           if (near === undefined) { spots.push(jamb); continue; }
           // A regular post a few inches off the door's edge serves as the door post, so the door should meet it.

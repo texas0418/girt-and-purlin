@@ -1,8 +1,8 @@
 // Roof and wall coverings other than screw-down rib steel: standing seam
 // and shingles on the roof, board and batten or lap siding on the walls.
 // The choice covers the whole building, lean-tos and porches included.
-import { wallLengthIn, wallTopIn, isOpen, closedWalls, hipGeo, CORNERS } from './building.js';
-import { wallPanels } from './metal.js';
+import { wallLengthIn, wallTopIn, isOpen, closedWalls, hipGeo, roofRunIn, freeRakes, CORNERS } from './building.js';
+import { wallPanels, wallAreaIn } from './metal.js';
 import { shedMetal } from './sheds.js';
 import { planePurlinRows } from './runs.js';
 import { add, fitStock, feetInches } from './stock.js';
@@ -16,14 +16,14 @@ export const WALL_COVERS = ['steel', 'batten', 'lap'];
 
 // Every roof surface on the job: the main roof planes, then each lean-to or porch.
 function surfaces(b, rules, sheds, more = []) {
-  const runIn = b.lengthIn + 2 * b.endOverhangIn;
+  const runIn = roofRunIn(b);
   // A hip roof is four slopes with no rakes: two long ones cut back at both ends, and a triangle over each end wall.
   const g = b.roof === 'hip' ? hipGeo(b) : null;
   const main = g ? [[runIn, (runIn + g.ridgeIn) / 2], [b.widthIn + 2 * b.overhangIn, g.halfIn]].flatMap(([eaveIn, meanIn]) => [0, 1].map(() => (
     { name: 'The roof', pitch: b.pitch, slopeIn: g.halfIn * g.k, runIn: eaveIn, areaIn: meanIn * g.halfIn * g.k, rows: planePurlinRows(b.planes[0], rules), eave: true, top: 'ridge', rakes: 0 })))
     : null;
   return [
-    ...main ?? b.planes.map((p) => ({ name: 'The roof', pitch: p.pitch, slopeIn: p.slopeIn, runIn, rows: planePurlinRows(p, rules), eave: p.lowEdge === 'eave', top: p.highEdge })),
+    ...main ?? b.planes.map((p) => ({ name: 'The roof', pitch: p.pitch, slopeIn: p.slopeIn, runIn, rows: planePurlinRows(p, rules), eave: p.lowEdge === 'eave', top: p.highEdge, rakes: freeRakes(b) })),
     ...sheds.map((s) => ({ name: `The ${s.label}`, pitch: s.pitch, slopeIn: s.slopeIn, runIn: s.eaveRunIn, areaIn: s.roofAreaIn, rows: s.purlinRows, eave: true, top: 'wall', rakes: s.freeEnds })),
     ...more,
   ];
@@ -81,7 +81,7 @@ export function coverParts(b, rules, { sheds, more = [], extraWall = (r) => shed
     const starterIn = roofs.reduce((sum, r) => sum + (r.eave ? r.runIn : 0) + (r.rakes ?? 2) * r.slopeIn, 0);
     // Cap shingles cover the ridge, and on a hip roof the four hips as well.
     const g = b.roof === 'hip' ? hipGeo(b) : null;
-    const ridgeIn = (g ? g.ridgeIn + 4 * g.hipIn : b.planes.some((p) => p.highEdge === 'ridge') ? b.lengthIn + 2 * b.endOverhangIn : 0)
+    const ridgeIn = (g ? g.ridgeIn + 4 * g.hipIn : b.planes.some((p) => p.highEdge === 'ridge') ? roofRunIn(b) : 0)
       + sheds.reduce((sum, s) => sum + s.ownedCorners.length * s.hipIn, 0);
     const squares = roofSqFt * (1 + rules.shingleWaste) / 100;
     items.push(
@@ -105,9 +105,18 @@ export function coverParts(b, rules, { sheds, more = [], extraWall = (r) => shed
     // Two boards wrap each outside corner; an enclosed lean-to adds two corners of its own.
     const corners = {};
     const cornerBoards = (heightIn) => { for (const [k, n] of Object.entries(standing({ [heightIn]: 2 }, rules.lumberStockFt))) add(corners, Number(k), n); };
-    for (const [side, other] of CORNERS) if (!(isOpen(b, side) && isOpen(b, other))) cornerBoards(wallTopIn(b, side, 0));
+    for (const [side, other] of CORNERS) if (!(isOpen(b, side) && isOpen(b, other)) && !b.walls[other].joined) cornerBoards(wallTopIn(b, side, 0));
     for (const s of sheds) if (s.enclosed) { cornerBoards(s.lowIn); cornerBoards(s.lowIn); }
     items.push(...boardLines('Siding', 'Corner Boards', rules.cornerBoardSize, corners));
+  }
+
+  if (o.wallCover === 'steel' && b.framing === 'stud') {
+    // Steel on a stud wall goes over sheathing and house wrap, since there are no girts to screw it to.
+    const studSqFt = wallAreaIn(b) / 144;
+    items.push(line('Siding', 'Wall Sheathing', rules.wallSheathingSize, up(studSqFt / 32)));
+    if (o.wallInsulation !== 'wrap') {
+      items.push(line('Siding', 'House Wrap', `${rules.wrapRollWidthIn / 12} x ${rules.wrapRollFt} ft roll`, up(studSqFt / ((rules.wrapRollWidthIn - rules.wrapLapIn) / 12 * rules.wrapRollFt))));
+    }
   }
 
   if (o.wallCover === 'batten') {
@@ -125,7 +134,7 @@ export function coverParts(b, rules, { sheds, more = [], extraWall = (r) => shed
 
   if (o.wallCover === 'lap') {
     // Wide doors are left out of the area; walk doors and windows are cut in on site.
-    const doorSqFt = b.openings.filter((op) => (op.type === 'slider' || op.type === 'overhead') && !isOpen(b, op.wall))
+    const doorSqFt = b.openings.filter((op) => (op.type === 'slider' || op.type === 'overhead' || op.type === 'wing') && !isOpen(b, op.wall))
       .reduce((sum, op) => sum + (op.widthIn * op.heightIn) / 144, 0);
     const exposureIn = rules.lapWidthIn - rules.lapOverlapIn;
     const pieces = up((wallSqFt - doorSqFt) * 144 * (1 + rules.lapWaste) / (exposureIn * rules.lapLengthFt * 12));

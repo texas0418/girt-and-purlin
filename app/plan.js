@@ -1,4 +1,6 @@
 // The floor plan: a flat drawing seen from above, front wall at the bottom.
+import { wingPoint } from '../engine/wings.js';
+
 const SIGNAL = '#f0883a';
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const fi = (inches) => { const f = Math.floor(inches / 12), i = Math.round(inches - f * 12); return i ? `${f} ft ${i} in` : `${f} ft`; };
@@ -43,6 +45,16 @@ export function floorPlan(result, light = false, fits = []) {
     const lx = side ? cx : cx + (a.wall === 'left' ? -1 : 1) * (D / 2 + pad * 0.08), ly = side ? cy + (a.wall === 'front' ? 1 : -1) * (D / 2 + pad * 0.1) + pad * 0.03 : cy;
     out.push(label(lx, ly, 'Awning', side ? '' : `transform="rotate(-90 ${lx} ${ly})"`));
   }
+  // Wings go down before the main walls, which then draw over the edge the two share.
+  const wings = result.geometry.wings ?? [];
+  const at = (wg, x, yy) => { const p = wingPoint(b, wg, x, yy); return [p.x / 12, y(p.y / 12)]; };
+  for (const wg of wings) {
+    m[wg.wall] = Math.max(m[wg.wall], wg.outIn / 12);
+    const c = [[0, 0], [wg.outIn, 0], [wg.outIn, wg.widthIn], [0, wg.widthIn]].map(([x, yy]) => at(wg, x, yy));
+    out.push(`<polygon points="${c.map((p) => p.join(',')).join(' ')}" fill="${PAPER}" stroke="${INK}" stroke-width="0.3"/>`);
+    const [cx, cy] = at(wg, wg.outIn / 2, wg.widthIn / 2);
+    out.push(label(cx, cy - pad * 0.02, wg.name), label(cx, cy + pad * 0.11, `${wg.widthIn / 12} x ${wg.outIn / 12} ft`));
+  }
   out.push(`<rect x="0" y="0" width="${L}" height="${W}" fill="${PAPER}" stroke="${INK}" stroke-width="0.3"/>`);
 
   // An open wall shows as a thin dashed line between its posts.
@@ -72,6 +84,26 @@ export function floorPlan(result, light = false, fits = []) {
       out.push(side
         ? `<path d="M ${s} ${at} L ${s} ${at - w * outward} A ${w} ${w} 0 0 ${outward > 0 ? 1 : 0} ${e} ${at}" fill="none" stroke="${INK}" stroke-width="0.08"/>`
         : `<path d="M ${at} ${y(s)} L ${at - w * outward} ${y(s)} A ${w} ${w} 0 0 ${outward > 0 ? 0 : 1} ${at} ${y(e)}" fill="none" stroke="${INK}" stroke-width="0.08"/>`);
+    }
+  }
+
+  // Doors and windows on the wings, each wall turned to where the wing sits.
+  for (const wg of wings) {
+    for (const o of wg.result.geometry.building.openings) {
+      const ends = { front: [[o.startIn, 0], [o.endIn, 0], [0, -1]], back: [[o.startIn, wg.widthIn], [o.endIn, wg.widthIn], [0, 1]], right: [[wg.outIn, o.startIn], [wg.outIn, o.endIn], [1, 0]] }[o.wall];
+      if (!ends) continue;
+      const p1 = at(wg, ...ends[0]), p2 = at(wg, ...ends[1]), far = at(wg, ends[0][0] + ends[2][0] * 12, ends[0][1] + ends[2][1] * 12);
+      const n = [far[0] - p1[0], far[1] - p1[1]];
+      const line = (off, width, color, dash = '') => `<line x1="${p1[0] + n[0] * off}" y1="${p1[1] + n[1] * off}" x2="${p2[0] + n[0] * off}" y2="${p2[1] + n[1] * off}" stroke="${color}" stroke-width="${width}" ${dash}/>`;
+      out.push(line(0, 0.5, PAPER));
+      if (o.type === 'window') out.push(line(-0.12, 0.08, INK), line(0.12, 0.08, INK));
+      if (o.type === 'slider') out.push(line(0.45, 0.22, INK));
+      if (o.type === 'overhead') out.push(line(0, 0.1, INK, 'stroke-dasharray="0.6 0.4"'));
+      if (o.type === 'walk') {
+        const w = (o.endIn - o.startIn) / 12, a = [p1[0] - n[0] * w, p1[1] - n[1] * w];
+        const turn = (a[0] - p1[0]) * (p2[1] - p1[1]) - (a[1] - p1[1]) * (p2[0] - p1[0]) > 0 ? 1 : 0;
+        out.push(`<path d="M ${p1[0]} ${p1[1]} L ${a[0]} ${a[1]} A ${w} ${w} 0 0 ${turn} ${p2[0]} ${p2[1]}" fill="none" stroke="${INK}" stroke-width="0.08"/>`);
+      }
     }
   }
 
@@ -119,6 +151,10 @@ export function floorPlan(result, light = false, fits = []) {
   for (const p of posts) {
     const hot = warned.has(`${p.wall}:${p.atIn}`);
     out.push(`<rect x="${p.x / 12 - 0.3}" y="${y(p.y / 12) - 0.3}" width="0.6" height="0.6" fill="${hot ? SIGNAL : INK}"/>`);
+  }
+
+  for (const wg of wings) {
+    for (const p of wg.result.geometry.posts) { const [px, py] = at(wg, p.x, p.y); out.push(`<rect x="${px - 0.3}" y="${py - 0.3}" width="0.6" height="0.6" fill="${INK}"/>`); }
   }
 
   const d = pad * 0.42, df = m.front + d, dl = m.left + d;

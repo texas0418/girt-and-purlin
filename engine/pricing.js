@@ -31,6 +31,11 @@ export const SAMPLE_CATALOG = {
     { item: 'Dormer Framing', size: '', unit: 'ft', price: 0.9 },
     { item: 'Dormer Rafters', size: '', unit: 'ft', price: 1.2 },
     { item: 'Awning Brackets', size: '', unit: 'each', price: 48 },
+    { item: 'Valley Boards', size: '', unit: 'ft', price: 1.1 },
+    { item: 'Bottom Plates', size: '', unit: 'ft', price: 1.4 },
+    { item: 'Wall Studs', size: '', unit: 'ft', price: 0.95 },
+    { item: 'Top Plates', size: '', unit: 'ft', price: 0.95 },
+    { item: 'Opening Framing', size: '', unit: 'ft', price: 0.95 },
     { item: 'Headers', size: '2x10', unit: 'ft', price: 1.8 },
     { item: 'Headers', size: '2x12', unit: 'ft', price: 2.3 },
     { item: 'Opening Blocking', size: '2x6', unit: 'ft', price: 0.95 },
@@ -156,7 +161,7 @@ export function priceJob(result, catalog, settings = {}) {
   const materials = cents(lines.reduce((sum, l) => sum + (l.cost ?? 0), 0));
   const markup = cents(materials * markupPct / 100);
   const tax = cents((materials + markup) * taxPct / 100);
-  const labor = cents(((result.summary?.floorSqFt ?? 0) + (result.summary?.shedSqFt ?? 0)) * laborPerSqFt);
+  const labor = cents(((result.summary?.floorSqFt ?? 0) + (result.summary?.shedSqFt ?? 0) + (result.summary?.wingSqFt ?? 0)) * laborPerSqFt);
   const flat = (v) => cents(Math.max(0, Number(v) || 0));
   const extraLines = extras.map((e) => ({ name: String(e.name ?? '').trim() || 'Extra', amount: flat(e.amount) })).filter((e) => e.amount > 0);
   const extra = cents(extraLines.reduce((sum, e) => sum + e.amount, 0));

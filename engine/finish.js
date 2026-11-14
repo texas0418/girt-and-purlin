@@ -1,7 +1,7 @@
 // Everything past the bare shell: wainscot, gutters, the steel liner,
 // insulation, footings, the slab, ridge vent and skylight panels. Each part
 // is counted only when the job turns it on in its options.
-import { wallLengthIn, wallTopIn, isOpen, isGable, closedWalls, litWalls, hipGeo, CORNERS } from './building.js';
+import { wallLengthIn, wallTopIn, isOpen, isGable, closedWalls, litWalls, hipGeo, roofRunIn as roofRun, CORNERS } from './building.js';
 import { wallAreaIn, doorOver } from './metal.js';
 import { add, fitStock, spans, feetInches } from './stock.js';
 import { boards, openSpans, WALL_NAMES } from './runs.js';
@@ -24,7 +24,8 @@ export function finishRuns(b, rules, posts, trusses, sheds) {
   const o = b.options, stock = rules.lumberStockFt;
   const put = (part, size, where, pieces, note = '') => runs.push({ part, size, where, note, pieces });
 
-  for (const wall of closedWalls(b)) {
+  // On a stud wall the studs back every joint, so no extra girts go in.
+  for (const wall of b.framing === 'stud' ? [] : closedWalls(b)) {
     const len = wallLengthIn(b, wall);
     const supports = [0, len, ...posts.filter((p) => p.wall === wall).map((p) => p.atIn)];
     if (o.wainscotIn) {
@@ -100,7 +101,7 @@ export function finishParts(b, rules, { posts, trusses, sheds, wallTally, roofTa
   const perimeterIn = 2 * (b.widthIn * vault + b.lengthIn);
   const vaulted = b.truss === 'scissor';
   const closedIn = closedWalls(b).reduce((sum, wall) => sum + wallLengthIn(b, wall), 0);
-  const roofRunIn = b.lengthIn + 2 * b.endOverhangIn;
+  const roofRunIn = roofRun(b);
   const hip = b.roof === 'hip';
   // A hip roof's ridge is shorter than the building by its width, and starts half a width in from the left end.
   const ridgeIn = hip ? hipGeo(b).ridgeIn : roofRunIn;
@@ -166,7 +167,7 @@ export function finishParts(b, rules, { posts, trusses, sheds, wallTally, roofTa
 
   if (o.gutters) {
     // A hip roof has gutter on all four eaves, joined by a corner piece where an end cap would go.
-    const eaves = [...b.planes.filter((p) => p.lowEdge === 'eave').map((p) => ({ runIn: roofRunIn, highIn: p.lowIn, caps: hip ? 0 : 2 })),
+    const eaves = [...b.planes.filter((p) => p.lowEdge === 'eave').map((p) => ({ runIn: roofRunIn, highIn: p.lowIn, caps: hip ? 0 : b.join ? 1 : 2 })),
       ...(hip ? [0, 1].map(() => ({ runIn: b.widthIn + 2 * b.overhangIn, highIn: b.eaveIn, caps: 0 })) : []),
       ...sheds.map((s) => ({ runIn: s.eaveRunIn, highIn: s.lowIn, caps: s.freeEnds }))];
     const corners = (hip ? 4 : 0) + sheds.reduce((n, s) => n + s.ownedCorners.length, 0);
