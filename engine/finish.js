@@ -1,10 +1,11 @@
 // Everything past the bare shell: wainscot, gutters, the steel liner,
 // insulation, footings, the slab, ridge vent and skylight panels. Each part
 // is counted only when the job turns it on in its options.
-import { wallLengthIn, wallTopIn, isOpen, closedWalls, litWalls, CORNERS } from './building.js';
+import { wallLengthIn, wallTopIn, isOpen, isGable, closedWalls, litWalls, CORNERS } from './building.js';
 import { wallAreaIn, doorOver } from './metal.js';
 import { add, fitStock, spans, feetInches } from './stock.js';
 import { boards, openSpans, WALL_NAMES } from './runs.js';
+import { ceilingFactor } from './trusses.js';
 
 const EPS = 0.01;
 const up = (n) => Math.ceil(n - EPS);
@@ -54,7 +55,10 @@ export function finishRuns(b, rules, posts, trusses, sheds) {
   }
   // Trusses wider apart than the liner can span get joists hung between their bottom chords.
   if (o.linerCeiling && b.trussSpacingIn > rules.linerSupportMaxIn + EPS) {
-    const rows = up(b.widthIn / rules.linerSupportMaxIn) - 1;
+    // A vaulted ceiling has two slopes, each with its own rows, and one more row at the peak.
+    const vault = b.truss === 'scissor';
+    const planeIn = (vault ? b.widthIn / 2 : b.widthIn) * ceilingFactor(b);
+    const rows = vault ? 2 * (up(planeIn / rules.linerSupportMaxIn) - 1) + 1 : up(planeIn / rules.linerSupportMaxIn) - 1;
     for (let i = 1; i < trusses.length; i++) {
       const bay = trusses[i].x - trusses[i - 1].x;
       put('Ceiling Joists', rules.ceilingJoistSize, 'Ceiling', Array.from({ length: rows }, () => ({ cutIn: bay, stockFt: fitStock(bay, stock) })), 'Hung between truss bottom chords');
@@ -69,12 +73,15 @@ function ceilingPanels(b, rules, trusses) {
   const tally = {};
   const maxFt = [rules.linerMaxPanelFt];
   const close = b.trussSpacingIn <= rules.linerSupportMaxIn + EPS;
-  const runIn = close ? b.lengthIn : b.widthIn;
-  const across = close ? b.widthIn : b.lengthIn;
-  const rows = up(b.widthIn / rules.linerSupportMaxIn);
-  const supports = close ? trusses.map((t) => t.x) : Array.from({ length: rows + 1 }, (_, i) => (i * b.widthIn) / rows);
+  // A vaulted ceiling is two sloped planes that meet at the peak; a flat one is a single plane.
+  const planes = b.truss === 'scissor' ? 2 : 1;
+  const planeIn = (b.widthIn / planes) * ceilingFactor(b);
+  const runIn = close ? b.lengthIn : planeIn;
+  const across = close ? planeIn : b.lengthIn;
+  const rows = up(planeIn / rules.linerSupportMaxIn);
+  const supports = close ? trusses.map((t) => t.x) : Array.from({ length: rows + 1 }, (_, i) => (i * planeIn) / rows);
   const pieces = boards(0, runIn, supports, maxFt);
-  pieces.forEach((p, i) => add(tally, up(p.cutIn + (i < pieces.length - 1 ? rules.linerEndLapIn : 0)), up(across / rules.panelCoverageIn)));
+  pieces.forEach((p, i) => add(tally, up(p.cutIn + (i < pieces.length - 1 ? rules.linerEndLapIn : 0)), planes * up(across / rules.panelCoverageIn)));
   return tally;
 }
 
@@ -88,7 +95,10 @@ export function finishParts(b, rules, { posts, trusses, sheds, wallTally, roofTa
   const trim = {};
   let screws = 0;
   const floorSqFt = (b.widthIn * b.lengthIn) / 144;
-  const perimeterIn = 2 * (b.widthIn + b.lengthIn);
+  // A vaulted ceiling meets the end walls along its slopes, and is that much bigger than the floor.
+  const vault = ceilingFactor(b);
+  const perimeterIn = 2 * (b.widthIn * vault + b.lengthIn);
+  const vaulted = b.truss === 'scissor';
   const closedIn = closedWalls(b).reduce((sum, wall) => sum + wallLengthIn(b, wall), 0);
   const roofRunIn = b.lengthIn + 2 * b.endOverhangIn;
 
@@ -182,9 +192,15 @@ export function finishParts(b, rules, { posts, trusses, sheds, wallTally, roofTa
       const len = wallLengthIn(b, wall);
       for (let left = 0; left < len - EPS; left += rules.panelCoverageIn) {
         const door = doorOver(b, wall, left, Math.min(left + rules.panelCoverageIn, len));
-        if (!door) add(liner, up(b.eaveIn));
-        else if (b.eaveIn - door.heightIn > EPS) add(liner, up(b.eaveIn - door.heightIn));
+        // Under a vaulted ceiling the end wall liner climbs to the ceiling line, so each panel is cut for its taller edge.
+        const right = Math.min(left + rules.panelCoverageIn, len);
+        const nearMid = Math.min(Math.max(len / 2, left), right);
+        const tall = b.eaveIn + (vaulted && isGable(wall) ? Math.min(nearMid, len - nearMid) * b.ceilingPitch / 12 : 0);
+        if (!door) add(liner, up(tall));
+        else if (tall - door.heightIn > EPS) add(liner, up(tall - door.heightIn));
       }
+      // The triangle of end wall between the eave line and the vaulted ceiling.
+      if (vaulted && isGable(wall)) linerSqFt += (len * (len / 2) * b.ceilingPitch / 12) / 2 / 144;
     }
     linerSqFt += (closedIn * b.eaveIn) / 144;
     // Liner turns an inside corner only where two closed walls meet.
@@ -193,7 +209,7 @@ export function finishParts(b, rules, { posts, trusses, sheds, wallTally, roofTa
   }
   if (o.linerCeiling) {
     for (const [k, n] of Object.entries(ceilingPanels(b, rules, trusses))) add(liner, Number(k), n);
-    linerSqFt += floorSqFt;
+    linerSqFt += floorSqFt * vault;
   }
   if (o.linerWalls || o.linerCeiling) {
     add(trim, 'J-Channel', pieces(o.linerCeiling ? perimeterIn : closedIn));
@@ -215,7 +231,7 @@ export function finishParts(b, rules, { posts, trusses, sheds, wallTally, roofTa
   }
   if (o.ceilingR) {
     if (!o.linerCeiling) errors.push('Blown insulation needs a ceiling under it. Turn on the ceiling liner first.');
-    items.push(line('Insulation', 'Blown Ceiling Insulation', `R-${o.ceilingR}, bags`, up(floorSqFt / 1000 * rules.blownBagsPer1000[o.ceilingR])));
+    items.push(line('Insulation', 'Blown Ceiling Insulation', `R-${o.ceilingR}, bags`, up(floorSqFt * vault / 1000 * rules.blownBagsPer1000[o.ceilingR])));
   }
 
   const postCount = posts.length;

@@ -33,6 +33,14 @@ const FIELDS = {
   pitch: { label: 'Roof Pitch', unit: '/12', step: 1 },
   overhang: { label: 'Overhang, Side Walls', unit: 'in', step: 6 },
   endOverhang: { label: 'Overhang, End Walls', unit: 'in', step: 6 },
+  ceilingPitch: { label: 'Ceiling Pitch', unit: '/12', step: 0.5 },
+  atticRoom: { label: 'Room Width', unit: 'ft', step: 1 },
+};
+const TRUSS_NAMES = { common: 'Common', scissor: 'Scissor', attic: 'Attic' };
+const TRUSS_ABOUT = {
+  common: 'A common truss has a level bottom and a flat ceiling.',
+  scissor: 'A scissor truss gives a vaulted ceiling. The ceiling liner and ceiling insulation follow the slope.',
+  attic: 'An attic truss leaves a room inside the roof. The room floor is counted and drawn. Attic trusses sit 2 ft apart.',
 };
 const PRICE_FIELDS = {
   markupPct: { label: 'Markup', unit: '%', step: 1 },
@@ -65,6 +73,7 @@ const OPTION_SETS = {
 };
 const ROOF_NAMES = { gable: 'Gable', mono: 'Single Slope', gambrel: 'Gambrel' };
 const roofOf = () => state.roof ?? 'gable';
+const trussOf = () => (roofOf() === 'gable' ? state.truss ?? 'common' : 'common');
 const OPTION_DEFAULTS = { wainscotIn: 36, linerWalls: false, linerCeiling: false, roofInsulation: 'none', wallInsulation: 'none', ceilingR: 0, footing: 'none', slab: false, ridgeVent: false, eaveLights: 'none', skylights: 0, cupolas: false, cupolaSizeIn: 0 };
 const WALL_FIELDS = {
   at: { label: 'From Left End', other: 'From Front Wall', step: 1, min: 2 },
@@ -354,7 +363,10 @@ const optionRow = (key, stack) => `<h2>${OPTION_SETS[key][0]}</h2><div class="se
 const wallOf = (w) => ({ open: !!state.walls?.[w]?.open, postSpacing: state.walls?.[w]?.postSpacing ?? state.postSpacing });
 const sideName = (w) => `${WALL_NAMES[w]}${w === 'front' || w === 'back' ? ' wall' : ''}`;
 // The end overhang follows the side overhang until it is given its own figure.
-const fieldValue = (key) => (key === 'endOverhang' ? state.endOverhang ?? state.overhang : state[key]);
+// The ceiling pitch and the attic room start from the same figures the engine uses.
+const fieldValue = (key) => (key === 'endOverhang' ? state.endOverhang ?? state.overhang
+  : key === 'ceilingPitch' ? state.ceilingPitch ?? state.pitch / 2
+  : key === 'atticRoom' ? state.atticRoom ?? Math.max(6, Math.floor(state.width / 2)) : state[key]);
 const overhangText = () => {
   const b = result.geometry.building;
   if (roofOf() === 'gambrel') return `${b.endOverhangIn} in overhang at the ends`;
@@ -475,7 +487,10 @@ function leftPanel() {
     return `<h2>Roof Shape</h2>
       <div class="seg">${Object.entries(ROOF_NAMES).map(([k, name]) => `<button data-roof="${k}" class="${shape === k ? 'on' : ''}">${name}</button>`).join('')}</div>
       <p class="hint">${about}</p>
-      <h2>Roof</h2>${(shape === 'gambrel' ? ['endOverhang'] : ['pitch', 'overhang', 'endOverhang']).map(field).join('')}
+      ${shape === 'gable' ? `<h2>Truss Type</h2>
+      <div class="seg">${Object.entries(TRUSS_NAMES).map(([k, name]) => `<button data-truss="${k}" class="${trussOf() === k ? 'on' : ''}">${name}</button>`).join('')}</div>
+      <p class="hint">${TRUSS_ABOUT[trussOf()]}</p>` : ''}
+      <h2>Roof</h2>${(shape === 'gambrel' ? ['endOverhang'] : ['pitch', ...(trussOf() === 'scissor' ? ['ceilingPitch'] : trussOf() === 'attic' ? ['atticRoom'] : []), 'overhang', 'endOverhang']).map(field).join('')}
       <h2>Truss Spacing</h2>${choice('trussSpacing', [2, 4, 8], 'ft')}
       ${shape === 'mono' ? '' : `${optionRow('cupolas')}${opt('cupolas') ? optionRow('cupolaSizeIn', true) : ''}
       <p class="hint">Cupolas sit on the ridge. Sized to the roof means one or two, by the length of the ridge. They are priced as bought units.</p>`}
@@ -677,7 +692,7 @@ function specRows() {
   return [
     ['Size', `${state.width} ft wide, ${state.length} ft long, ${state.eaveHeight} ft walls`],
     ['Roof', `${ROOF_NAMES[roofOf()]}, ${roofOf() === 'gambrel' ? `${result.rules.gambrelLowerPitch} in 12 and ${result.rules.gambrelUpperPitch} in 12 slopes` : `${state.pitch} in 12 pitch`}, ${overhangText()}`],
-    ['Frame', `Posts every ${state.postSpacing} ft${ownSpacing().length ? ` (${ownSpacing().map((w) => `${wallOf(w).postSpacing} ft on the ${sideName(w).toLowerCase()}`).join(', ')})` : ''}, trusses every ${state.trussSpacing} ft`],
+    ['Frame', `Posts every ${state.postSpacing} ft${ownSpacing().length ? ` (${ownSpacing().map((w) => `${wallOf(w).postSpacing} ft on the ${sideName(w).toLowerCase()}`).join(', ')})` : ''}, ${trussOf() === 'common' ? '' : `${TRUSS_NAMES[trussOf()].toLowerCase()} `}trusses every ${state.trussSpacing} ft`],
     ...(openSides().length ? [['Open Walls', `${openSides().map((w) => sideName(w)).join(', ')}: posts and roof only, no steel`]] : []),
     ['Doors And Windows', openings || 'None'],
     ...(state.sheds.length ? [['Lean-Tos And Porches', state.sheds.map((s) => `${SHED_NAMES[s.kind]}, ${WALL_NAMES[s.wall].toLowerCase()} wall, ${num(s.depth)} x ${num(s.length)} ft${s.kind === 'leanto' && s.enclosed ? ', enclosed' : ''}`).join('<br>')]] : []),
@@ -864,6 +879,12 @@ document.addEventListener('click', (e) => {
     }
     return apply({ roof: d.roof }, `Roof now ${ROOF_NAMES[d.roof].toLowerCase()}`);
   }
+  if (d.truss) {
+    if (d.truss === trussOf()) return;
+    // The room floor rides on attic trusses, so they move to 2 ft apart with the choice.
+    const change = d.truss === 'attic' && state.trussSpacing > 2 ? { truss: 'attic', trussSpacing: 2 } : { truss: d.truss };
+    return apply(change, `Trusses now ${TRUSS_NAMES[d.truss].toLowerCase()}${change.trussSpacing ? ', 2 ft apart' : ''}`);
+  }
   if (d.choice) {
     const label = d.choice === 'postSpacing' ? 'Post spacing' : 'Truss spacing';
     return apply({ [d.choice]: Number(d.value) }, `${label} ${state[d.choice]} to ${d.value} ft`);
@@ -1028,7 +1049,7 @@ document.addEventListener('change', (e) => {
   const later = (change, note) => setTimeout(() => apply(change, note), 200);
   const dollars = Math.max(0, Number(v) || 0);
   if (d.type) {
-    const f = FIELDS[d.type], from = fieldValue(d.type), to = Math.round(Number(v));
+    const f = FIELDS[d.type], from = fieldValue(d.type), to = Math.round(Number(v) / (f.step < 1 ? f.step : 1)) * (f.step < 1 ? f.step : 1);
     if (!v.trim() || !Number.isFinite(to) || to === from) return paint();
     ui.sel = d.type;
     return apply({ [d.type]: to }, `${f.label} ${from} to ${to} ${f.unit === '/12' ? 'in 12' : f.unit}`);
@@ -1345,7 +1366,7 @@ function openEngineer() {
   const headerSizes = [...new Set(result.items.filter((i) => i.name === 'Headers').map((i) => i.size))];
   const members = [
     ['Posts', r.postSize, `Every ${state.postSpacing} ft along each wall${ownSpacing().map((w) => `, ${wallOf(w).postSpacing} ft on the ${sideName(w).toLowerCase()}`).join('')}, ${posts.length} in all, ${r.postEmbedmentIn ? `set ${feetInches(r.postEmbedmentIn)} into the ground` : 'standing on bolt-down brackets on the concrete'}`],
-    [{ gable: 'Trusses', mono: 'Single Slope Trusses', gambrel: 'Gambrel Trusses' }[b.roof], `${state.width} ft span, ${b.roof === 'gambrel' ? 'gambrel profile' : `${state.pitch} in 12`}`, `Every ${state.trussSpacing} ft, ${sum.trusses} in all`],
+    [{ scissor: 'Scissor Trusses', attic: 'Attic Trusses' }[b.truss] ?? { gable: 'Trusses', mono: 'Single Slope Trusses', gambrel: 'Gambrel Trusses' }[b.roof], `${state.width} ft span, ${b.roof === 'gambrel' ? 'gambrel profile' : `${state.pitch} in 12`}${b.truss === 'scissor' ? `, ${b.ceilingPitch} in 12 ceiling` : b.truss === 'attic' ? `, ${feetInches(b.atticRoomIn)} room` : ''}`, `Every ${state.trussSpacing} ft, ${sum.trusses} in all`],
     ['Skirt Board', r.skirtSize, openSides().length ? 'One row at the ground on each closed wall' : 'One row at the ground, all four walls'],
     ...(openSides().length ? [['Open Walls', openSides().map((w) => sideName(w)).join(', '), 'Posts only: no skirt board, girts or steel. Bracing for these walls is not designed here']] : []),
     ['Wall Girts', r.girtSize, `Every ${r.girtSpacingIn} in up the wall, on the outside face of the posts, joined on posts`],

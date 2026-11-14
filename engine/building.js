@@ -14,6 +14,8 @@ const GROUND_DOORS = new Set(['slider', 'walk', 'overhead']);
 const TYPES = new Set([...GROUND_DOORS, 'window']);
 const SHEDS = { leanto: 'lean-to', porch: 'porch' };
 export const ROOFS = ['gable', 'mono', 'gambrel'];
+// Scissor and attic trusses go with a gable roof. Other roofs take the truss their shape calls for.
+export const TRUSSES = ['common', 'scissor', 'attic'];
 // A gambrel's proportions are fixed by the rules: the lower slope, the upper slope, and where the break sits.
 export const GAMBREL = { lowerPitch: defaultRules.gambrelLowerPitch.value, upperPitch: defaultRules.gambrelUpperPitch.value, breakShare: defaultRules.gambrelBreakShare.value };
 const NAMES = { slider: 'sliding door', walk: 'walk door', overhead: 'overhead door', window: 'window' };
@@ -53,6 +55,14 @@ export function normalize(input) {
   };
   b.roof = input.roof ?? 'gable';
   if (!ROOFS.includes(b.roof)) { errors.push('Roof shape is not one of the choices.'); b.roof = 'gable'; }
+  b.truss = b.roof === 'gable' ? (input.truss ?? 'common') : 'common';
+  if (!TRUSSES.includes(b.truss)) { errors.push('Truss type is not one of the choices.'); b.truss = 'common'; }
+  if (b.truss === 'scissor') {
+    // Half the roof pitch is the usual starting point for the ceiling. The truss maker confirms it.
+    b.ceilingPitch = num(input.ceilingPitch ?? b.pitch / 2, 'Ceiling pitch', 0.5, 11);
+    if (b.ceilingPitch > b.pitch - 0.99) errors.push('The ceiling pitch has to be at least 1 in 12 flatter than the roof pitch.');
+  }
+  if (b.truss === 'attic') b.atticRoomIn = num(input.atticRoom ?? Math.max(6, Math.floor(b.widthIn / 24)), 'Attic room width', 6, 80) * 12;
   b.line = roofLine(b);
   b.planes = roofPlanes(b);
   b.riseIn = Math.max(...b.line.map((p) => p.h)) - b.eaveIn;

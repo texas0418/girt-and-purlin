@@ -10,6 +10,7 @@ import { cutList } from './cutlist.js';
 import { placeSheds, shedRuns, shedMetal } from './sheds.js';
 import { finishRuns, finishParts, FINISH_LUMBER } from './finish.js';
 import { placeInterior, INTERIOR_LUMBER } from './interior.js';
+import { trussParts } from './trusses.js';
 
 // ft and sqFt are the numbers a price list multiplies by.
 function lines(group, name, size, tally, label = (k) => `${k} ft`, ft = (k) => k) {
@@ -47,6 +48,9 @@ export function design(input, ruleOverrides) {
     const list = openNames.map((wall) => WALL_NAMES[wall].toLowerCase()).join(', ').replace(/, ([^,]*)$/, ' and $1');
     warnings.push({ code: 'open-wall', text: `The ${list} ${openNames.length === 1 ? 'is' : 'are'} open. An open wall has no girts or steel to brace the frame, so the engineer has to size the beam over those posts and the bracing that takes the wall's place.` });
   }
+  const trussType = trussParts(b, rules);
+  if (trussType.errors.length) return { ok: false, errors: trussType.errors, warnings, items: [] };
+  warnings.push(...trussType.warnings);
   const { sheds, errors: shedErrors, warnings: shedWarnings } = placeSheds(b, rules);
   warnings.push(...shedWarnings);
   if (shedErrors.length) return { ok: false, errors: shedErrors, warnings, items: [] };
@@ -95,7 +99,7 @@ export function design(input, ruleOverrides) {
   const items = [
     ...lines('Framing', 'Posts', rules.postSize, postTally),
     ...lines('Framing', 'Laminated Columns', rules.columnSize, columnTally),
-    { group: 'Framing', name: TRUSS_NAMES[b.roof], size: `${b.widthIn / 12} ft span, ${b.roof === 'gambrel' ? `${GAMBREL.lowerPitch}/12 and ${GAMBREL.upperPitch}/12` : `${b.pitch}/12`}`, length: '', qty: trusses.length, ft: b.widthIn / 12 },
+    { group: 'Framing', name: trussType.name ?? TRUSS_NAMES[b.roof], size: `${b.widthIn / 12} ft span, ${b.roof === 'gambrel' ? `${GAMBREL.lowerPitch}/12 and ${GAMBREL.upperPitch}/12` : `${b.pitch}/12`}${trussType.size}`, length: '', qty: trusses.length, ft: b.widthIn / 12 },
     ...lumber('Skirt Boards'),
     ...lumber('Wall Girts'),
     ...lumber('Roof Purlins'),
@@ -123,6 +127,7 @@ export function design(input, ruleOverrides) {
     ...INTERIOR_LUMBER.flatMap((name) => lumber(name, 'Interior')),
     ...interior.items,
     ...finish.items,
+    ...trussType.items,
   ];
 
   return {
@@ -133,10 +138,10 @@ export function design(input, ruleOverrides) {
       posts: posts.length + shedPosts.length + interior.posts.length, trusses: trusses.length,
       girtRowsPerWall: girtRowCount(b, rules), purlinRowsPerSide: purlinRowsPerSide(b, rules), purlinRows: purlinRows(b, rules),
       peakIn: b.eaveIn + b.riseIn,
-      loftSqFt: interior.loft?.sqFt ?? 0, linerSqFt: finish.linerSqFt, slabSqFt: finish.slabSqFt,
+      loftSqFt: interior.loft?.sqFt ?? 0, atticSqFt: trussType.attic?.sqFt ?? 0, linerSqFt: finish.linerSqFt, slabSqFt: finish.slabSqFt,
       screws: fasteners.count, roofSqFt: areas(b).roofSqFt + extra.roofSqFt, wallSqFt: areas(b).wallSqFt + extra.wallSqFt,
     },
-    geometry: { building: b, posts, trusses, girtRows, sheds, partitions: interior.partitions, loft: interior.loft, cupolas: finish.cupolas, planes: b.planes.map((p) => ({ ...p, purlinRows: planePurlinRows(p, rules) })), purlinRowLengthIn: b.lengthIn + 2 * b.endOverhangIn },
+    geometry: { building: b, posts, trusses, girtRows, sheds, partitions: interior.partitions, loft: interior.loft, attic: trussType.attic, cupolas: finish.cupolas, planes: b.planes.map((p) => ({ ...p, purlinRows: planePurlinRows(p, rules) })), purlinRowLengthIn: b.lengthIn + 2 * b.endOverhangIn },
     cuts: cutList(rules, [...posts, ...sheds.flatMap((sh) => sh.posts.map((p) => ({ ...p, where: sh.label, sloped: p.line !== 'outer' }))), ...interior.posts], runs),
     rules,
     unverifiedRules: unverifiedRules(),

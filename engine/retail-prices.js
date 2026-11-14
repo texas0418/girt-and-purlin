@@ -81,6 +81,7 @@ export const RETAIL_CATALOG = {
     lowes('Joist Hangers', 'for 2x8 joists', 'each', 2.83, 'Simpson LUS hanger for a 2x8'),
     lowes('Joist Hangers', 'for 2x10 joists', 'each', 3.35, 'Simpson LUS hanger for a 2x10'),
     lowes('Loft Subfloor', '', 'each', 23.43, '23/32 in tongue and groove OSB subfloor, 4 x 8 ft sheet'),
+    lowes('Attic Subfloor', '', 'each', 23.43, '23/32 in tongue and groove OSB subfloor, 4 x 8 ft sheet'),
     lowes('Stair Stringers', '', 'ft', 1.92, '2x12 x 16 ft, $30.68 a piece'),
     lowes('Stair Treads', '', 'ft', 1.92, '2x12 x 16 ft, $30.68 a piece'),
     lowes('Stair Handrail', '', 'ft', 5.87, 'Poplar handrail, 8 ft piece at $46.98'),

@@ -763,15 +763,28 @@ export function createView(canvas, stage) {
       webs.push([(p.y + q.y) / 2, (p.h + q.h) / 2]);
     }
     if (b.roof === 'mono') webs.push([b.widthIn - 3, b.line[1].h]);
+    // A scissor truss has a bottom that climbs to the middle. An attic truss has a deep bottom that is the room floor.
+    const lift = b.truss === 'scissor' ? b.ceilingPitch / 12 : 0, liftA = Math.atan(lift);
+    const attic = result.geometry.attic, floorTop = H + 0.77;
     for (const tr of trusses) {
       const x = inside ? Math.min(Math.max(tr.x / 12 - L / 2, -L / 2 + 0.3), L / 2 - 0.3) : tr.x / 12 - L / 2;
-      box(group, mats.wood, 0.125, 0.46, W - (inside ? 0.4 : 0), x, H + 0.23, 0);
+      if (lift) for (const s of shapes) box(group, mats.wood, 0.125, 0.46, W / 2 / Math.cos(liftA), x, H + (W / 4) * lift + 0.23, Math.sign(s.lowZ) * W / 4, s.dir * liftA);
+      else box(group, mats.wood, 0.125, attic ? 0.77 : 0.46, W - (inside ? 0.4 : 0), x, H + (attic ? 0.385 : 0.23), 0);
       for (const s of shapes) box(group, mats.wood, 0.125, 0.46, s.slope, x, s.midH - 0.1 - drop, s.midZ, s.dir * s.a);
+      if (attic) {
+        // Knee walls at the room edges and a tie across the room ceiling.
+        const knee = H + attic.kneeIn / 12 - drop - floorTop, top = H + attic.ceilingIn / 12 - drop;
+        if (knee > 0.3) for (const side of [-1, 1]) box(group, mats.wood, 0.125, knee, 0.29, x, floorTop + knee / 2, side * attic.roomIn / 24);
+        if (attic.flatIn > 6) box(group, mats.wood, 0.125, 0.46, attic.flatIn / 12, x, top + 0.23, 0);
+        continue;
+      }
       for (const [y, h] of webs) {
-        const tall = h / 12 - H - drop;
-        if (tall > 0.5) box(group, mats.wood, 0.125, tall, 0.3, x, H + tall / 2, zOf(y));
+        const base = H + (Math.min(y, b.widthIn - y) / 12) * lift + (lift ? 0.23 : 0);
+        const tall = h / 12 - base - drop;
+        if (tall > 0.5) box(group, mats.wood, 0.125, tall, 0.3, x, base + tall / 2, zOf(y));
       }
     }
+    if (attic) box(group, mats.deck, L - 0.3, 0.06, attic.roomIn / 12, 0, floorTop + 0.03, 0);
     const rowLen = inside ? L - 0.3 : result.geometry.purlinRowLengthIn / 12;
     for (const s of shapes) {
       const rows = s.p.purlinRows;
