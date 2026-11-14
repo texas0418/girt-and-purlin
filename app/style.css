@@ -100,6 +100,8 @@ main { display: grid; grid-template-columns: 300px 1fr 360px; gap: 3px; padding:
 .seg button:hover { background: var(--widget-hi); }
 .seg button:disabled, .seg button:disabled:hover { background: #444; color: var(--text-3); cursor: default; }
 .seg .on, .seg .on:hover { background: var(--accent); color: #fff; }
+.seg.grid { flex-wrap: wrap; }
+.seg.grid button { flex: 1 1 calc(50% - 1px); }
 .seg.stack { flex-wrap: wrap; }
 .seg.stack button { flex: 1 0 calc(50% - 1px); height: auto; min-height: 28px; padding: 5px 6px; line-height: 1.25; }
 .hint { padding: 8px 6px; color: var(--text-3); font-size: 12px; }

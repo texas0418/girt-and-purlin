@@ -35,7 +35,9 @@ function wallSheet(result, wall, c) {
   const len = wallLengthIn(b, wall) / 12;
   // The wall's own top: the eave on a side wall, the low eave on an end wall.
   const wallIn = isGable(wall) ? b.eaveIn : wallTopIn(b, wall, 0);
-  const top = (isGable(wall) ? b.eaveIn + b.riseIn : wallIn) / 12;
+  // Under a hip roof an end wall stops level at the eave, with no peak.
+  const peaked = isGable(wall) && b.roof !== 'hip';
+  const top = (peaked ? b.eaveIn + b.riseIn : wallIn) / 12;
   const unit = Math.max(len, top * 2) * 0.016 + 0.2;
   const { line, text, across, upright } = pen(c, unit);
   const u = (atIn) => (MIRRORED[wall] ? len - atIn / 12 : atIn / 12);
@@ -98,7 +100,14 @@ function wallSheet(result, wall, c) {
       ...label(o, a + w / 2, head + h / 2, w, h));
   }
 
-  if (isGable(wall)) {
+  // An awning shows as a dashed outline where it hangs on the wall.
+  for (const a of (result.geometry.awnings ?? []).filter((a) => a.wall === wall)) {
+    const x = Math.min(u(a.startIn), u(a.endIn)), w = a.widthIn / 12;
+    out.push(`<rect x="${x}" y="${y(a.highIn)}" width="${w}" height="${(a.highIn - a.lowIn) / 12}" fill="none" stroke="${c.ink}" stroke-width="0.07" stroke-dasharray="0.4 0.25"/>`,
+      text(x + w / 2, y(a.highIn) - unit * 0.4, `Awning, ${short(a.outIn)} out`, 0.7, c.soft));
+  }
+
+  if (peaked) {
     out.push(`<path d="M ${b.line.map((p) => `${u(p.y)} ${y(p.h)}`).join(' L ')}" fill="none" stroke="${c.ink}" stroke-width="0.12"/>`);
   } else {
     out.push(line(0, y(wallIn), len, y(wallIn), 0.12));
@@ -120,7 +129,7 @@ function wallSheet(result, wall, c) {
   out.push(across(0, len, row2, `${short(len * 12)} overall`),
     text(len / 2, row1 - unit * 1.5, 'Post centers', 0.75, c.soft),
     upright(y(wallIn), top, -unit * 2, `${short(wallIn)} ${wallIn > b.eaveIn ? 'high wall' : 'eave'}`));
-  if (isGable(wall)) out.push(upright(0, top, -unit * 4.4, `${short(b.eaveIn + b.riseIn)} peak`));
+  if (peaked) out.push(upright(0, top, -unit * 4.4, `${short(b.eaveIn + b.riseIn)} peak`));
   for (const h of [...new Set(heights)].filter((v) => v <= wallIn)) {
     out.push(line(len + unit * 0.4, y(h), len + unit * 1.1, y(h)), text(len + unit * 1.4, y(h) + unit * 0.3, short(h), 0.75, c.soft, 'text-anchor="start"').replace('text-anchor="middle" ', ''));
   }
@@ -142,7 +151,21 @@ function roofSheet(result, c) {
   const out = [`<rect x="${-over}" y="${-side.back}" width="${L + 2 * over}" height="${W + side.back + side.front}" fill="${c.paper}" stroke="${c.ink}" stroke-width="0.1"/>`,
     `<rect x="0" y="0" width="${L}" height="${W}" fill="none" stroke="${c.soft}" stroke-width="0.05" stroke-dasharray="0.5 0.3"/>`];
 
-  for (const p of planes) {
+  const hip = result.geometry.hip;
+  if (hip) {
+    // Four slopes: the purlin rows run level round the roof and stop at the hips, and the ridge is short.
+    const o = b.overhangIn / 12, half = W / 2;
+    for (const r of hip.rows) {
+      const inset = r.insetIn / 12, a = r.startIn / 12, e = r.endIn / 12;
+      if (r.end) { const x = r.side ? L + o - inset : -o + inset; out.push(line(x, yy(a * 12), x, yy(e * 12), 0.05, c.soft)); }
+      else { const yIn = r.side ? b.widthIn + b.overhangIn - r.insetIn : -b.overhangIn + r.insetIn; out.push(line(a, yy(yIn), e, yy(yIn), 0.05, c.soft)); }
+    }
+    for (const [cx, rx] of [[-o, Math.min(half, L / 2)], [L + o, Math.max(L - half, L / 2)]]) for (const cy of [-o, W + o]) out.push(line(cx, cy, rx, half, 0.14));
+    if (L > W) out.push(line(half, half, L - half, half, 0.04, c.ink, 'stroke-dasharray="1 0.3 0.2 0.3"'));
+    out.push(text(L / 2, half - unit * 0.6, L > W ? `Ridge ${short(hip.ridgeIn)}` : 'Peak', 0.75, c.soft),
+      text(half / 2, half + unit * 0.3, 'Hip set', 0.75, c.soft), text(L - half / 2, half + unit * 0.3, 'Hip set', 0.75, c.soft));
+  }
+  for (const p of hip ? [] : planes) {
     const low = p.lowY - p.dir * p.lowOverIn, high = p.highY + p.dir * p.highOverIn;
     for (let i = 0; i < p.purlinRows; i++) {
       const at = high + (low - high) * (p.purlinRows > 1 ? i / (p.purlinRows - 1) : 0.5);
@@ -160,15 +183,25 @@ function roofSheet(result, c) {
       text(cup.x / 12, W / 2 + half + unit * 1.1, `Cupola ${short(cup.sizeIn)}`, 0.75, c.soft));
   }
 
+  // A dormer shows as its outline on the slope it sits on.
+  for (const d of result.geometry.dormers ?? []) {
+    const from = d.side === 'back' ? b.widthIn - d.backIn : d.setbackIn, to = d.side === 'back' ? b.widthIn - d.setbackIn : d.backIn;
+    const x = d.atIn / 12, w = d.widthIn / 12, top = Math.min(yy(from), yy(to)), tall = Math.abs(yy(from) - yy(to));
+    out.push(`<rect x="${x}" y="${top}" width="${w}" height="${tall}" fill="${c.paper}" stroke="${c.ink}" stroke-width="0.1"/>`);
+    if (d.style === 'gable') out.push(line(x + w / 2, top, x + w / 2, top + tall, 0.04, c.ink, 'stroke-dasharray="0.5 0.3"'));
+    out.push(text(x + w / 2, d.side === 'back' ? top - unit * 0.4 : top + tall + unit * 1.0, `${d.label}, ${short(d.widthIn)}`, 0.7, c.soft));
+  }
+
   const xs = trusses.map((t) => t.x / 12).sort((p, q) => p - q);
   const row1 = W + side.front + unit * 2.4, row2 = row1 + unit * 2.4;
   if (xs.length > 1) out.push(across(xs[0], xs[1], row1, short((xs[1] - xs[0]) * 12), 0.8),
     text((xs[1] + xs[xs.length - 1]) / 2, row1 + unit * 0.3, `${xs.length} trusses, same spacing to the far end`, 0.8, c.soft));
   const counts = planes.map((p) => p.purlinRows);
-  const rowsNote = b.roof === 'gable' ? `${counts[0]} purlin rows each side`
+  const rowsNote = hip ? `${counts[0]} purlin rows on each of the four slopes, each row shorter than the one below`
+    : b.roof === 'gable' ? `${counts[0]} purlin rows each side`
     : b.roof === 'mono' ? `${counts[0]} purlin rows`
       : `${counts[0]} purlin rows on each lower slope, ${counts[1]} on each upper slope`;
-  out.push(across(-over, L + over, row2, `${short(result.geometry.purlinRowLengthIn)} purlin rows`),
+  out.push(across(-over, L + over, row2, `${short(result.geometry.purlinRowLengthIn)} ${hip ? 'eave to eave, the longest purlin row' : 'purlin rows'}`),
     upright(0, W, -over - unit * 2, `${short(b.widthIn)} truss span`),
     text(L / 2, -side.back - unit * 2.4, `${rowsNote}, ${rules.purlinSpacingIn} in apart up the slope`, 0.8, c.soft),
     text(L / 2, -side.back - unit * 0.9, b.roof === 'mono' ? 'Back, high side' : 'Back', 0.8, c.soft),
@@ -233,10 +266,13 @@ function shedSheet(result, s, c) {
     note(nx, y(hi), `Rafters ${rules.rafterSize}, ${short(s.slopeIn)} long`),
     note(nx, y(hi) + unit * 1.3, `${s.rafters.length} rafters along ${short(s.lengthIn)}`),
     note(nx, y(hi) + unit * 2.6, `Ledger ${rules.shedLedgerSize} on the main posts`),
-    note(nx, y(hi) + unit * 3.9, `Beam two ${rules.shedBeamSize} on ${s.outer.length} posts`),
+    note(nx, y(hi) + unit * 3.9, `Beam two ${rules.shedBeamSize} on ${s.outer.length + s.cornerAt.length} posts`),
     note(nx, y(hi) + unit * 5.2, `${s.purlinRows} purlin rows, ${rules.purlinSize}`),
     note(nx, y(hi) + unit * 6.5, s.enclosed ? 'Walls closed in' : 'Sides open'),
   );
+  if (s.turns.length) out.push(note(nx, y(hi) + unit * 7.8, s.ownedCorners.length
+    ? `Turns the corner on a ${rules.porchHipRafterSize} hip rafter, ${short(s.hipIn)} long`
+    : 'Meets the next porch roof at a hip over the corner post'));
   const left = unit * 6.5 + 2, right = unit * 22;
   return `<svg viewBox="${-left} ${-unit * 2} ${D + over + left + right} ${row1 + unit * 3.5}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Section through the ${s.label.toLowerCase()}">${out.join('')}</svg>`;
 }

@@ -269,6 +269,46 @@ function box(parent, mat, sx, sy, sz, x, y, z, rx = 0) {
   return m;
 }
 
+// A flat piece through the given corners, in feet, facing toward `away`. Its texture
+// is measured in feet, level across the piece and up its slope, so ribs run up a roof.
+function flat(parent, mat, pts, away = [0, 1, 0]) {
+  const v = pts.map((p) => new THREE.Vector3(...p));
+  const n = new THREE.Vector3().crossVectors(v[1].clone().sub(v[0]), v[2].clone().sub(v[0])).normalize();
+  if (n.dot(new THREE.Vector3(...away)) < 0) { v.reverse(); n.negate(); }
+  const across = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), n);
+  if (across.lengthSq() < 1e-8) across.set(1, 0, 0);
+  across.normalize();
+  const up = new THREE.Vector3().crossVectors(n, across);
+  const p = [], nn = [], t = [], i = [];
+  for (const q of v) { p.push(q.x, q.y, q.z); nn.push(n.x, n.y, n.z); t.push(q.dot(across), q.dot(up)); }
+  for (let k = 1; k < v.length - 1; k++) i.push(0, k, k + 1);
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(p, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nn, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(t, 2));
+  g.setIndex(i);
+  const m = new THREE.Mesh(g, mat);
+  m.castShadow = m.receiveShadow = true;
+  parent.add(m);
+  return m;
+}
+
+// A straight board or strip of trim from one point to another, in feet.
+function bar(parent, mat, from, to, wide, tall) {
+  const a = new THREE.Vector3(...from), z = new THREE.Vector3(...to).sub(a), len = z.length();
+  z.normalize();
+  const x = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), z);
+  if (x.lengthSq() < 1e-8) x.set(1, 0, 0);
+  x.normalize();
+  const m = new THREE.Mesh(UNIT, mat);
+  m.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, new THREE.Vector3().crossVectors(z, x), z));
+  m.scale.set(wide, tall, len);
+  m.position.copy(a).addScaledVector(z, len / 2);
+  m.castShadow = m.receiveShadow = true;
+  parent.add(m);
+  return m;
+}
+
 // A patch of ground cover lying flat, with its texture measured in feet.
 function pad(parent, mat, w, d, y) {
   const geo = new THREE.PlaneGeometry(w, d).rotateX(-Math.PI / 2);
@@ -497,16 +537,35 @@ export function createView(canvas, stage) {
     const len = u1 - u0, uc = (u0 + u1) / 2, D = s.depthIn / 12, hi = s.highIn / 12, lo = s.lowIn / 12, oh = b.overhangIn / 12;
     const a = Math.atan(s.pitch / 12), slope = s.slopeIn / 12, tan = Math.tan(a);
     const top = (z) => hi - z * tan;
+    // A wraparound porch turns the building corner at one end or both. There the roof
+    // runs on out to a hip instead of stopping at a rake. The stretch that owns a corner
+    // draws its post, hip rafter and hip cap.
+    const reach = D + oh;
+    const ends = [[u0, -1, !!(flip ? s.cornerEnd : s.cornerStart)], [u1, 1, !!(flip ? s.cornerStart : s.cornerEnd)]]
+      .map(([u, way, turns]) => ({ u, way, turns, owns: turns && (s.ownedCorners ?? []).includes(way * (flip ? -1 : 1)) }));
+    const [endLo, endHi] = ends;
+    const capMat = b.options?.roofCover === 'shingles' ? mats.ridgeShingle : mats.trim;
 
     const fg = wallGroup(b, s.wall);
     const frame = (g) => {
       for (const p of s.posts) {
-        const z = p.outIn / 12, u = Math.min(u1 - 0.23, Math.max(u0 + 0.23, at(p.atIn)));
-        const h = top(z) - (p.line === 'outer' ? 0.8 : 0.2);
-        box(g, mats.treated, 0.46, h, 0.46, u, h / 2, z - (p.line === 'outer' ? 0.23 : 0));
+        const corner = p.line === 'corner', outer = corner || p.line === 'outer';
+        const z = p.outIn / 12, u = corner ? at(p.atIn) + (at(p.atIn) > uc ? -0.23 : 0.23) : Math.min(u1 - 0.23, Math.max(u0 + 0.23, at(p.atIn)));
+        const h = top(z) - (outer ? 0.8 : 0.2);
+        box(g, mats.treated, 0.46, h, 0.46, u, h / 2, z - (outer ? 0.23 : 0));
       }
       // Beam on the outer posts, ledger on the main wall, rafters between, purlins on top.
-      box(g, mats.wood, len, 0.94, 0.25, uc, lo - 0.8 - 0.1, D - 0.23 + 0.36);
+      const beam = [at(s.beamStartIn ?? s.startIn), at(s.beamEndIn ?? s.endIn)].sort((p, q) => p - q);
+      box(g, mats.wood, beam[1] - beam[0], 0.94, 0.25, (beam[0] + beam[1]) / 2, lo - 0.8 - 0.1, D - 0.23 + 0.36);
+      for (const e of ends) {
+        if (!e.turns) continue;
+        // Jack rafters fill the corner, from the hip down to the eave.
+        for (const j of s.jackOuts ?? []) {
+          const u = e.u + e.way * j / 12;
+          bar(g, mats.wood, [u, top(j / 12) - 0.47, j / 12], [u, top(reach) - 0.47, reach], 0.125, 0.6);
+        }
+        if (e.owns) bar(g, mats.wood, [e.u, hi - 0.47, 0], [e.u + e.way * reach, top(reach) - 0.47, reach], 0.125, 0.6);
+      }
       box(g, mats.wood, len, 0.6, 0.125, uc, hi - 0.55, 0.07);
       for (const r of s.rafters) {
         const u = Math.min(u1 - 0.07, Math.max(u0 + 0.07, at(r)));
@@ -518,7 +577,8 @@ export function createView(canvas, stage) {
       }
       for (let i = 0; i < s.purlinRows; i++) {
         const along = 0.15 + (slope - 0.3) * i / (s.purlinRows - 1);
-        box(g, mats.wood, len + 2 * oh, 0.125, 0.29, uc, hi - along * Math.sin(a) - 0.08, along * Math.cos(a), a);
+        const from = endLo.turns ? u0 - along * Math.cos(a) : u0 - oh, to = endHi.turns ? u1 + along * Math.cos(a) : u1 + oh;
+        box(g, mats.wood, to - from, 0.125, 0.29, (from + to) / 2, hi - along * Math.sin(a) - 0.08, along * Math.cos(a), a);
       }
     };
 
@@ -528,17 +588,22 @@ export function createView(canvas, stage) {
     const g = wallGroup(b, s.wall);
     const lift = 0.02;
     const roof = sheet();
-    roof.quad(u0 - oh, 0, u1 + oh, slope);
+    const wallLo = endLo.turns ? u0 : u0 - oh, wallHi = endHi.turns ? u1 : u1 + oh;
+    const eaveLo = endLo.turns ? u0 - reach : u0 - oh, eaveHi = endHi.turns ? u1 + reach : u1 + oh;
+    roof.quad(wallLo, 0, wallHi, slope);
+    if (endLo.turns) roof.tri([u0 - reach, 0], [u0, 0], [u0, slope]);
+    if (endHi.turns) roof.tri([u1, 0], [u1 + reach, 0], [u1, slope]);
     const rm = new THREE.Mesh(roof.build(), mats.shedRoof);
     rm.rotation.x = a - Math.PI / 2;
     rm.position.set(0, top(D + oh) + lift, D + oh);
     rm.castShadow = rm.receiveShadow = true;
     g.add(rm);
     // Flashing against the main wall, fascia at the low eave, and a rake down each side.
-    box(g, mats.trim, len + 2 * oh, 0.4, 0.06, uc, hi + lift + 0.17, 0.04);
-    box(g, mats.trim, len + 2 * oh + 0.2, 0.6, 0.12, uc, top(D + oh) + lift - 0.24, D + oh + 0.04);
-    for (const u of [u0 - oh - 0.05, u1 + oh + 0.05]) {
-      box(g, mats.trim, 0.12, 0.6, slope, u, top((D + oh) / 2) + lift - 0.22, (D + oh) / 2, a);
+    box(g, mats.trim, wallHi - wallLo, 0.4, 0.06, (wallLo + wallHi) / 2, hi + lift + 0.17, 0.04);
+    box(g, mats.trim, eaveHi - eaveLo + 0.2, 0.6, 0.12, (eaveLo + eaveHi) / 2, top(D + oh) + lift - 0.24, D + oh + 0.04);
+    for (const e of ends) {
+      if (!e.turns) box(g, mats.trim, 0.12, 0.6, slope, e.u + e.way * (oh + 0.05), top((D + oh) / 2) + lift - 0.22, (D + oh) / 2, a);
+      else if (e.owns) bar(g, capMat, [e.u, hi + lift + 0.06, 0], [e.u + e.way * (reach + 0.1), top(reach) + lift + 0.03, reach + 0.1], 0.5, 0.09);
     }
     if (!s.enclosed) frame(g);
     else {
@@ -570,10 +635,138 @@ export function createView(canvas, stage) {
     const ground = pad(site, mats.gravel, len + 4, D + 2, 0.05);
     ground.position.copy(g.localToWorld(new THREE.Vector3(uc, 0.05, D / 2 + 1)));
     ground.rotation.y = g.rotation.y;
+    for (const e of ends) {
+      if (!e.owns) continue;
+      const corner = pad(site, mats.gravel, D + 2, D + 2, 0.05);
+      corner.position.copy(g.localToWorld(new THREE.Vector3(e.u + e.way * (D / 2 + 1), 0.05, D / 2 + 1)));
+      corner.rotation.y = g.rotation.y;
+    }
     if (s.enclosed) {
       const slab = box(site, mats.slab, len - 0.1, 0.3, D - 0.1, 0, 0, 0);
       slab.position.copy(g.localToWorld(new THREE.Vector3(uc, 0.15, D / 2)));
       slab.rotation.y = g.rotation.y;
+    }
+  }
+
+  // An awning: a short roof hung off the wall on braces, with no posts.
+  function buildAwning(b, w) {
+    const gable = w.wall === 'left' || w.wall === 'right';
+    const Lw = (gable ? b.widthIn : b.lengthIn) / 12, flip = w.wall === 'back' || w.wall === 'left';
+    const at = (inches) => (flip ? Lw - inches / 12 : inches / 12);
+    const u0 = Math.min(at(w.startIn), at(w.endIn)), u1 = Math.max(at(w.startIn), at(w.endIn)), len = u1 - u0, uc = (u0 + u1) / 2;
+    const out = w.outIn / 12, hi = w.highIn / 12, lo = w.lowIn / 12, a = Math.atan(w.pitch / 12), slope = w.slopeIn / 12;
+    const frame = (g) => {
+      box(g, mats.wood, len, 0.46, 0.125, uc, hi - 0.35, 0.07);
+      for (let i = 0; i < w.brackets; i++) {
+        const u = w.brackets > 1 ? u0 + 0.1 + (len - 0.2) * i / (w.brackets - 1) : uc;
+        bar(g, mats.wood, [u, hi - 0.3, 0.13], [u, lo - 0.3, out], 0.125, 0.46);
+        bar(g, mats.wood, [u, lo - 0.45 - out * 0.8, 0.13], [u, lo - 0.45, out * 0.9], 0.125, 0.29);
+      }
+      for (let i = 0; i < w.purlinRows; i++) {
+        const along = 0.15 + (slope - 0.3) * (w.purlinRows > 1 ? i / (w.purlinRows - 1) : 0.5);
+        box(g, mats.wood, len, 0.125, 0.29, uc, hi - along * Math.sin(a) - 0.02, along * Math.cos(a), a);
+      }
+    };
+    const fg = wallGroup(b, w.wall);
+    frame(fg);
+    framing.add(fg);
+
+    const g = wallGroup(b, w.wall);
+    const roof = sheet();
+    roof.quad(u0 - 0.15, 0, u1 + 0.15, slope + 0.15);
+    const rm = new THREE.Mesh(roof.build(), mats.shedRoof);
+    rm.rotation.x = a - Math.PI / 2;
+    rm.position.set(0, lo + 0.1 - 0.15 * Math.sin(a), out + 0.15 * Math.cos(a));
+    rm.castShadow = rm.receiveShadow = true;
+    g.add(rm);
+    box(g, mats.trim, len + 0.3, 0.3, 0.06, uc, hi + 0.22, 0.04);
+    box(g, mats.trim, len + 0.5, 0.4, 0.1, uc, lo - 0.14, out + 0.19);
+    for (const u of [u0 - 0.2, u1 + 0.2]) box(g, mats.trim, 0.1, 0.4, slope + 0.15, u, (hi + lo) / 2 - 0.1, out / 2 + 0.07, a);
+    frame(g);
+    finished.add(g);
+  }
+
+  // A dormer on the main roof: a short wall set back from the eave with its own small
+  // roof, a gable that runs back into the main roof or a single low slope.
+  function buildDormer(b, d) {
+    const L = b.lengthIn / 12, W = b.widthIn / 12, sgn = d.side === 'back' ? -1 : 1;
+    // A point given in inches: along the building, in from the dormer's own wall, and up.
+    const P = (xIn, inIn, hIn, lift = 0) => [xIn / 12 - L / 2, hIn / 12 + lift, sgn * (W / 2 - inIn / 12)];
+    const x0 = d.atIn, x1 = d.endIn, xc = (x0 + x1) / 2, set = d.setbackIn, oh = d.overhangIn;
+    const shed = d.style === 'shed', base = d.baseIn, top = d.topIn, ridge = d.ridgeIn;
+    // How fast the main roof climbs under the dormer, and how far in it reaches a height.
+    const climb = shed ? (ridge - base) / (d.backIn - set) : d.faceIn / (d.cheekEndIn - set);
+    const reach = (hIn) => set + (hIn - base) / climb;
+    const low = top - oh * d.pitch / 12;
+    const capMat = b.options?.roofCover === 'shingles' ? mats.ridgeShingle : mats.trim;
+
+    // The frame: corner studs, plates, rafters, and the boards that lie in the valleys.
+    bar(framing, mats.wood, P(x0, set, top, -0.1), P(x1, set, top, -0.1), 0.29, 0.25);
+    for (const x of [x0, x1]) {
+      bar(framing, mats.wood, P(x, set, base), P(x, set, top), 0.29, 0.29);
+      bar(framing, mats.wood, P(x, set, top, -0.1), shed ? P(x, d.backIn, ridge, -0.1) : P(x, d.cheekEndIn, top, -0.1), 0.125, 0.46);
+      if (!shed) {
+        bar(framing, mats.wood, P(x, set, top, -0.1), P(xc, set, ridge, -0.1), 0.125, 0.46);
+        bar(framing, mats.wood, P(x, d.cheekEndIn, top, 0.1), P(xc, d.backIn, ridge, 0.1), 0.46, 0.125);
+      }
+    }
+    for (let x = x0 + 24; x < x1 - 1; x += 24) bar(framing, mats.wood, P(x, set, base), P(x, set, top), 0.29, 0.125);
+    if (shed) for (let x = x0 + 24; x < x1 - 1; x += 24) bar(framing, mats.wood, P(x, set, top, -0.1), P(x, d.backIn, ridge, -0.1), 0.125, 0.46);
+    else bar(framing, mats.wood, P(xc, set, ridge, -0.15), P(xc, d.backIn, ridge, -0.15), 0.125, 0.6);
+
+    // The front wall and the two side walls.
+    flat(finished, mats.wall, shed ? [P(x0, set, base), P(x1, set, base), P(x1, set, top), P(x0, set, top)]
+      : [P(x0, set, base), P(x1, set, base), P(x1, set, top), P(xc, set, ridge), P(x0, set, top)], [0, 0, sgn]);
+    for (const [x, way] of [[x0, -1], [x1, 1]]) {
+      flat(finished, mats.wall, [P(x, set, base), P(x, set, top), shed ? P(x, d.backIn, ridge) : P(x, d.cheekEndIn, top)], [way, 0, 0]);
+      bar(finished, mats.trim, P(x - way * 2, set - 0.6, base), P(x - way * 2, set - 0.6, top), 0.34, 0.1);
+    }
+    if (shed) {
+      flat(finished, mats.shedRoof, [P(x0 - oh, set - oh, low, 0.05), P(x1 + oh, set - oh, low, 0.05), P(x1 + oh, d.backIn, ridge, 0.05), P(x0 - oh, d.backIn, ridge, 0.05)]);
+      bar(finished, mats.trim, P(x0 - oh - 1, set - oh - 0.5, low, -0.16), P(x1 + oh + 1, set - oh - 0.5, low, -0.16), 0.1, 0.42);
+      for (const x of [x0 - oh - 0.5, x1 + oh + 0.5]) bar(finished, mats.trim, P(x, set - oh, low, -0.16), P(x, d.backIn, ridge, -0.16), 0.1, 0.42);
+      bar(finished, mats.trim, P(x0 - oh, d.backIn, ridge, 0.1), P(x1 + oh, d.backIn, ridge, 0.1), 0.5, 0.06);
+    } else {
+      for (const xe of [x0 - oh, x1 + oh]) {
+        flat(finished, mats.shedRoof, [P(xe, set - oh, low, 0.05), P(xc, set - oh, ridge, 0.05), P(xc, d.backIn, ridge, 0.05), P(xe, reach(low), low, 0.05)]);
+        bar(finished, mats.trim, P(xe, set - oh - 0.5, low, -0.16), P(xc, set - oh - 0.5, ridge, -0.16), 0.1, 0.42);
+        bar(finished, mats.trim, P(xe, set - oh, low, -0.16), P(xe, reach(low), low, -0.16), 0.1, 0.42);
+        // Valley flashing where the dormer roof meets the main roof.
+        bar(finished, mats.trim, P(xe, reach(low), low, 0.07), P(xc, d.backIn, ridge, 0.07), 0.5, 0.05);
+      }
+      bar(finished, capMat, P(xc, set - oh - 1, ridge, 0.1), P(xc, d.backIn, ridge, 0.1), 0.45, 0.09);
+    }
+    if (d.window) {
+      const w = d.windowWIn / 12, h = d.windowHIn / 12, [x, , z] = P(xc, set, 0), y = (base + d.faceIn / 2) / 12;
+      box(finished, mats.glass, w, h, 0.06, x, y, z + sgn * 0.03);
+      box(finished, mats.trim, w + 0.5, 0.25, 0.14, x, y + h / 2 + 0.12, z + sgn * 0.06);
+      box(finished, mats.trim, w + 0.6, 0.2, 0.2, x, y - h / 2 - 0.1, z + sgn * 0.09);
+      for (const side of [-1, 1]) box(finished, mats.trim, 0.25, h, 0.14, x + side * (w / 2 + 0.12), y, z + sgn * 0.06);
+      box(finished, mats.door, 0.1, h, 0.08, x, y, z + sgn * 0.05);
+      box(finished, mats.door, w, 0.1, 0.08, x, y, z + sgn * 0.05);
+    }
+  }
+
+  // A hip roof: two long slopes cut back at both ends, and a three-cornered slope over each end wall.
+  function hipRoof(b, s, capMat, gutters) {
+    const L = b.lengthIn / 12, W = b.widthIn / 12, o = b.overhangIn / 12;
+    const lift = 0.09, low = s.lowH + lift, top = s.ridgeH + lift;
+    const ex = L / 2 + o, ez = W / 2 + o, rx = Math.max(0, (L - W) / 2);
+    for (const d of [1, -1]) {
+      flat(finished, mats.shedRoof, [[-ex, low, d * ez], [ex, low, d * ez], [rx, top, 0], [-rx, top, 0]]);
+      flat(finished, mats.shedRoof, [[d * ex, low, ez], [d * ex, low, -ez], [d * rx, top, 0]]);
+      box(finished, mats.trim, 0.12, 0.6, 2 * ez + 0.2, d * (ex + 0.04), low - 0.24, 0);
+      for (const side of [1, -1]) bar(finished, capMat, [d * (ex + 0.1), low + 0.03, side * (ez + 0.1)], [d * rx, top + 0.05, 0], 0.55, 0.09);
+      if (!gutters) continue;
+      box(finished, mats.trim, 0.42, 0.38, 2 * ez + 0.1, d * (ex + 0.31), low - 0.24, 0);
+      box(finished, mats.dark, 0.3, 0.02, 2 * ez, d * (ex + 0.31), low - 0.045, 0);
+    }
+    if (rx > 0.2) {
+      box(finished, capMat, 2 * rx + 0.3, 0.14, 0.6, 0, top + 0.07, 0);
+      if (b.options?.ridgeVent) {
+        box(finished, capMat, 2 * rx - 0.6, 0.22, 0.5, 0, top + 0.25, 0);
+        box(finished, mats.dark, 2 * rx - 0.8, 0.07, 0.56, 0, top + 0.17, 0);
+      }
     }
   }
 
@@ -583,6 +776,8 @@ export function createView(canvas, stage) {
     const Lw = gable ? W : L;
     const flip = wall === 'back' || wall === 'left';
     const g = wallGroup(b, wall);
+    // Under a hip roof an end wall stops level at the eave like a side wall.
+    const peaked = gable && b.roof !== 'hip';
     // A side wall stands as tall as the roof line over it. An end wall is square to the
     // lowest eave, and the roof line closes it in above that.
     const last = b.line[b.line.length - 1];
@@ -613,7 +808,7 @@ export function createView(canvas, stage) {
       if (wains && !open(mid, wains)) box(g, mats.trim, du, 0.16, 0.07, mid, wains, 0.035);
       if (!open(mid, 0.05)) box(g, mats.trim, du, 0.34, 0.1, mid, 0.17, 0.05);
     }
-    if (gable) {
+    if (peaked) {
       for (let i = 0; i < crest.length - 1; i++) {
         const [u0, h0] = crest[i], [u1, h1] = crest[i + 1];
         if (h1 > H + 1e-6) upper.tri([u0, H], [u1, H], [u1, h1]);
@@ -629,7 +824,7 @@ export function createView(canvas, stage) {
       g.add(m);
       wallMeshes.push(m);
     }
-    const cornerTop = gable ? [crest[0][1], crest[crest.length - 1][1]] : [H, H];
+    const cornerTop = peaked ? [crest[0][1], crest[crest.length - 1][1]] : [H, H];
     [0.2, Lw - 0.2].forEach((u, i) => box(g, mats.trim, 0.42, cornerTop[i], 0.1, u, cornerTop[i] / 2, 0.05));
 
     // Soft dark bands where the wall meets the ground and tucks under the eave.
@@ -641,7 +836,7 @@ export function createView(canvas, stage) {
       g.add(m);
     };
     band(shades.base, 1.6, 0.8, false);
-    if (!gable) band(shades.eave, 1.8, H - 0.9, true);
+    if (!peaked) band(shades.eave, 1.8, H - 0.9, true);
 
     for (const o of ops) {
       const w = o.u1 - o.u0, h = o.v1 - o.v0, uc = (o.u0 + o.u1) / 2, vc = (o.v0 + o.v1) / 2;
@@ -734,26 +929,30 @@ export function createView(canvas, stage) {
     // A shingle roof is capped with shingles, a steel one with trim.
     const capMat = b.options?.roofCover === 'shingles' ? mats.ridgeShingle : mats.trim;
     const liftOf = (s) => t / 2 / Math.cos(s.a) + 0.02;
+    const hip = b.roof === 'hip';
+    if (hip) hipRoof(b, shapes[0], capMat, gutters);
+    // Skylights on a hip roof stay under the ridge, clear of the hips.
+    const litLen = hip ? Math.max(0, L - W) : len;
 
     // Skylight panels share out between the slopes that reach the top of the roof.
     const lit = shapes.filter((s) => s.p.highEdge !== 'break');
-    const lights = b.options?.skylights ?? 0, slots = Math.floor(len / PANEL_FT);
+    const lights = b.options?.skylights ?? 0, slots = Math.floor(litLen / PANEL_FT);
     lit.forEach((s, n) => {
       const share = lit.length === 1 ? lights : n === 0 ? Math.ceil(lights / 2) : Math.floor(lights / 2);
       const count = Math.min(slots, share);
       for (let k = 0; k < count; k++) {
-        const x = (Math.floor((k + 0.5) * slots / count) + 0.5) * PANEL_FT - len / 2;
+        const x = (Math.floor((k + 0.5) * slots / count) + 0.5) * PANEL_FT - litLen / 2;
         box(finished, mats.skylight, PANEL_FT - 0.1, t + 0.03, s.slope - 1.2, x, s.midH + liftOf(s), s.midZ, s.dir * s.a);
       }
     });
 
     for (const s of shapes) {
       const lift = liftOf(s), out = s.dir;
-      box(finished, mats.roof, len, t, s.slope, 0, s.midH + lift, s.midZ, s.dir * s.a).geometry = roofSlab(len, s.slope, s.lowZ < s.highZ);
-      for (const end of [1, -1]) {
+      if (!hip) box(finished, mats.roof, len, t, s.slope, 0, s.midH + lift, s.midZ, s.dir * s.a).geometry = roofSlab(len, s.slope, s.lowZ < s.highZ);
+      for (const end of hip ? [] : [1, -1]) {
         box(finished, mats.trim, 0.12, 0.6, s.slope, end * (len / 2 + 0.05), s.midH + lift - 0.22, s.midZ, s.dir * s.a);
       }
-      if (s.p.highEdge === 'ridge') {
+      if (s.p.highEdge === 'ridge' && !hip) {
         const top = s.ridgeH + lift;
         if (s.dir === 1) {
           box(finished, capMat, len + 0.16, 0.16, 0.26, 0, top + 0.09, s.ridgeZ);
@@ -849,6 +1048,7 @@ export function createView(canvas, stage) {
       along(row.wall, row.lengthIn ? row.lengthIn / 12 - (inside ? 0.6 : 0) : full, row.heightIn / 12 - 0.23, 0.46, mats.wood, centered);
     }
     const shapes = planes.map((p) => ({ ...planeShape(b, p), p }));
+    const hip = b.roof === 'hip';
     // Uprights inside the truss: one under each break or peak, and one between.
     const webs = [];
     for (let i = 0; i < b.line.length - 1; i++) {
@@ -864,7 +1064,14 @@ export function createView(canvas, stage) {
       const x = inside ? Math.min(Math.max(tr.x / 12 - L / 2, -L / 2 + 0.3), L / 2 - 0.3) : tr.x / 12 - L / 2;
       if (lift) for (const s of shapes) box(group, mats.wood, 0.125, 0.46, W / 2 / Math.cos(liftA), x, H + (W / 4) * lift + 0.23, Math.sign(s.lowZ) * W / 4, s.dir * liftA);
       else box(group, mats.wood, 0.125, attic ? 0.77 : 0.46, W - (inside ? 0.4 : 0), x, H + (attic ? 0.385 : 0.23), 0);
-      for (const s of shapes) box(group, mats.wood, 0.125, 0.46, s.slope, x, s.midH - 0.1 - drop, s.midZ, s.dir * s.a);
+      // On a hip roof a truss nearer an end wall than half the width is cut off flat where the end slope passes over it.
+      const fromEnd = hip ? Math.min(tr.x, b.lengthIn - tr.x) / 12 : Infinity, cut = fromEnd < W / 2 - 0.01;
+      const flatTop = cut ? H + fromEnd * b.pitch / 12 - 0.33 - drop : Infinity;
+      for (const s of shapes) {
+        const f = cut ? (fromEnd * 12 + s.p.lowOverIn) / (b.widthIn / 2 + s.p.lowOverIn) : 1;
+        box(group, mats.wood, 0.125, 0.46, s.slope * f, x, s.lowH + (s.highH - s.lowH) * f / 2 - 0.1 - drop, s.lowZ + (s.highZ - s.lowZ) * f / 2, s.dir * s.a);
+      }
+      if (cut && fromEnd > 0.5) box(group, mats.wood, 0.125, 0.46, W - 2 * fromEnd, x, flatTop, 0);
       if (attic) {
         // Knee walls at the room edges and a tie across the room ceiling.
         const knee = H + attic.kneeIn / 12 - drop - floorTop, top = H + attic.ceilingIn / 12 - drop;
@@ -874,11 +1081,32 @@ export function createView(canvas, stage) {
       }
       for (const [y, h] of webs) {
         const base = H + (Math.min(y, b.widthIn - y) / 12) * lift + (lift ? 0.23 : 0);
-        const tall = h / 12 - base - drop;
+        const tall = Math.min(h / 12 - drop, flatTop) - base;
         if (tall > 0.5) box(group, mats.wood, 0.125, tall, 0.3, x, base + tall / 2, zOf(y));
       }
     }
     if (attic) box(group, mats.deck, L - 0.3, 0.06, attic.roomIn / 12, 0, floorTop + 0.03, 0);
+    if (hip) {
+      // Hip rafters from the corners to the ends of the ridge, short jacks off each end wall,
+      // and purlin rows that run level round all four slopes, each one shorter than the last.
+      const o = b.overhangIn / 12, tan = b.pitch / 12, low = shapes[0].lowH, rx = Math.max(0, (L - W) / 2), pull = inside ? 0.3 : 0;
+      const step = b.trussSpacingIn / 12;
+      for (const sx of [1, -1]) {
+        for (const sz of [1, -1]) bar(group, mats.wood, [sx * (L / 2 - pull), H - 0.1 - drop, sz * (W / 2 - pull)], [sx * rx, shapes[0].ridgeH - 0.2 - drop, 0], 0.125, 0.6);
+        for (let z = -W / 2 + step; z < W / 2 - 0.5; z += step) {
+          const run = W / 2 - Math.abs(z);
+          if (run > 1) bar(group, mats.wood, [sx * (L / 2 - pull), H - 0.1 - drop, z], [sx * (L / 2 - run), H + run * tan - 0.1 - drop, z], 0.125, 0.46);
+        }
+      }
+      for (const r of result.geometry.hip.rows) {
+        const inset = r.insetIn / 12, y = low + inset * tan + 0.2 - drop, side = r.side ? -1 : 1;
+        if (inside && inset < o + 0.4) continue;
+        const a = r.startIn / 12, e = r.endIn / 12;
+        if (r.end) bar(group, mats.wood, [-side * (L / 2 + o - inset), y, W / 2 - a], [-side * (L / 2 + o - inset), y, W / 2 - e], 0.29, 0.125);
+        else bar(group, mats.wood, [a - L / 2, y, side * (W / 2 + o - inset)], [e - L / 2, y, side * (W / 2 + o - inset)], 0.29, 0.125);
+      }
+      return;
+    }
     const rowLen = inside ? L - 0.3 : result.geometry.purlinRowLengthIn / 12;
     for (const s of shapes) {
       const rows = s.p.purlinRows;
@@ -1059,6 +1287,8 @@ export function createView(canvas, stage) {
     if (anyOpen) buildFraming(result, finished, true);
     buildInterior(result, fits);
     for (const s of result.geometry.sheds) buildShed(b, s);
+    for (const w of result.geometry.awnings ?? []) buildAwning(b, w);
+    for (const d of result.geometry.dormers ?? []) buildDormer(b, d);
     if (settingKey !== `${L}x${W}`) {
       settingKey = `${L}x${W}`;
       buildContact(L, W);

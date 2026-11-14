@@ -54,8 +54,15 @@ export function dxf(result) {
     const x1 = front ? s.startIn : Math.min(...xs, s.wall === 'left' ? 0 : L), x2 = front ? s.endIn : Math.max(...xs, s.wall === 'left' ? 0 : L);
     const y1 = front ? Math.min(...ys, s.wall === 'front' ? 0 : W) : s.startIn, y2 = front ? Math.max(...ys, s.wall === 'front' ? 0 : W) : s.endIn;
     rect('PLAN-SHEDS', x1, y1, x2, y2);
+    // A wraparound porch fills the square outside the building corner.
+    for (const t of s.ownedCorners) rect('PLAN-SHEDS', t < 0 ? s.startIn - s.depthIn : s.endIn, s.wall === 'front' ? -s.depthIn : W, t < 0 ? s.startIn : s.endIn + s.depthIn, s.wall === 'front' ? 0 : W + s.depthIn);
     for (const p of s.posts) square('PLAN-POSTS', p.x, p.y);
     text('TEXT', x1 + 12, (y1 + y2) / 2, 6, s.label);
+  }
+  for (const a of g.awnings ?? []) {
+    const box = { front: [a.startIn, -a.outIn, a.endIn, 0], back: [a.startIn, W, a.endIn, W + a.outIn], left: [-a.outIn, a.startIn, 0, a.endIn], right: [L, a.startIn, L + a.outIn, a.endIn] }[a.wall];
+    rect('PLAN-AWNINGS', ...box);
+    text('TEXT', box[0] + 6, (box[1] + box[3]) / 2, 5, a.label);
   }
   for (const p of g.partitions ?? []) {
     let at = p.startIn;
@@ -74,7 +81,7 @@ export function dxf(result) {
     }
     text('TEXT', Math.min(f.edgeX, f.wallX) + 12, W / 2, 6, `Loft floor ${n(f.heightIn)} in up`);
   }
-  const deepFront = Math.max(0, ...g.sheds.filter((s) => s.wall === 'front').map((s) => s.depthIn));
+  const deepFront = Math.max(0, ...g.sheds.filter((s) => s.wall === 'front').map((s) => s.depthIn), ...(g.awnings ?? []).filter((a) => a.wall === 'front').map((a) => a.outIn));
   text('TEXT', 0, -deepFront - 30, 8, `Floor plan, ${n(L / 12)} x ${n(W / 12)} ft, front wall at the bottom. Units are inches.`);
 
   // The four walls in a row under the plan, each seen from outside.
@@ -98,6 +105,7 @@ export function dxf(result) {
       const span = isGable(wall) && row.heightIn > b.eaveIn ? roofSpanAbove(b, row.heightIn) : [0, len];
       if (span) line('ELEV-GIRTS', u(span[0]), baseY + row.heightIn, u(span[1]), baseY + row.heightIn);
     }
+    for (const a of (g.awnings ?? []).filter((a) => a.wall === wall)) rect('ELEV-AWNINGS', u(a.startIn), baseY + a.lowIn, u(a.endIn), baseY + a.highIn);
     for (const o of b.openings.filter((o) => o.wall === wall)) {
       rect('ELEV-OPENINGS', u(o.startIn), baseY + o.sillIn, u(o.endIn), baseY + o.sillIn + o.heightIn);
     }

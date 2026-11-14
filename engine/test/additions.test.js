@@ -227,3 +227,20 @@ test('a board and batten wall one inch taller than the longest board is built fr
   assert.equal(r.ok, true);
   for (const i of r.items.filter((i) => i.name === 'Siding Boards' || i.name === 'Battens')) assert.ok(i.qty > 0 && i.ft > 0, JSON.stringify(i));
 });
+
+test('the site plan and the CAD file carry the wrapped corner and the awning', async () => {
+  const { placeOnLot } = await import('../site.js');
+  const { dxf } = await import('../dxf.js');
+  // The building is 48 ft long with an 8 ft porch across the front and down the right end,
+  // so the footprint is 48 + 8 = 56 ft wide and 30 + 8 = 38 ft deep, corner square included.
+  const p = placeOnLot(wrap.geometry, { lotWidth: 200, lotDepth: 200, fromLeft: 10, fromFront: 10 });
+  assert.deepEqual(p.footprint, [10, 10, 66, 48]);
+  const front = p.parts.find((part) => part.label.startsWith('Front'));
+  assert.deepEqual(front.box, [10, 10, 66, 18]);
+  const r = design({ ...plain, sheds: [wrapInput, { kind: 'awning', wall: 'back', over: null, start: 4, out: 3, width: 5, pitch: 4 }] });
+  assert.equal(r.ok, true);
+  const file = dxf(r);
+  assert.ok(file.includes('PLAN-AWNINGS') && file.includes('ELEV-AWNINGS'));
+  // The corner square in the plan: one line from x 576 to 672 at y -96.
+  assert.ok(file.includes(['PLAN-SHEDS', '10', '576', '20', '-96', '30', '0', '11', '672', '21', '-96'].join('\r\n')));
+});

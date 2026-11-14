@@ -24,8 +24,24 @@ export function floorPlan(result, light = false, fits = []) {
     const box = { front: [a, W, e - a, D], back: [a, -D, e - a, D], left: [-D, y(e), D, e - a], right: [L, y(e), D, e - a] }[s.wall];
     out.push(`<rect x="${box[0]}" y="${box[1]}" width="${box[2]}" height="${box[3]}" fill="${PAPER}" fill-opacity="${s.enclosed ? 1 : 0.45}" stroke="${INK}" stroke-width="${s.enclosed ? 0.3 : 0.08}" ${s.enclosed ? '' : 'stroke-dasharray="0.6 0.4"'}/>`);
     const cx = box[0] + box[2] / 2, cy = box[1] + box[3] / 2, turn = s.wall === 'left' || s.wall === 'right';
-    out.push(label(cx, cy + pad * 0.03, `${s.kind === 'porch' ? 'Porch' : s.enclosed ? 'Lean-To' : 'Open Lean-To'}, ${D} ft`, turn ? `transform="rotate(-90 ${cx} ${cy})"` : ''));
+    // A wraparound porch fills in the square outside the building corner.
+    for (const t of s.ownedCorners) {
+      const cx0 = t < 0 ? a - D : e;
+      m[t < 0 ? 'left' : 'right'] = Math.max(m[t < 0 ? 'left' : 'right'], D);
+      out.push(`<rect x="${cx0}" y="${s.wall === 'front' ? W : -D}" width="${D}" height="${D}" fill="${PAPER}" fill-opacity="0.45" stroke="${INK}" stroke-width="0.08" stroke-dasharray="0.6 0.4"/>`,
+        `<line x1="${t < 0 ? a : e}" y1="${s.wall === 'front' ? W : 0}" x2="${t < 0 ? a - D : e + D}" y2="${s.wall === 'front' ? W + D : -D}" stroke="${INK}" stroke-width="0.06"/>`);
+    }
+    out.push(label(cx, cy + pad * 0.03, `${s.turns.length ? 'Wraparound Porch' : s.kind === 'porch' ? 'Porch' : s.enclosed ? 'Lean-To' : 'Open Lean-To'}, ${D} ft`, turn ? `transform="rotate(-90 ${cx} ${cy})"` : ''));
     for (const p of s.posts) out.push(`<rect x="${p.x / 12 - 0.3}" y="${y(p.y / 12) - 0.3}" width="0.6" height="0.6" fill="${INK}"/>`);
+  }
+  for (const a of result.geometry.awnings ?? []) {
+    const D = a.outIn / 12, s0 = a.startIn / 12, e = a.endIn / 12;
+    m[a.wall] = Math.max(m[a.wall], D);
+    const box = { front: [s0, W, e - s0, D], back: [s0, -D, e - s0, D], left: [-D, y(e), D, e - s0], right: [L, y(e), D, e - s0] }[a.wall];
+    out.push(`<rect x="${box[0]}" y="${box[1]}" width="${box[2]}" height="${box[3]}" fill="${PAPER}" fill-opacity="0.45" stroke="${INK}" stroke-width="0.08" stroke-dasharray="0.3 0.3"/>`);
+    const side = a.wall === 'front' || a.wall === 'back', cx = box[0] + box[2] / 2, cy = box[1] + box[3] / 2;
+    const lx = side ? cx : cx + (a.wall === 'left' ? -1 : 1) * (D / 2 + pad * 0.08), ly = side ? cy + (a.wall === 'front' ? 1 : -1) * (D / 2 + pad * 0.1) + pad * 0.03 : cy;
+    out.push(label(lx, ly, 'Awning', side ? '' : `transform="rotate(-90 ${lx} ${ly})"`));
   }
   out.push(`<rect x="0" y="0" width="${L}" height="${W}" fill="${PAPER}" stroke="${INK}" stroke-width="0.3"/>`);
 

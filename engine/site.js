@@ -22,7 +22,9 @@ export function placeOnLot(geometry, input = {}) {
   // Each part as a box in building feet: the main building, then every lean-to and porch.
   const parts = [{ label: 'Building', main: true, box: [0, 0, L, W] }];
   for (const s of geometry.sheds ?? []) {
-    const a = s.startIn / 12, e = s.endIn / 12, D = s.depthIn / 12;
+    // A wraparound porch also covers the square outside each building corner it turns.
+    const D = s.depthIn / 12, own = s.ownedCorners ?? [];
+    const a = s.startIn / 12 - (own.includes(-1) ? D : 0), e = s.endIn / 12 + (own.includes(1) ? D : 0);
     const box = { front: [a, -D, e, 0], back: [a, W, e, W + D], left: [-D, a, 0, e], right: [L, a, L + D, e] }[s.wall];
     parts.push({ label: s.label[0].toUpperCase() + s.label.slice(1), main: false, open: !s.enclosed, box });
   }

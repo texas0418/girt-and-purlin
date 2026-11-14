@@ -47,7 +47,7 @@ const PRICE_FIELDS = {
   taxPct: { label: 'Sales Tax', unit: '%', step: 0.25 },
   laborPerSqFt: { label: 'Labor', unit: '$/sq ft', step: 0.25 },
 };
-const SHED_NAMES = { leanto: 'Lean-To', porch: 'Porch' };
+const SHED_NAMES = { leanto: 'Lean-To', porch: 'Porch', wrap: 'Wraparound Porch', awning: 'Awning' };
 const NEW_SHED = { leanto: { depth: 12, pitch: 3, drop: 0, enclosed: false }, porch: { depth: 8, pitch: 3, drop: 0, enclosed: false } };
 const SHED_FIELDS = {
   depth: { label: 'Depth', step: 1, min: 4 },
@@ -55,6 +55,17 @@ const SHED_FIELDS = {
   start: { label: 'Starts At', step: 1, min: 0 },
   pitch: { label: 'Roof Pitch', step: 1, min: 1 },
   drop: { label: 'Below Main Eave', step: 0.5, min: 0 },
+};
+const WRAP_FIELDS = ['depth', 'pitch', 'drop'];
+const AWNING_FIELDS = {
+  start: { label: 'Starts At', step: 1, min: 0 },
+  out: { label: 'Sticks Out', step: 1, min: 2, max: 8 },
+  width: { label: 'Width', step: 1, min: 3, max: 40 },
+  pitch: { label: 'Roof Pitch', step: 1, min: 1, max: 12 },
+};
+const DORMER_FIELDS = {
+  at: { label: 'From Left End', step: 1, min: 2 },
+  width: { label: 'Width', step: 1, min: 3, max: 16 },
 };
 // Finish choices. Each row is a title, the key in state.options, and the values with their button names.
 const OPTION_SETS = {
@@ -73,7 +84,7 @@ const OPTION_SETS = {
   cupolas: ['Cupolas', [[false, 'None'], [true, 'On The Ridge']]],
   cupolaSizeIn: ['Cupola Size', [[0, 'Sized To The Roof'], [24, '24 in'], [36, '36 in'], [48, '48 in']]],
 };
-const ROOF_NAMES = { gable: 'Gable', mono: 'Single Slope', gambrel: 'Gambrel' };
+const ROOF_NAMES = { gable: 'Gable', mono: 'Single Slope', gambrel: 'Gambrel', hip: 'Hip' };
 const roofOf = () => state.roof ?? 'gable';
 const trussOf = () => (roofOf() === 'gable' ? state.truss ?? 'common' : 'common');
 const OPTION_DEFAULTS = { roofCover: 'steel', wallCover: 'steel', wainscotIn: 36, linerWalls: false, linerCeiling: false, roofInsulation: 'none', wallInsulation: 'none', ceilingR: 0, footing: 'none', slab: false, ridgeVent: false, eaveLights: 'none', skylights: 0, cupolas: false, cupolaSizeIn: 0 };
@@ -112,6 +123,7 @@ const SAMPLE = {
   loads: {},
   things: [],
   sheds: [],
+  dormers: [],
   partitions: [],
   loft: null,
   options: {},
@@ -143,7 +155,7 @@ if (!state.id) { state.id = newId(); if (!shared) { try { localStorage.setItem(S
 let catalog = loadPrices();
 if (!shared && !designer && !catalog.sample && !catalog.retail && !priceLists.all().some((l) => l.supplier === catalog.supplier)) priceLists.put(catalog);
 let priced = priceJob(result, catalog, state.pricing);
-const ui = { delta: 0, notice: '', step: 'Size', view: 'finished', sheet: 'front', sel: null, opening: null, shed: null, part: null, thing: null, side: null, placing: null, jobrow: null, tplrow: null, confirm: null, changed: new Set(), last: '', problem: '', savedAt: null, builder: { name: '', pct: 0 } };
+const ui = { delta: 0, notice: '', step: 'Size', view: 'finished', sheet: 'front', sel: null, opening: null, shed: null, dormer: null, part: null, thing: null, side: null, placing: null, jobrow: null, tplrow: null, confirm: null, changed: new Set(), last: '', problem: '', savedAt: null, builder: { name: '', pct: 0 } };
 if (unopened) { ui.lead = 'Your saved job could not be opened.'; ui.problem = `${unopened} The sample building is showing instead.`; }
 const view = createView($('view'), $('stage'));
 
@@ -240,7 +252,7 @@ function openJob(job, note) {
   state = next;
   result = tried;
   priced = priceJob(result, catalog, state.pricing);
-  Object.assign(ui, { changed: new Set(), last: note, delta: 0, problem: '', lead: '', opening: null, shed: null, thing: null, side: null, placing: null, jobrow: null, tplrow: null, confirm: null });
+  Object.assign(ui, { changed: new Set(), last: note, delta: 0, problem: '', lead: '', opening: null, shed: null, dormer: null, thing: null, side: null, placing: null, jobrow: null, tplrow: null, confirm: null });
   $('job').value = state.job;
   save();
   view.update(result, state.colors, fits());
@@ -278,6 +290,7 @@ const lineKey = (i) => [i.group, i.name, i.size, i.length].join('|');
 // Every change goes through here. A change the engine rejects is not applied.
 function apply(change, note) {
   const next = { ...state, ...change };
+  if (change.openings && !change.sheds) next.sheds = awningsFollow(next.openings);
   const tried = design(next);
   if (!tried.ok) {
     ui.lead = '';
@@ -302,6 +315,36 @@ function apply(change, note) {
 function setOpening(index, change, note) {
   apply({ openings: state.openings.map((o, i) => (i === index ? { ...o, ...change } : o)) }, note);
 }
+
+// An awning set over a door or window goes where that opening goes, and grows to cover it if the opening gets wider.
+// One whose opening is gone keeps its place as an awning in its own spot.
+function awningsFollow(openings, gone = -1) {
+  return state.sheds.map((s, n) => {
+    if (s.kind !== 'awning' || s.over == null) return s;
+    const o = s.over === gone ? null : openings[s.over > gone && gone >= 0 ? s.over - 1 : s.over];
+    if (!o) {
+      const at = result.geometry.awnings.find((a) => a.index === n);
+      return { ...s, over: null, start: Math.max(0, Math.floor((at?.startIn ?? 0) / 12)) };
+    }
+    return { ...s, over: openings.indexOf(o), wall: o.wall, width: Math.max(s.width, Math.ceil(o.width)) };
+  });
+}
+
+// The first of a list of new pieces the engine accepts on this building.
+function firstFit(key, list) {
+  return list.find((item) => design({ ...state, [key]: [...(state[key] ?? []), item] }).ok) ?? null;
+}
+const dormers = () => state.dormers ?? [];
+const setDormer = (index, change, note) => apply({ dormers: dormers().map((m, i) => (i === index ? { ...m, ...change } : m)) }, note);
+const wallLen = (w) => (w === 'front' || w === 'back' ? state.length : state.width);
+const fromText = (o) => `${Number.isInteger(o.offset) ? `${o.offset} ft` : feetInches(o.offset * 12)} ${o.wall === 'front' || o.wall === 'back' ? 'From Left' : 'From Front'}`;
+const wallList = (list) => { const n = list.map((w) => WALL_NAMES[w].replace(' End', '').toLowerCase()); const s = n.length > 1 ? `${n.slice(0, -1).join(', ')} and ${n.at(-1)}` : n[0]; return s[0].toUpperCase() + s.slice(1); };
+// How far below the main eave an addition has to start to tuck under the overhang and fascia on a wall.
+const tuckUnder = (wall) => { const host = result.geometry.building; return edgeOverhangIn(host, wall) > 0 ? Math.ceil((eaveDropIn(host, wall) + 6) / 6) / 2 : 0; };
+const shedText = (s) => (s.kind === 'wrap' ? `Wraparound porch, ${wallList(s.walls).toLowerCase()} walls, ${num(s.depth)} ft deep`
+  : s.kind === 'awning' ? `Awning, ${WALL_NAMES[s.wall].toLowerCase()} wall${s.over != null && state.openings[s.over] ? `, over the ${TYPE_NAMES[state.openings[s.over].type].toLowerCase()}` : ''}, ${num(s.out ?? 3)} x ${num(s.width ?? 5)} ft`
+  : `${SHED_NAMES[s.kind]}, ${WALL_NAMES[s.wall].toLowerCase()} wall, ${num(s.depth)} x ${num(s.length)} ft${s.kind === 'leanto' && s.enclosed ? ', enclosed' : ''}`);
+const dormerText = (m) => `${m.side === 'back' ? 'Back' : 'Front'} slope, ${m.style === 'shed' ? 'shed' : 'gable'} roof, ${m.window === false ? 'no window' : 'with window'}`;
 
 function setShed(index, change, note) {
   apply({ sheds: state.sheds.map((s, i) => (i === index ? { ...s, ...change } : s)) }, note);
@@ -484,19 +527,38 @@ function leftPanel() {
     const about = {
       gable: 'A gable has two equal slopes that meet at a ridge down the middle.',
       mono: 'A single slope is low along the front wall and high along the back. The wall height on the Size step is the low wall.',
+      hip: 'A hip roof slopes down to all four walls, so there are no gable ends. The eave runs level all the way around.',
       gambrel: `A gambrel is the classic barn roof: a steep lower slope, then a flatter one up to the ridge. Its slopes are fixed at ${result.rules.gambrelLowerPitch} in 12 and ${result.rules.gambrelUpperPitch} in 12, and the steep part stops at the wall line with no side overhang.`,
     }[shape];
+    const onRoof = result.geometry.dormers;
+    const dormerRows = dormers().map((m, i) => {
+      const head = `<button data-dormopen="${i}"><span>Dormer ${i + 1}<small>${dormerText(m)}</small></span><em>${num(m.width ?? 6)} ft wide</em></button>`;
+      if (ui.dormer !== i) return `<div class="op">${head}</div>`;
+      return `<div class="op open">${head}
+        <div class="seg"><button data-dormside="front" class="${m.side === 'back' ? '' : 'on'}">Front Slope</button><button data-dormside="back" class="${m.side === 'back' ? 'on' : ''}">Back Slope</button></div>
+        <div class="seg"><button data-dormstyle="gable" class="${m.style === 'shed' ? '' : 'on'}">Gable Roof</button><button data-dormstyle="shed" class="${m.style === 'shed' ? 'on' : ''}">Shed Roof</button></div>
+        ${Object.entries(DORMER_FIELDS).map(([k, f]) => stepper(`data-dormfield="${k}"`, f.label, feetInches(m[k] * 12), '', false)).join('')}
+        <div class="seg"><button data-dormwin="1" class="${m.window === false ? '' : 'on'}">With Window</button><button data-dormwin="0" class="${m.window === false ? 'on' : ''}">No Window</button></div>
+        <button class="btn remove" data-dormremove="${i}">Remove</button></div>`;
+    }).join('');
+    const canDormer = shape === 'gable' || shape === 'gambrel';
+    const dormerPart = `<h2>Dormers</h2>
+      ${canDormer ? `<div class="seg"><button data-dormadd>Add A Dormer</button></div>${dormerRows}
+      <p class="hint">A dormer is a small roofed box that stands up out of the main roof, usually with a window in its face. It is framed on top of the roof and is counted and drawn. Dormers go on gable and gambrel roofs.</p>`
+    : `<p class="hint">Dormers go on gable and gambrel roofs.${dormers().length ? ` The ${dormers().length === 1 ? 'dormer' : `${dormers().length} dormers`} on this job ${dormers().length === 1 ? 'is' : 'are'} left off the building while the roof is ${shape === 'hip' ? 'a hip' : 'a single slope'}, and ${dormers().length === 1 ? 'comes' : 'come'} back with a gable or gambrel.` : ''}</p>`}`;
     return `<h2>Roof Shape</h2>
-      <div class="seg">${Object.entries(ROOF_NAMES).map(([k, name]) => `<button data-roof="${k}" class="${shape === k ? 'on' : ''}">${name}</button>`).join('')}</div>
+      <div class="seg grid">${Object.entries(ROOF_NAMES).map(([k, name]) => `<button data-roof="${k}" class="${shape === k ? 'on' : ''}">${name}</button>`).join('')}</div>
       <p class="hint">${about}</p>
       ${shape === 'gable' ? `<h2>Truss Type</h2>
       <div class="seg">${Object.entries(TRUSS_NAMES).map(([k, name]) => `<button data-truss="${k}" class="${trussOf() === k ? 'on' : ''}">${name}</button>`).join('')}</div>
       <p class="hint">${TRUSS_ABOUT[trussOf()]}</p>` : ''}
-      <h2>Roof</h2>${(shape === 'gambrel' ? ['endOverhang'] : ['pitch', ...(trussOf() === 'scissor' ? ['ceilingPitch'] : trussOf() === 'attic' ? ['atticRoom'] : []), 'overhang', 'endOverhang']).map(field).join('')}
+      <h2>Roof</h2>${(shape === 'gambrel' ? ['endOverhang'] : shape === 'hip' ? ['pitch', 'overhang'] : ['pitch', ...(trussOf() === 'scissor' ? ['ceilingPitch'] : trussOf() === 'attic' ? ['atticRoom'] : []), 'overhang', 'endOverhang']).map(field).join('')}
       <h2>Truss Spacing</h2>${choice('trussSpacing', [2, 4, 8], 'ft')}
+      ${shape === 'hip' ? '<p class="hint">A hip roof has one overhang, the same on every side. The truss maker supplies the hip set for each end, and the list names it that way.</p>' : ''}
       ${shape === 'mono' ? '' : `${optionRow('cupolas')}${opt('cupolas') ? optionRow('cupolaSizeIn', true) : ''}
       <p class="hint">Cupolas sit on the ridge. Sized to the roof means one or two, by the length of the ridge. They are priced as bought units.</p>`}
-      <p class="hint">Lean-tos and porches are on their own step.</p>`;
+      ${dormerPart}
+      <p class="hint">Lean-tos, porches and awnings are on their own step.</p>`;
   }
   if (ui.step === 'Doors And Windows') {
     const rows = state.openings.map((o, i) => {
@@ -520,6 +582,31 @@ function leftPanel() {
   }
   if (ui.step === 'Lean-Tos And Porches') {
     const rows = state.sheds.map((s, i) => {
+      const remove = `<button class="btn remove" data-shedremove="${i}">Remove</button></div>`;
+      if (s.kind === 'wrap') {
+        const head = `<button data-shedopen="${i}"><span>Wraparound Porch<small>${wallList(s.walls)} walls, open</small></span><em>${num(s.depth)} ft deep</em></button>`;
+        if (ui.shed !== i) return `<div class="op">${head}</div>`;
+        return `<div class="op open">${head}
+        <h2>Walls It Covers</h2>
+        <div class="seg">${Object.entries(WALL_NAMES).map(([w, name]) =>
+          `<button data-wrapwall="${w}" class="${s.walls.includes(w) ? 'on' : ''}">${name.replace(' End', '')}</button>`).join('')}</div>
+        ${WRAP_FIELDS.map((k) => stepper(`data-shedfield="${k}"`, SHED_FIELDS[k].label, k === 'pitch' ? String(s[k]) : feetInches(s[k] * 12), k === 'pitch' ? '/12' : '', false)).join('')}
+        ${remove}
+        <p class="hint">The walls picked have to touch at a corner. The porch runs the full length of each one and its roof meets at a hip over every corner.</p>`;
+      }
+      if (s.kind === 'awning') {
+        const over = s.over == null ? null : state.openings[s.over];
+        const head = `<button data-shedopen="${i}"><span>Awning<small>${WALL_NAMES[s.wall]} wall, ${over ? `over the ${TYPE_NAMES[over.type].toLowerCase()}` : 'in its own spot'}</small></span><em>${num(s.out)} x ${num(s.width)} ft</em></button>`;
+        if (ui.shed !== i) return `<div class="op">${head}</div>`;
+        return `<div class="op open">${head}
+        <div class="seg">${Object.entries(WALL_NAMES).map(([w, name]) =>
+          `<button data-shedwall="${w}" class="${s.wall === w ? 'on' : ''}">${name.replace(' End', '')}</button>`).join('')}</div>
+        <h2>Goes Over</h2>
+        <div class="seg stack">${state.openings.map((o, n) => (o.wall === s.wall ? `<button data-awnover="${n}" class="${s.over === n ? 'on' : ''}">${TYPE_NAMES[o.type]}, ${fromText(o)}</button>` : '')).join('')}<button data-awnover="own" class="${over ? '' : 'on'}">Its Own Spot</button></div>
+        ${Object.entries(AWNING_FIELDS).filter(([k]) => k !== 'start' || !over).map(([k, f]) => stepper(`data-shedfield="${k}"`, f.label, k === 'pitch' ? String(s[k]) : feetInches(s[k] * 12), k === 'pitch' ? '/12' : '', false)).join('')}
+        ${remove}
+        <p class="hint">An awning picked for a door or window centers itself over it and sits just above the opening. It follows the roof covering and trim color of the building.</p>`;
+      }
       const head = `<button data-shedopen="${i}"><span>${SHED_NAMES[s.kind]}<small>${WALL_NAMES[s.wall]} wall, ${s.kind === 'leanto' && s.enclosed ? 'enclosed' : 'open'}</small></span><em>${num(s.depth)} x ${num(s.length)}</em></button>`;
       if (ui.shed !== i) return `<div class="op">${head}</div>`;
       return `<div class="op open">${head}
@@ -532,6 +619,7 @@ function leftPanel() {
     return `<h2>Add One</h2>
       <div class="seg stack">${Object.entries(SHED_NAMES).map(([k, name]) => `<button data-shedadd="${k}">${name}</button>`).join('')}</div>
       <p class="hint">A lean-to or porch is a single-slope roof on one wall of the building, held up along its outer edge by its own row of posts. A lean-to can be closed in with walls. A porch stays open.</p>
+      <p class="hint">A wraparound porch runs along two or more walls and turns the corners. An awning is a small roof over a door or window, hung off the wall on brackets with no posts.</p>
       <h2>On This Building</h2>${rows || '<p class="hint">Nothing yet.</p>'}`;
   }
   if (ui.step === 'Inside And Finish') {
@@ -706,7 +794,8 @@ function specRows() {
     ['Frame', `Posts every ${state.postSpacing} ft${ownSpacing().length ? ` (${ownSpacing().map((w) => `${wallOf(w).postSpacing} ft on the ${sideName(w).toLowerCase()}`).join(', ')})` : ''}, ${trussOf() === 'common' ? '' : `${TRUSS_NAMES[trussOf()].toLowerCase()} `}trusses every ${state.trussSpacing} ft`],
     ...(openSides().length ? [['Open Walls', `${openSides().map((w) => sideName(w)).join(', ')}: posts and roof only, no steel`]] : []),
     ['Doors And Windows', openings || 'None'],
-    ...(state.sheds.length ? [['Lean-Tos And Porches', state.sheds.map((s) => `${SHED_NAMES[s.kind]}, ${WALL_NAMES[s.wall].toLowerCase()} wall, ${num(s.depth)} x ${num(s.length)} ft${s.kind === 'leanto' && s.enclosed ? ', enclosed' : ''}`).join('<br>')]] : []),
+    ...(state.sheds.length ? [['Lean-Tos And Porches', state.sheds.map(shedText).join('<br>')]] : []),
+    ...(result.geometry.dormers.length ? [['Dormers', result.geometry.dormers.map((m) => `${m.label}, ${dormerText(m).toLowerCase()}, ${feetInches(m.widthIn)} wide`).join('<br>')]] : []),
     ...(finishRows().length ? [['Inside And Finish', finishRows().join('<br>')]] : []),
     ['Colors', `${colorName(state.colors.walls)} walls, ${colorName(state.colors.roof)} roof, ${colorName(state.colors.trim)} trim${state.colors.wainscotOn && opt('wallCover') === 'steel' ? `, ${colorName(state.colors.wainscot)} wainscot` : ''}`],
   ];
@@ -927,17 +1016,83 @@ document.addEventListener('click', (e) => {
   if (d.remove) {
     const o = state.openings[Number(d.remove)];
     ui.opening = null;
-    return apply({ openings: state.openings.filter((_, i) => i !== Number(d.remove)) }, `${TYPE_NAMES[o.type]} removed`);
+    const openings = state.openings.filter((_, i) => i !== Number(d.remove));
+    return apply({ openings, sheds: awningsFollow(openings, Number(d.remove)) }, `${TYPE_NAMES[o.type]} removed`);
+  }
+  if (d.shedadd === 'wrap' || d.shedadd === 'awning') {
+    let fit, note;
+    if (d.shedadd === 'wrap') {
+      const pairs = [['front', 'right'], ['front', 'left'], ['back', 'right'], ['back', 'left']];
+      fit = firstFit('sheds', pairs.map((walls) => ({ kind: 'wrap', walls, depth: 8, pitch: 3, drop: Math.max(...walls.map(tuckUnder)) })));
+      note = fit && `Wraparound porch added to the ${wallList(fit.walls).toLowerCase()} walls`;
+    } else {
+      // A walk door with nothing over it comes first, then any other door or window, then a clear spot on a wall.
+      const covered = new Set(state.sheds.filter((s) => s.kind === 'awning' && s.over != null).map((s) => s.over));
+      const order = state.openings.map((o, i) => ({ o, i })).filter(({ i }) => !covered.has(i)).sort((a, z) => (z.o.type === 'walk') - (a.o.type === 'walk'));
+      const spots = Object.keys(WALL_NAMES).flatMap((wall) => {
+        const g = result.geometry, ends = [...g.sheds, ...g.awnings].filter((s) => s.wall === wall).map((s) => Math.ceil(s.endIn / 12));
+        return [0, ...ends, wallLen(wall) - 5].filter((start) => start >= 0).map((start) => ({ kind: 'awning', wall, over: null, start, out: 3, width: 5, pitch: 4 }));
+      });
+      fit = firstFit('sheds', [...order.map(({ o, i }) => ({ kind: 'awning', wall: o.wall, over: i, start: 0, out: 3, width: Math.max(5, Math.ceil(o.width) + 2), pitch: 4 })), ...spots]);
+      note = fit && `Awning added to the ${WALL_NAMES[fit.wall].toLowerCase()} wall${fit.over != null ? `, over the ${TYPE_NAMES[state.openings[fit.over].type].toLowerCase()}` : ''}`;
+    }
+    if (!fit) {
+      ui.lead = '';
+      ui.problem = d.shedadd === 'wrap' ? 'There is no pair of walls free for a wraparound porch. Remove a lean-to or porch first, or lower the roof pitch of the porch after making room.' : 'There is no room on the walls for an awning. Remove an addition first.';
+      return paint();
+    }
+    ui.shed = state.sheds.length;
+    return apply({ sheds: [...state.sheds, fit] }, note);
+  }
+  if (d.wrapwall) {
+    const s = state.sheds[ui.shed];
+    const walls = Object.keys(WALL_NAMES).filter((w) => (w === d.wrapwall) !== s.walls.includes(w));
+    return setShed(ui.shed, { walls, drop: Math.max(s.drop, ...walls.map(tuckUnder)) }, `Wraparound porch now on the ${walls.length ? wallList(walls).toLowerCase() : 'no'} walls`);
+  }
+  if (d.awnover) {
+    const s = state.sheds[ui.shed];
+    if (d.awnover === 'own') {
+      const at = result.geometry.awnings.find((a) => a.index === ui.shed);
+      return setShed(ui.shed, { over: null, start: Math.max(0, Math.min(wallLen(s.wall) - s.width, Math.floor(at.startIn / 12))) }, 'Awning now in its own spot');
+    }
+    const o = state.openings[Number(d.awnover)];
+    return setShed(ui.shed, { over: Number(d.awnover), width: Math.max(s.width, Math.ceil(o.width)) }, `Awning now over the ${TYPE_NAMES[o.type].toLowerCase()}`);
+  }
+  if ('dormadd' in d) {
+    const spots = ['front', 'back'].flatMap((side) => {
+      const mid = Math.round((state.length - 6) / 2);
+      const along = Array.from({ length: Math.max(0, Math.floor((state.length - 10) / 2) + 1) }, (_, i) => 2 + i * 2);
+      return [mid, ...along].map((at) => ({ side, at, width: 6, style: 'gable', window: true }));
+    });
+    const fit = firstFit('dormers', spots);
+    if (!fit) { ui.lead = ''; ui.problem = 'There is no room on the roof for another dormer.'; return paint(); }
+    ui.dormer = dormers().length;
+    return apply({ dormers: [...dormers(), fit] }, `Dormer added to the ${fit.side} slope`);
+  }
+  if (d.dormopen) { ui.dormer = ui.dormer === Number(d.dormopen) ? null : Number(d.dormopen); return paint(); }
+  if (d.dormside) return setDormer(ui.dormer, { side: d.dormside }, `Dormer ${ui.dormer + 1} moved to the ${d.dormside} slope`);
+  if (d.dormstyle) return setDormer(ui.dormer, { style: d.dormstyle }, `Dormer ${ui.dormer + 1} now has a ${d.dormstyle} roof`);
+  if (d.dormwin) return setDormer(ui.dormer, { window: d.dormwin === '1' }, `Dormer ${ui.dormer + 1} ${d.dormwin === '1' ? 'has a window' : 'has no window'}`);
+  if (d.dormfield) {
+    const m = dormers()[ui.dormer], f = DORMER_FIELDS[d.dormfield];
+    const to = Math.min(f.max ?? Infinity, Math.max(f.min, m[d.dormfield] + f.step * Number(d.dir)));
+    return setDormer(ui.dormer, { [d.dormfield]: to }, `Dormer ${ui.dormer + 1} ${f.label.toLowerCase()} now ${feetInches(to * 12)}`);
+  }
+  if (d.dormremove) {
+    const keep = ui.dormer;
+    ui.dormer = null;
+    apply({ dormers: dormers().filter((_, i) => i !== Number(d.dormremove)) }, `Dormer ${Number(d.dormremove) + 1} removed`);
+    if (ui.problem) ui.dormer = keep;
+    return;
   }
   if (d.shedadd) {
-    const taken = new Set(state.sheds.map((s) => s.wall));
+    const taken = new Set(state.sheds.flatMap((s) => (s.kind === 'wrap' ? s.walls : s.kind === 'awning' ? [] : [s.wall])));
     const wall = ['back', 'front', 'left', 'right'].find((w) => !taken.has(w));
     if (!wall) { ui.lead = ''; ui.problem = 'Every wall already has a lean-to or porch. Remove one first, or shorten one to make room.'; return paint(); }
     const length = wall === 'front' || wall === 'back' ? state.length : state.width;
     ui.shed = state.sheds.length;
     // Low enough to tuck under the main roof's overhang and fascia on that wall.
-    const host = result.geometry.building;
-    const drop = edgeOverhangIn(host, wall) > 0 ? Math.ceil((eaveDropIn(host, wall) + 6) / 6) / 2 : 0;
+    const drop = tuckUnder(wall);
     apply({ sheds: [...state.sheds, { kind: d.shedadd, wall, start: 0, length, ...NEW_SHED[d.shedadd], drop }] }, `${SHED_NAMES[d.shedadd]} added to the ${WALL_NAMES[wall].toLowerCase()} wall`);
     if (ui.problem) ui.shed = null;
     return paint();
@@ -945,12 +1100,20 @@ document.addEventListener('click', (e) => {
   if (d.shedopen) { ui.shed = ui.shed === Number(d.shedopen) ? null : Number(d.shedopen); return paint(); }
   if (d.shedwall) {
     const s = state.sheds[ui.shed];
+    if (s.kind === 'awning') {
+      // On the new wall it goes over the first door or window it fits, or into a clear spot.
+      const rest = state.sheds.filter((_, i) => i !== ui.shed), w = d.shedwall;
+      const tries = [...state.openings.map((o, i) => ({ o, i })).filter(({ o }) => o.wall === w).map(({ o, i }) => ({ ...s, wall: w, over: i, width: Math.max(s.width, Math.ceil(o.width)) })),
+        ...Array.from({ length: Math.max(1, wallLen(w) - s.width + 1) }, (_, start) => ({ ...s, wall: w, over: null, start }))];
+      const fit = tries.find((t) => design({ ...state, sheds: [...rest, t] }).ok) ?? tries.at(-1);
+      return setShed(ui.shed, fit, `Awning moved to the ${WALL_NAMES[w].toLowerCase()} wall`);
+    }
     const length = d.shedwall === 'front' || d.shedwall === 'back' ? state.length : state.width;
     return setShed(ui.shed, { wall: d.shedwall, start: 0, length }, `${SHED_NAMES[s.kind]} moved to the ${WALL_NAMES[d.shedwall].toLowerCase()} wall`);
   }
   if (d.shedfield) {
-    const s = state.sheds[ui.shed], f = SHED_FIELDS[d.shedfield];
-    const to = Math.max(f.min, s[d.shedfield] + f.step * Number(d.dir));
+    const s = state.sheds[ui.shed], f = (s.kind === 'awning' ? AWNING_FIELDS : SHED_FIELDS)[d.shedfield];
+    const to = Math.min(f.max ?? Infinity, Math.max(f.min, s[d.shedfield] + f.step * Number(d.dir)));
     const shown = d.shedfield === 'pitch' ? `${to} in 12` : feetInches(to * 12);
     return setShed(ui.shed, { [d.shedfield]: to }, `${SHED_NAMES[s.kind]} ${f.label.toLowerCase()} now ${shown}`);
   }
@@ -1344,7 +1507,7 @@ function engineerData() {
     madeWith: 'Ridge And Rafter',
     note: 'A description of the building as drawn. Not an engineered design. No loads were calculated. Lengths are in inches, measured along each wall from the front-left corner (front and back walls) or from the front wall (end walls).',
     job: state.job, date: new Date().toISOString().slice(0, 10),
-    building: g.building, posts: g.posts, leanTosAndPorches: g.sheds, interiorWalls: g.partitions, loft: g.loft, trusses: g.trusses, girtRows: g.girtRows, purlinRowLengthIn: g.purlinRowLengthIn,
+    building: g.building, posts: g.posts, leanTosAndPorches: g.sheds, awnings: g.awnings, dormers: g.dormers, interiorWalls: g.partitions, loft: g.loft, trusses: g.trusses, girtRows: g.girtRows, purlinRowLengthIn: g.purlinRowLengthIn,
     framingAsDrawn: result.rules, summary: result.summary,
   }, null, 2);
 }
@@ -1364,10 +1527,10 @@ function openEngineer() {
   const r = result.rules, sum = result.summary;
   const blank = (label, hint) => `<dt>${label}</dt><dd contenteditable spellcheck="false">${hint}</dd>`;
   const pitchText = b.roof === 'gambrel' ? `${r.gambrelLowerPitch} in 12 lower slopes, ${r.gambrelUpperPitch} in 12 upper slopes, break ${feetInches(b.line[1].y)} in from each side wall and ${feetInches(b.line[1].h)} above the ground` : `${state.pitch} in 12`;
-  const planes = result.geometry.planes;
-  const purlinText = b.roof === 'gable' ? `${planes[0].purlinRows} rows each side` : b.roof === 'mono' ? `${planes[0].purlinRows} rows` : `${planes[0].purlinRows} rows on each lower slope and ${planes[1].purlinRows} on each upper slope`;
+  const planes = result.geometry.planes, extras = result.geometry;
+  const purlinText = b.roof === 'hip' ? `${planes[0].purlinRows} level rows on each of the four slopes, each row shorter than the one below it` : b.roof === 'gable' ? `${planes[0].purlinRows} rows each side` : b.roof === 'mono' ? `${planes[0].purlinRows} rows` : `${planes[0].purlinRows} rows on each lower slope and ${planes[1].purlinRows} on each upper slope`;
   const facts = [
-    ['Shape', `Rectangle with a ${{ gable: 'gable roof, ridge running the long way', mono: 'single-slope roof, low along the front wall and high along the back', gambrel: 'gambrel roof, ridge running the long way' }[b.roof]}${b.sheds.length ? `, plus ${b.sheds.length} single-slope ${b.sheds.length === 1 ? 'addition' : 'additions'}` : ''}`],
+    ['Shape', `Rectangle with a ${{ gable: 'gable roof, ridge running the long way', mono: 'single-slope roof, low along the front wall and high along the back', gambrel: 'gambrel roof, ridge running the long way', hip: 'hip roof sloping down to all four walls, ridge running the long way' }[b.roof]}${b.sheds.length ? `, plus ${b.sheds.length} single-slope ${b.sheds.length === 1 ? 'addition' : 'additions'}` : ''}${extras.awnings.length ? `, ${extras.awnings.length} ${extras.awnings.length === 1 ? 'awning' : 'awnings'}` : ''}${extras.dormers.length ? `, ${extras.dormers.length} ${extras.dormers.length === 1 ? 'dormer' : 'dormers'}` : ''}`],
     ['Width', `${state.width} ft`], ['Length', `${state.length} ft`],
     ['Wall Height', `${state.eaveHeight} ft, ground to ${b.roof === 'mono' ? 'the low eave' : 'eave'}`],
     ['Peak Height', `${feetInches(b.eaveIn + b.riseIn)}, ground to ${b.roof === 'mono' ? 'the top of the high wall' : 'ridge'}`],
@@ -1380,7 +1543,7 @@ function openEngineer() {
   const headerSizes = [...new Set(result.items.filter((i) => i.name === 'Headers').map((i) => i.size))];
   const members = [
     ['Posts', r.postSize, `Every ${state.postSpacing} ft along each wall${ownSpacing().map((w) => `, ${wallOf(w).postSpacing} ft on the ${sideName(w).toLowerCase()}`).join('')}, ${posts.length} in all, ${r.postEmbedmentIn ? `set ${feetInches(r.postEmbedmentIn)} into the ground` : 'standing on bolt-down brackets on the concrete'}`],
-    [{ scissor: 'Scissor Trusses', attic: 'Attic Trusses' }[b.truss] ?? { gable: 'Trusses', mono: 'Single Slope Trusses', gambrel: 'Gambrel Trusses' }[b.roof], `${state.width} ft span, ${b.roof === 'gambrel' ? 'gambrel profile' : `${state.pitch} in 12`}${b.truss === 'scissor' ? `, ${b.ceilingPitch} in 12 ceiling` : b.truss === 'attic' ? `, ${feetInches(b.atticRoomIn)} room` : ''}`, `Every ${state.trussSpacing} ft, ${sum.trusses} in all`],
+    [{ scissor: 'Scissor Trusses', attic: 'Attic Trusses' }[b.truss] ?? { gable: 'Trusses', mono: 'Single Slope Trusses', gambrel: 'Gambrel Trusses', hip: 'Trusses And Hip Sets' }[b.roof], `${state.width} ft span, ${b.roof === 'gambrel' ? 'gambrel profile' : `${state.pitch} in 12`}${b.truss === 'scissor' ? `, ${b.ceilingPitch} in 12 ceiling` : b.truss === 'attic' ? `, ${feetInches(b.atticRoomIn)} room` : ''}`, `Every ${state.trussSpacing} ft, ${sum.trusses} truss lines in all${b.roof === 'hip' ? `. Full trusses stand only under the ridge. The lines within ${feetInches(b.widthIn / 2)} of each end wall are a hip set from the truss maker, with jack trusses out to the end wall and corners` : ''}`],
     ['Skirt Board', r.skirtSize, openSides().length ? 'One row at the ground on each closed wall' : 'One row at the ground, all four walls'],
     ...(openSides().length ? [['Open Walls', openSides().map((w) => sideName(w)).join(', '), 'Posts only: no skirt board, girts or steel. Bracing for these walls is not designed here']] : []),
     ['Wall Girts', r.girtSize, `Every ${r.girtSpacingIn} in up the wall, on the outside face of the posts, joined on posts`],
@@ -1390,10 +1553,14 @@ function openEngineer() {
     ...result.geometry.sheds.flatMap((s) => {
       const name = s.label[0].toUpperCase() + s.label.slice(1);
       return [
-        [`${name}`, `${feetInches(s.depthIn)} deep, ${feetInches(s.lengthIn)} long`, `Single slope at ${s.pitch} in 12, ${feetInches(s.highIn)} at the main wall down to ${feetInches(s.lowIn)} at its posts, ${s.enclosed ? 'walls closed in' : 'sides open'}`],
+        [`${name}`, `${feetInches(s.depthIn)} deep, ${feetInches(s.lengthIn)} long`, `Single slope at ${s.pitch} in 12, ${feetInches(s.highIn)} at the main wall down to ${feetInches(s.lowIn)} at its posts, ${s.enclosed ? 'walls closed in' : 'sides open'}${s.wrap != null ? `. Part of a wraparound porch: its roof meets the next stretch at a hip over ${s.cornerStart && s.cornerEnd ? 'each corner' : 'the corner'}${s.ownedCorners.length ? `, on a ${r.porchHipRafterSize} hip rafter ${feetInches(s.hipIn)} long from the building corner to a corner post` : ''}` : ''}`],
         [`${name} Rafters`, r.rafterSize, `${s.rafters.length} rafters about every ${r.rafterSpacingIn} in, from a ${r.shedLedgerSize} ledger on the main wall posts to a beam of two ${r.shedBeamSize} boards on ${s.outer.length} posts`],
       ];
     }),
+    ...extras.awnings.map((a) => [a.label[0].toUpperCase() + a.label.slice(1), `${feetInches(a.outIn)} out, ${feetInches(a.widthIn)} wide`,
+      `Single slope at ${a.pitch} in 12, ${feetInches(a.highIn)} at the wall down to ${feetInches(a.lowIn)} at its outer edge, hung on ${a.brackets} steel brackets with a ${r.awningRafterSize} rafter on each. No posts`]),
+    ...extras.dormers.map((m) => [m.label, `${feetInches(m.widthIn)} wide, ${m.style} roof`,
+      `On the ${m.side} slope, ${feetInches(m.atIn)} from the left end, face ${feetInches(m.setbackIn)} in from the wall line and ${feetInches(m.faceIn)} tall, ${m.window ? `window opening ${feetInches(m.windowWIn)} by ${feetInches(m.windowHIn)}` : 'no window'}. Framed on top of the roof purlins; the trusses under it are not cut`]),
     ...(result.geometry.partitions ?? []).map((p) => [`Interior Wall ${p.index + 1}`, `${p.studSize} studs`,
       `${feetInches(p.lengthIn)} long and ${feetInches(p.heightIn)} tall, running ${p.axis === 'across' ? `front to back, ${feetInches(p.atIn)} from the left end` : `end to end, ${feetInches(p.atIn)} from the front wall`}, studs every ${r.partitionStudSpacingIn} in, ${p.doors.length} ${p.doors.length === 1 ? 'door' : 'doors'}, ${p.sheathed ? 'sheathed both sides' : 'not sheathed'}. Carries no roof or floor`]),
     ...(loftG ? [
@@ -1423,6 +1590,10 @@ function openEngineer() {
     <p>The program that made this package lays out the frame and counts the material. It does not size anything for load. It has no footing design, no bracing, no truss design and no connection details. Any pads, collars or slab in the material list are counted from common sizes and are not sized for this site. Those are yours, along with any stamped drawings the permit office asks for.</p>
     ${b.options.footing === 'bracket' ? `<p>The posts stand on bolt-down steel brackets, not in the ground. A buried post resists wind by its grip in the soil. A bracketed post gets that from the bracket, its anchors and the concrete under it, and from bracing in the frame. The bracket model, the anchors, the thickened edge or piers under them, and the bracing are all yours to specify. The list counts one bracket per post and nothing else.</p>` : ''}
     ${b.sheds.length ? `<p>Each lean-to and porch roof starts below the main eave, so its rafters and upper purlins have to carry snow that slides off the main roof and drifts against the wall above. The rafter, ledger and beam sizes shown are placeholders with no published table behind them.</p>` : ''}
+    ${b.roof === 'hip' ? `<p>The hip ends are counted as one hip set from the truss maker for each end. The two boards drawn along the top of each end wall, under the jack trusses, are our own assumption and have no table behind them. The hip rafters in the picture stand in for the truss maker's hip girder and jacks.</p>` : ''}
+    ${b.sheds.some((s) => s.wrap != null) ? `<p>The wraparound porch turns each corner on a hip rafter that runs from the building corner out to a corner post. The hip rafter size and the jack rafters beside it are placeholders with no published table behind them.</p>` : ''}
+    ${extras.awnings.length ? `<p>Each awning hangs on the wall on steel brackets with no posts. The bracket count, the rafter size and the fastening to the wall posts and girts are placeholders. The bracket maker's load table and the engineer set them.</p>` : ''}
+    ${extras.dormers.length ? `<p>The dormers are framed on top of the main roof and are counted as over-framing. Their stud, rafter and header sizes are placeholders. The main roof panels under each dormer are not taken off the list, and the valleys where a dormer roof meets the main roof add drifted snow load to the purlins and trusses under them.</p>` : ''}
     ${loftG ? `<p>The loft joist size comes from a house floor span table for a 40 lb per sq ft live load. Storage or shop use can call for more. The loft beam, its posts and the ledger fastening are placeholders with no table behind them. The loft adds floor load to the end wall posts and their footings, and its own posts need footings sized for it. The stair stringers are drawn in one length with no support under the middle, which notched stringers this long normally need.</p>` : ''}
     <h3>Doors And Windows</h3>
     ${b.openings.length ? `<table class="cuts"><thead><tr><th>Opening</th><th>Wall</th><th>Starts At</th><th>Width</th><th>Height</th><th>Sill</th></tr></thead>
