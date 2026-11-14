@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hip, Dormer, Awning And Wraparound Mockup</title>
+<style>
+  :root { --gap: #161616; --area: #303030; --widget: #545454; --text: #e6e6e6; --text-2: #b4b4b4; --text-3: #8a8a8a; --accent: #4772b3; }
+  body { margin: 0; padding: 24px; background: var(--gap); color: var(--text); font: 13px system-ui, sans-serif; font-stretch: 103%; display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; }
+  .col { width: 340px; }
+  .cap { color: var(--text-2); font-size: 12px; margin: 0 0 8px 2px; }
+  .panel { background: var(--area); border-radius: 6px; padding: 8px 6px 10px; }
+  h2 { font-size: 12px; font-weight: 600; margin: 10px 4px 4px; color: var(--text); }
+  .seg { display: flex; gap: 1px; margin: 3px 2px 8px; border-radius: 5px; overflow: hidden; }
+  .seg.stack { flex-direction: column; }
+  .seg.grid { flex-wrap: wrap; }
+  .seg.grid button { flex: 1 1 calc(50% - 1px); }
+  .seg button { flex: 1; height: 28px; background: var(--widget); border: 0; color: var(--text); font: inherit; }
+  .seg button.on { background: var(--accent); }
+  .hint { padding: 4px 6px 8px; color: var(--text-3); font-size: 12px; margin: 0; }
+  .row { display: flex; justify-content: space-between; align-items: center; margin: 3px 2px; padding: 0 10px; height: 28px; background: var(--widget); border-radius: 5px; }
+  .row span:last-child { color: var(--text-2); }
+  .op { margin: 3px 2px; background: #3a3a3a; border-radius: 5px; padding: 0 0 6px; }
+  .op .head { display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; }
+  .op .head small { display: block; color: var(--text-3); font-size: 11px; }
+  .op .head em { font-style: normal; color: var(--text-2); }
+  .op.shut { padding-bottom: 0; }
+  .remove { display: block; margin: 6px 2px 0; width: calc(100% - 4px); height: 28px; background: #444; border: 0; border-radius: 5px; color: var(--text-2); font: inherit; }
+</style></head><body>
+
+<div class="col"><p class="cap">Roof Tab: Hip Joins The Roof Shapes</p><div class="panel">
+  <h2>Roof Shape</h2>
+  <div class="seg grid"><button>Gable</button><button>Single Slope</button><button>Gambrel</button><button class="on">Hip</button></div>
+  <p class="hint">A hip roof slopes down to all four walls, so there are no gable ends. The eave runs level all the way around.</p>
+  <h2>Roof</h2>
+  <div class="row"><span>Pitch</span><span>4 in 12</span></div>
+  <div class="row"><span>Overhang</span><span>12 in</span></div>
+  <h2>Truss Spacing</h2>
+  <div class="seg"><button>2 ft</button><button class="on">4 ft</button><button>8 ft</button></div>
+  <p class="hint">A hip roof has one overhang, the same on every side. The truss maker supplies the hip set for each end, and the list names it that way.</p>
+</div></div>
+
+<div class="col"><p class="cap">Roof Tab: New Dormers Section At The Bottom</p><div class="panel">
+  <h2>Dormers</h2>
+  <div class="seg"><button>Add A Dormer</button></div>
+  <div class="op">
+    <div class="head"><span>Dormer 1<small>Front slope, gable roof, with window</small></span><em>6 ft wide</em></div>
+    <div class="seg"><button class="on">Front Slope</button><button>Back Slope</button></div>
+    <div class="seg"><button class="on">Gable Roof</button><button>Shed Roof</button></div>
+    <div class="row"><span>From Left End</span><span>12 ft</span></div>
+    <div class="row"><span>Width</span><span>6 ft</span></div>
+    <div class="seg"><button class="on">With Window</button><button>No Window</button></div>
+    <button class="remove">Remove</button>
+  </div>
+  <div class="op shut">
+    <div class="head"><span>Dormer 2<small>Front slope, gable roof, with window</small></span><em>6 ft wide</em></div>
+  </div>
+  <p class="hint">A dormer is a small roofed box that stands up out of the main roof, usually with a window in its face. It is framed on top of the roof and is counted and drawn. Dormers go on gable and gambrel roofs.</p>
+</div></div>
+
+<div class="col"><p class="cap">Lean-Tos And Porches Tab: Two New Kinds</p><div class="panel">
+  <h2>Add One</h2>
+  <div class="seg stack"><button>Lean-To</button><button>Porch</button><button>Wraparound Porch</button><button>Awning</button></div>
+  <p class="hint">A wraparound porch runs along two or more walls and turns the corners. An awning is a small roof over a door or window, hung off the wall on brackets with no posts.</p>
+  <h2>On This Building</h2>
+  <div class="op">
+    <div class="head"><span>Wraparound Porch<small>Front and right walls, open</small></span><em>8 ft deep</em></div>
+    <h2>Walls It Covers</h2>
+    <div class="seg"><button class="on">Front</button><button>Back</button><button>Left</button><button class="on">Right</button></div>
+    <div class="row"><span>Depth</span><span>8 ft</span></div>
+    <div class="row"><span>Roof Pitch</span><span>3 /12</span></div>
+    <div class="row"><span>Below Main Eave</span><span>1 ft</span></div>
+    <button class="remove">Remove</button>
+  </div>
+  <p class="hint">The walls picked have to touch at a corner. The porch runs the full length of each one and its roof meets at a hip over every corner.</p>
+</div></div>
+
+<div class="col"><p class="cap">Lean-Tos And Porches Tab: An Awning Opened</p><div class="panel">
+  <h2>On This Building</h2>
+  <div class="op">
+    <div class="head"><span>Awning<small>Front wall, over the walk door</small></span><em>3 x 5 ft</em></div>
+    <div class="seg"><button class="on">Front</button><button>Back</button><button>Left</button><button>Right</button></div>
+    <h2>Goes Over</h2>
+    <div class="seg stack"><button class="on">Walk Door, 6 ft From Left</button><button>Window, 20 ft From Left</button><button>Its Own Spot</button></div>
+    <div class="row"><span>Sticks Out</span><span>3 ft</span></div>
+    <div class="row"><span>Width</span><span>5 ft</span></div>
+    <div class="row"><span>Roof Pitch</span><span>4 /12</span></div>
+    <button class="remove">Remove</button>
+  </div>
+  <p class="hint">An awning picked for a door or window centers itself over it and sits just above the opening. It follows the roof covering and trim color of the building.</p>
+</div></div>
+
+</body></html>

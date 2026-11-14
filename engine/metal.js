@@ -1,10 +1,29 @@
 // Counts the steel: roof and wall panels, trim, and screws.
-import { wallLengthIn, wallTopIn, gableAreaIn, isGable, isOpen, closedWalls, litWalls, CORNERS } from './building.js';
+import { wallLengthIn, wallTopIn, gableAreaIn, isGable, isOpen, closedWalls, litWalls, hipGeo, CORNERS } from './building.js';
 import { add } from './stock.js';
 
 const EPS = 0.01;
 
+// Panels on one slope that is cut back by a hip at each end. Each panel is
+// ordered at the length of its longer edge and cut on the slant on site.
+// runIn is the eave of the slope; reachIn is the level run from eave to the top.
+export function hipPanels(tally, runIn, reachIn, k, rules, count = 1) {
+  const cover = rules.panelCoverageIn;
+  for (let left = 0; left < runIn - EPS; left += cover) {
+    const right = Math.min(left + cover, runIn), mid = runIn / 2;
+    const reach = left < mid && right > mid ? mid : Math.max(Math.min(left, runIn - left), Math.min(right, runIn - right));
+    add(tally, Math.ceil(Math.min(reach, reachIn) * k + rules.roofPanelExtraIn - EPS), count);
+  }
+  return tally;
+}
+
 export function roofPanels(b, rules) {
+  if (b.roof === 'hip') {
+    const g = hipGeo(b), tally = {};
+    hipPanels(tally, b.lengthIn + 2 * b.overhangIn, g.halfIn, g.k, rules, 2);
+    hipPanels(tally, b.widthIn + 2 * b.overhangIn, g.halfIn, g.k, rules, 2);
+    return tally;
+  }
   const perPlane = Math.ceil((b.lengthIn + 2 * b.endOverhangIn) / rules.panelCoverageIn - EPS);
   const tally = {};
   for (const p of b.planes) add(tally, Math.ceil(p.slopeIn + rules.roofPanelExtraIn - EPS), perPlane);
@@ -32,7 +51,7 @@ export function wallPanels(b, rules) {
       const right = Math.min(left + rules.panelCoverageIn, len);
       let tall = Math.max(wallTopIn(b, wall, left), wallTopIn(b, wall, right));
       // A panel that spans a peak or a break is as tall as the highest point it covers.
-      if (isGable(wall)) for (const p of b.line) if (p.y > left && p.y < right) tall = Math.max(tall, p.h);
+      if (isGable(wall) && b.roof !== 'hip') for (const p of b.line) if (p.y > left && p.y < right) tall = Math.max(tall, p.h);
       // Clear panels take the top of a wall with eave lights.
       if (lit.includes(wall)) tall -= rules.eaveLightIn;
       const door = doorOver(b, wall, left, right);
@@ -65,6 +84,16 @@ export function trim(b, rules) {
   }
   const edges = (kind) => b.planes.filter((p) => p.lowEdge === kind).length;
   const out = {};
+  if (b.roof === 'hip') {
+    // One eave runs all the way around, the ridge is shorter by the width, and a cap covers each of the four hips.
+    const g = hipGeo(b);
+    if (g.ridgeIn > EPS) out['Ridge Cap'] = pieces(g.ridgeIn);
+    out['Hip Cap'] = 4 * pieces(g.hipIn);
+    out['Eave Trim'] = 2 * pieces(roofRun) + 2 * pieces(b.widthIn + 2 * b.overhangIn);
+    out['Corner Trim'] = CORNERS.filter((pair) => !pair.every((wall) => isOpen(b, wall))).length * pieces(b.eaveIn);
+    out['Base Trim'] = base;
+    return out;
+  }
   if (b.planes.some((p) => p.highEdge === 'ridge')) out['Ridge Cap'] = pieces(roofRun);
   if (b.roof === 'mono') out['High Side Eave Trim'] = pieces(roofRun);
   if (edges('break')) out['Gambrel Flashing'] = pieces(roofRun) * edges('break');
@@ -83,6 +112,7 @@ export function wallAreaIn(b) {
 }
 
 export function areas(b) {
+  if (b.roof === 'hip') return { roofSqFt: (b.lengthIn + 2 * b.overhangIn) * (b.widthIn + 2 * b.overhangIn) * hipGeo(b).k / 144, wallSqFt: wallAreaIn(b) / 144 };
   const roofSqFt = b.planes.reduce((sum, p) => sum + p.slopeIn, 0) * (b.lengthIn + 2 * b.endOverhangIn) / 144;
   return { roofSqFt, wallSqFt: wallAreaIn(b) / 144 };
 }
@@ -91,6 +121,13 @@ export function areas(b) {
 // of every roof plane, outside closures over its top edge under the ridge cap,
 // the high side trim or the gambrel flashing.
 export function closures(b, rules) {
+  if (b.roof === 'hip') {
+    // Inside closures under all four eaves; outside closures only along the ridge.
+    const n = (runIn) => Math.ceil(runIn / rules.closureStripIn - EPS);
+    const out = { 'Inside Closures': 2 * n(b.lengthIn + 2 * b.overhangIn) + 2 * n(b.widthIn + 2 * b.overhangIn) };
+    if (b.lengthIn - b.widthIn > EPS) out['Outside Closures'] = 2 * n(b.lengthIn - b.widthIn);
+    return out;
+  }
   const strips = Math.ceil((b.lengthIn + 2 * b.endOverhangIn) / rules.closureStripIn - EPS) * b.planes.length;
   return { 'Inside Closures': strips, 'Outside Closures': strips };
 }

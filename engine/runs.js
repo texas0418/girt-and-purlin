@@ -2,7 +2,7 @@
 // The material count and the cut list both read this, so they always agree.
 // A joint between two boards lands on a post (walls) or a truss (roof), and
 // the joints step over from one row to the next so they never line up.
-import { wallLengthIn, wallTopIn, roofSpanAbove, isGable, isOpen, WALLS } from './building.js';
+import { wallLengthIn, wallTopIn, roofSpanAbove, isGable, isOpen, hipGeo, WALLS } from './building.js';
 import { fitStock, spans } from './stock.js';
 
 const EPS = 0.01;
@@ -49,6 +49,7 @@ export function girtRowCount(b, rules, wall = 'front') {
 // Rows above the low eave on a gable end, each as long as the roof line allows.
 export function gableGirtRows(b, rules) {
   const rows = [];
+  if (b.roof === 'hip') return rows;
   for (let up = rules.girtSpacingIn; up < b.riseIn - EPS; up += rules.girtSpacingIn) {
     const span = roofSpanAbove(b, b.eaveIn + up);
     if (span && span[1] - span[0] > EPS) rows.push({ heightIn: b.eaveIn + up, startIn: span[0], endIn: span[1] });
@@ -58,7 +59,24 @@ export function gableGirtRows(b, rules) {
 
 export const planePurlinRows = (plane, rules) => Math.ceil(plane.slopeIn / rules.purlinSpacingIn - EPS) + 1;
 export function purlinRowsPerSide(b, rules) { return planePurlinRows(b.planes[0], rules); }
-export const purlinRows = (b, rules) => b.planes.reduce((n, p) => n + planePurlinRows(p, rules), 0);
+export const purlinRows = (b, rules) => (b.roof === 'hip' ? hipPurlinRows(b, rules).length : b.planes.reduce((n, p) => n + planePurlinRows(p, rules), 0));
+
+// Purlin rows on a hip roof. Each row sits level, and every row up the slope
+// is shorter at both ends, because the hips close in. insetIn is how far each
+// end has moved in from the corner of the eave.
+export function hipPurlinRows(b, rules) {
+  const g = hipGeo(b), slope = g.halfIn * g.k, out = [];
+  for (let i = 0; i < planePurlinRows(b.planes[0], rules); i++) {
+    const insetIn = Math.min(i * rules.purlinSpacingIn, slope) / g.k;
+    for (const [end, lengthIn] of [[false, b.lengthIn], [true, b.widthIn]]) {
+      const startIn = -b.overhangIn + insetIn, endIn = lengthIn + b.overhangIn - insetIn;
+      // A row shorter than a foot is left out; the hip framing covers it.
+      if (endIn - startIn < 12 - EPS) continue;
+      for (let side = 0; side < 2; side++) out.push({ end, side, row: i, insetIn, startIn, endIn });
+    }
+  }
+  return out;
+}
 
 export function headerSizeFor(o, rules) {
   return o.widthIn > rules.wideHeaderOverFt * 12 + EPS ? rules.wideHeaderSize : rules.headerSize;
@@ -98,6 +116,12 @@ export function lumberRuns(b, rules, posts, trusses) {
         put('Wall Girts', rules.girtSize, `${WALL_NAMES[wall]}, gable`, boards(g.startIn, g.endIn, supports, stock, row++ % 2 === 1), 'Ends cut to the roof slope');
       }
     }
+    if (isGable(wall) && b.roof === 'hip') {
+      // The short jack trusses of a hip end bear on the end wall between its posts.
+      for (let ply = 0; ply < 2; ply++) {
+        put('Truss Carriers', rules.trussCarrierSize, WALL_NAMES[wall], boards(0, len, supports, stock, ply === 1), 'Two boards side by side at the top of the posts, under the hip end trusses');
+      }
+    }
     if (!isGable(wall) && (open || needsCarrier(wall, posts, trusses))) {
       for (let ply = 0; ply < 2; ply++) {
         put('Truss Carriers', rules.trussCarrierSize, WALL_NAMES[wall], boards(0, len, supports, stock, ply === 1), open ? 'Two boards side by side at the top of the posts, the only tie along the open wall' : 'Two boards side by side at the top of the posts');
@@ -106,7 +130,12 @@ export function lumberRuns(b, rules, posts, trusses) {
   }
 
   const trussAt = trusses.map((t) => t.x);
-  for (let i = 0; i < purlinRows(b, rules); i++) {
+  if (b.roof === 'hip') {
+    const jackAt = Array.from({ length: Math.ceil(b.widthIn / b.trussSpacingIn - EPS) + 1 }, (_, i) => Math.min(i * b.trussSpacingIn, b.widthIn));
+    for (const r of hipPurlinRows(b, rules)) {
+      put('Roof Purlins', rules.purlinSize, r.end ? 'Roof, hip ends' : 'Roof', boards(r.startIn, r.endIn, r.end ? jackAt : trussAt, stock, r.row % 2 === 1), r.insetIn > EPS ? 'Ends cut on the slant at the hips' : '');
+    }
+  } else for (let i = 0; i < purlinRows(b, rules); i++) {
     put('Roof Purlins', rules.purlinSize, 'Roof', boards(-b.endOverhangIn, b.lengthIn + b.endOverhangIn, trussAt, stock, i % 2 === 1));
   }
 

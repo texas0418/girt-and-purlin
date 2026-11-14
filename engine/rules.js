@@ -139,6 +139,19 @@ export const defaultRules = {
   lapNailSpacingIn:  { value: 8,    verified: true, note: 'Along each course, into the sheathing', source: 'LP SmartSide lap application instructions (ring shank nail a maximum of 8 in on center over wood structural panels)' },
   lapWaste:          { value: 0.10, verified: false, note: 'Extra lap siding for cuts at gables, corners and openings' },
 
+  awningGapIn:       { value: 6,    verified: false, note: 'How far above a door or window the low edge of its awning sits' },
+  awningBracketSpacingIn: { value: 48, verified: false, note: 'Farthest apart awning brackets sit. A placeholder: bracket makers set their own spacing by snow load' },
+  awningRafterSize:  { value: '2x6', verified: false, note: 'One rafter on each awning bracket. A placeholder for the engineer' },
+  porchHipRafterSize: { value: '2x10', verified: false, note: 'The rafter under the hip at each corner of a wraparound porch, one size deeper than the 2x8 rafters beside it. A placeholder: the engineer sizes it' },
+  dormerSetbackIn:   { value: 24,   verified: false, note: 'How far in from the main wall line the face of a dormer stands' },
+  dormerFaceIn:      { value: 48,   verified: false, note: 'Height of a dormer face above the main roof. It comes down in 6 in steps where the roof is too short for it' },
+  dormerFaceMinIn:   { value: 24,   verified: false, note: 'Shortest dormer face worth building' },
+  dormerShedPitch:   { value: 3,    verified: false, note: 'Slope of a shed-roof dormer, the flattest rib panels take without sealed laps' },
+  dormerOverhangIn:  { value: 6,    verified: false, note: 'How far a dormer roof runs past its own walls' },
+  dormerStudSize:    { value: '2x4', verified: false, note: 'Dormer walls, studs and plates. A placeholder for the engineer' },
+  dormerStudSpacingIn: { value: 16, verified: false },
+  dormerRafterSize:  { value: '2x6', verified: false, note: 'Dormer rafters, ridge board and the boards laid under each valley. A placeholder for the engineer' },
+  dormerRafterSpacingIn: { value: 24, verified: false },
   closureStripIn:    { value: 36,   verified: true, note: 'Foam closure strips are 3 ft long', source: 'Fabral guide p.15; A.B. Martin guide' },
 };
 

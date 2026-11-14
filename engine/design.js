@@ -2,8 +2,8 @@
 import { normalize } from './building.js';
 import { resolveRules, unverifiedRules } from './rules.js';
 import { placePosts, placeTrusses } from './framing.js';
-import { WALL_NAMES, lumberRuns, girtRowCount, girtTopIn, gableGirtRows, purlinRowsPerSide, purlinRows, planePurlinRows } from './runs.js';
-import { isGable, isOpen, closedWalls, GAMBREL } from './building.js';
+import { WALL_NAMES, lumberRuns, girtRowCount, girtTopIn, gableGirtRows, purlinRowsPerSide, purlinRows, planePurlinRows, hipPurlinRows } from './runs.js';
+import { isGable, isOpen, closedWalls, hipGeo, GAMBREL } from './building.js';
 import { roofPanels, wallPanels, sliderPanels, trim, closures, screws, areas } from './metal.js';
 import { feetInches, add } from './stock.js';
 import { cutList } from './cutlist.js';
@@ -12,6 +12,7 @@ import { finishRuns, finishParts, FINISH_LUMBER } from './finish.js';
 import { placeInterior, INTERIOR_LUMBER } from './interior.js';
 import { trussParts } from './trusses.js';
 import { coverParts } from './coverings.js';
+import { placeAdditions, additionRuns, additionMetal, additionItems } from './additions.js';
 
 // ft and sqFt are the numbers a price list multiplies by.
 function lines(group, name, size, tally, label = (k) => `${k} ft`, ft = (k) => k) {
@@ -19,7 +20,7 @@ function lines(group, name, size, tally, label = (k) => `${k} ft`, ft = (k) => k
     .map((k) => ({ group, name, size, length: label(k), qty: tally[k], ft: ft(k) }));
 }
 const inchesToFt = (k) => k / 12;
-export const TRUSS_NAMES = { gable: 'Trusses', mono: 'Single Slope Trusses', gambrel: 'Gambrel Trusses' };
+export const TRUSS_NAMES = { gable: 'Trusses', mono: 'Single Slope Trusses', gambrel: 'Gambrel Trusses', hip: 'Trusses' };
 
 export function design(input, ruleOverrides) {
   let rules = resolveRules(ruleOverrides);
@@ -45,6 +46,14 @@ export function design(input, ruleOverrides) {
   if (b.roof === 'mono' && b.riseIn > rules.monoTrussMaxRiseFt * 12 + 0.01) {
     warnings.push({ code: 'mono-tall', text: `The single-slope trusses would stand ${feetInches(b.riseIn)} tall. Past ${rules.monoTrussMaxRiseFt} ft a truss this shape is hard to build and haul, so lower the pitch or narrow the building.` });
   }
+  const hip = b.roof === 'hip';
+  // Full trusses stand only under the ridge. Every truss line nearer an end wall than half the width belongs to that end's hip set.
+  const commons = hip ? trusses.filter((t) => t.x > b.widthIn / 2 - 0.01 && t.x < b.lengthIn - b.widthIn / 2 + 0.01).length : trusses.length;
+  const hipLines = (trusses.length - commons) / 2;
+  if (hip) {
+    warnings.push({ code: 'hip-set', text: `Each end of a hip roof is framed with a hip set from the truss maker: flat-topped trusses that step down toward the end wall, with short jack trusses out to the wall and the corners. The list carries one set for each end, covering the ${hipLines} truss lines in the last ${feetInches(b.widthIn / 2)}. The truss maker designs the set, and the engineer confirms the carrier on each end wall.` });
+    if (roofCover !== 'shingles') warnings.push({ code: 'hip-cut', text: 'The roof panels that meet a hip are listed at the length of their longer edge and are cut on the slant on site. Foam closures do not fit under the hip caps, because the ribs meet them at an angle; ask the steel supplier for the sealing tape they use there.' });
+  }
   const openNames = ['front', 'back', 'left', 'right'].filter((wall) => isOpen(b, wall));
   if (openNames.length) {
     const list = openNames.map((wall) => WALL_NAMES[wall].toLowerCase()).join(', ').replace(/, ([^,]*)$/, ' and $1');
@@ -57,22 +66,31 @@ export function design(input, ruleOverrides) {
   warnings.push(...shedWarnings.filter((w) => roofCover === 'steel' || w.code !== 'shed-flat'));
   if (shedErrors.length) return { ok: false, errors: shedErrors, warnings, items: [] };
   const shedPosts = sheds.flatMap((s) => s.posts);
+  const added = placeAdditions(b, rules);
+  warnings.push(...added.warnings.filter((w) => roofCover === 'steel' || w.code !== 'shed-flat'));
+  if (added.errors.length) return { ok: false, errors: added.errors, warnings, items: [] };
   const interior = placeInterior(b, rules, posts);
   if (interior.errors.length) return { ok: false, errors: interior.errors, warnings, items: [] };
   warnings.push(...interior.warnings);
-  const runs = [...lumberRuns(b, rules, posts, trusses), ...shedRuns(b, rules, sheds, posts), ...finishRuns(b, rules, posts, trusses, sheds), ...interior.runs];
-  const extra = shedMetal(b, rules, sheds);
+  const runs = [...lumberRuns(b, rules, posts, trusses), ...shedRuns(b, rules, sheds, posts), ...additionRuns(b, rules, added), ...finishRuns(b, rules, posts, trusses, sheds), ...interior.runs];
   const merged = (base, more) => { for (const [k, n] of Object.entries(more)) add(base, k, n); return base; };
+  // Everything hung on or framed onto the building: lean-tos and porches, then awnings and dormers.
+  const extraFor = (r) => {
+    const s = shedMetal(b, r, sheds), a = additionMetal(b, r, added);
+    for (const k of ['roof', 'wall', 'trim', 'closures']) merged(s[k], a[k]);
+    return { ...s, roofSqFt: s.roofSqFt + a.roofSqFt, wallSqFt: s.wallSqFt + a.wallSqFt, surfaces: a.surfaces };
+  };
+  const extra = extraFor(rules);
   // Standing seam panels are narrower than rib panels; shingles and wood walls take no panels at all.
   const roofRules = roofCover === 'standing' ? { ...rules, panelCoverageIn: rules.seamCoverageIn } : rules;
-  if (roofCover === 'standing') extra.roof = shedMetal(b, roofRules, sheds).roof;
+  if (roofCover === 'standing') extra.roof = extraFor(roofRules).roof;
   if (roofCover === 'shingles') extra.roof = {};
   if (roofCover !== 'steel') extra.closures = {};
   if (wallCover !== 'steel') extra.wall = {};
   const mainRoof = roofCover === 'shingles' ? {} : roofPanels(b, roofRules);
   const mainWalls = wallCover === 'steel' ? wallPanels(b, rules) : { tally: {}, short: {} };
   const totalSqFt = { roofSqFt: areas(b).roofSqFt + extra.roofSqFt, wallSqFt: areas(b).wallSqFt + extra.wallSqFt };
-  const cover = coverParts(b, rules, { sheds, roofTally: merged({ ...mainRoof }, extra.roof), ...totalSqFt });
+  const cover = coverParts(b, rules, { sheds, more: extra.surfaces, extraWall: (r) => extraFor(r).wall, roofTally: merged({ ...mainRoof }, extra.roof), ...totalSqFt });
   if (cover.errors.length) return { ok: false, errors: cover.errors, warnings, items: [] };
   warnings.push(...cover.warnings);
   const shellTrim = merged(trim(b, rules), extra.trim);
@@ -115,7 +133,8 @@ export function design(input, ruleOverrides) {
   const items = [
     ...lines('Framing', 'Posts', rules.postSize, postTally),
     ...lines('Framing', 'Laminated Columns', rules.columnSize, columnTally),
-    { group: 'Framing', name: trussType.name ?? TRUSS_NAMES[b.roof], size: `${b.widthIn / 12} ft span, ${b.roof === 'gambrel' ? `${GAMBREL.lowerPitch}/12 and ${GAMBREL.upperPitch}/12` : `${b.pitch}/12`}${trussType.size}`, length: '', qty: trusses.length, ft: b.widthIn / 12 },
+    ...(commons ? [{ group: 'Framing', name: trussType.name ?? TRUSS_NAMES[b.roof], size: `${b.widthIn / 12} ft span, ${b.roof === 'gambrel' ? `${GAMBREL.lowerPitch}/12 and ${GAMBREL.upperPitch}/12` : `${b.pitch}/12`}${trussType.size}`, length: '', qty: commons, ft: b.widthIn / 12 }] : []),
+    ...(hip ? [{ group: 'Framing', name: 'Hip Truss Sets', size: `${b.widthIn / 12} ft span, ${b.pitch}/12, ${hipLines} truss lines and the jacks for one end`, length: '', qty: 2, ft: (b.widthIn / 12) * hipLines }] : []),
     ...lumber('Skirt Boards'),
     ...lumber('Wall Girts'),
     ...lumber('Roof Purlins'),
@@ -123,6 +142,10 @@ export function design(input, ruleOverrides) {
     ...lumber('Rafter Ledgers'),
     ...lumber('Eave Beams'),
     ...lumber('Rafters'),
+    ...lumber('Hip Rafters'),
+    ...lumber('Dormer Framing'),
+    ...lumber('Dormer Rafters'),
+    ...additionItems(b, rules, added).filter((i) => i.group === 'Framing'),
     ...lumber('Headers'),
     ...lumber('Opening Blocking'),
     ...FINISH_LUMBER.flatMap((name) => lumber(name)),
@@ -141,6 +164,7 @@ export function design(input, ruleOverrides) {
       name: { slider: 'Sliding Door', walk: 'Walk Door', overhead: 'Overhead Door', window: 'Window' }[o.type],
       size: `${feetInches(o.widthIn)} x ${feetInches(o.heightIn)}`, length: '', qty: 1, sqFt: (o.widthIn * o.heightIn) / 144,
     })),
+    ...additionItems(b, rules, added).filter((i) => i.group !== 'Framing'),
     ...INTERIOR_LUMBER.flatMap((name) => lumber(name, 'Interior')),
     ...interior.items,
     ...finish.items,
@@ -151,15 +175,15 @@ export function design(input, ruleOverrides) {
     ok: true, errors: [], warnings, items,
     summary: {
       floorSqFt: (b.widthIn * b.lengthIn) / 144,
-      shedSqFt: sheds.reduce((sum, s) => sum + (s.lengthIn * s.depthIn) / 144, 0),
+      shedSqFt: sheds.reduce((sum, s) => sum + (s.lengthIn * s.depthIn + s.ownedCorners.length * s.depthIn ** 2) / 144, 0),
       posts: posts.length + shedPosts.length + interior.posts.length, trusses: trusses.length,
       girtRowsPerWall: girtRowCount(b, rules), purlinRowsPerSide: purlinRowsPerSide(b, rules), purlinRows: purlinRows(b, rules),
       peakIn: b.eaveIn + b.riseIn,
       loftSqFt: interior.loft?.sqFt ?? 0, atticSqFt: trussType.attic?.sqFt ?? 0, linerSqFt: finish.linerSqFt, slabSqFt: finish.slabSqFt,
       screws: fasteners.count, roofSqFt: areas(b).roofSqFt + extra.roofSqFt, wallSqFt: areas(b).wallSqFt + extra.wallSqFt,
     },
-    geometry: { building: b, posts, trusses, girtRows, sheds, partitions: interior.partitions, loft: interior.loft, attic: trussType.attic, cupolas: finish.cupolas, planes: b.planes.map((p) => ({ ...p, purlinRows: planePurlinRows(p, rules) })), purlinRowLengthIn: b.lengthIn + 2 * b.endOverhangIn },
-    cuts: cutList(rules, [...posts, ...sheds.flatMap((sh) => sh.posts.map((p) => ({ ...p, where: sh.label, sloped: p.line !== 'outer' }))), ...interior.posts], runs),
+    geometry: { building: b, posts, trusses, girtRows, sheds, awnings: added.awnings, dormers: added.dormers, partitions: interior.partitions, loft: interior.loft, attic: trussType.attic, cupolas: finish.cupolas, planes: b.planes.map((p) => ({ ...p, purlinRows: planePurlinRows(p, rules) })), purlinRowLengthIn: b.lengthIn + 2 * b.endOverhangIn, hip: hip ? { ...hipGeo(b), commons, rows: hipPurlinRows(b, rules) } : null },
+    cuts: cutList(rules, [...(hip ? posts.map((p) => ({ ...p, where: WALL_NAMES[p.wall], sloped: false })) : posts), ...sheds.flatMap((sh) => sh.posts.map((p) => ({ ...p, where: sh.label, sloped: p.line !== 'outer' && p.line !== 'corner' }))), ...interior.posts], runs),
     rules,
     unverifiedRules: unverifiedRules(),
   };

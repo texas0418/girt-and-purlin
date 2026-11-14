@@ -13,11 +13,15 @@ export const WALLS = ['front', 'back', 'left', 'right'];
 const GROUND_DOORS = new Set(['slider', 'walk', 'overhead']);
 const TYPES = new Set([...GROUND_DOORS, 'window']);
 const SHEDS = { leanto: 'lean-to', porch: 'porch' };
-export const ROOFS = ['gable', 'mono', 'gambrel'];
+const AWNING_GAP_IN = defaultRules.awningGapIn.value;
+export const ROOFS = ['gable', 'mono', 'gambrel', 'hip'];
 // Scissor and attic trusses go with a gable roof. Other roofs take the truss their shape calls for.
 export const TRUSSES = ['common', 'scissor', 'attic'];
 // A gambrel's proportions are fixed by the rules: the lower slope, the upper slope, and where the break sits.
 export const GAMBREL = { lowerPitch: defaultRules.gambrelLowerPitch.value, upperPitch: defaultRules.gambrelUpperPitch.value, breakShare: defaultRules.gambrelBreakShare.value };
+// The two walls each wall meets, at the start and at the end of its own measure.
+const START_CORNER = { front: 'left', back: 'left', left: 'front', right: 'front' };
+const END_CORNER = { front: 'right', back: 'right', left: 'back', right: 'back' };
 const NAMES = { slider: 'sliding door', walk: 'walk door', overhead: 'overhead door', window: 'window' };
 
 export function normalize(input) {
@@ -55,6 +59,11 @@ export function normalize(input) {
   };
   b.roof = input.roof ?? 'gable';
   if (!ROOFS.includes(b.roof)) { errors.push('Roof shape is not one of the choices.'); b.roof = 'gable'; }
+  if (b.roof === 'hip') {
+    // A hip roof has one eave all the way around, so one overhang serves every side.
+    b.endOverhangIn = b.overhangIn;
+    if (b.lengthIn < b.widthIn - 0.01) errors.push('A hip roof needs the length to be at least the width. Swap the two numbers.');
+  }
   b.truss = b.roof === 'gable' ? (input.truss ?? 'common') : 'common';
   if (!TRUSSES.includes(b.truss)) { errors.push('Truss type is not one of the choices.'); b.truss = 'common'; }
   if (b.truss === 'scissor') {
@@ -95,29 +104,31 @@ export function normalize(input) {
   });
 
   // Lean-tos and porches. The roof starts dropIn below the main eave and falls away from the wall.
-  (input.sheds ?? []).forEach((s, i) => {
-    if (!(s.kind in SHEDS)) { errors.push(`Addition ${i + 1} has an unknown type.`); return; }
-    if (!WALLS.includes(s.wall)) { errors.push(`Addition ${i + 1} is not on a wall.`); return; }
-    const name = `The ${SHEDS[s.kind]} on the ${s.wall} wall`;
+  // A wraparound porch is one porch on each wall it covers, joined at the corners.
+  const underRoofIn = (wall) => (edgeOverhangIn(b, wall) > 0 ? eaveDropIn(b, wall) + 6 : 0);
+  const addShed = (s, i, wrap = null) => {
+    const name = `The ${wrap ? 'wraparound porch' : SHEDS[s.kind]} on the ${s.wall} wall`;
     const wallLen = wallLengthIn(b, s.wall);
     const sh = {
-      kind: s.kind, wall: s.wall,
+      kind: s.kind, wall: s.wall, inputIndex: i,
       depthIn: num(s.depth, `${name} depth`, 4, 40) * 12,
       pitch: num(s.pitch ?? 3, `${name} roof pitch`, 1, 12),
       dropIn: num(s.drop ?? 0, `${name} drop below the eave`, 0, 12) * 12,
       startIn: num(s.start ?? 0, `${name} position`, 0, 400) * 12,
       enclosed: s.kind === 'leanto' && !!s.enclosed,
     };
+    if (wrap) Object.assign(sh, { wrap: i, cornerStart: wrap.walls.includes(START_CORNER[s.wall]), cornerEnd: wrap.walls.includes(END_CORNER[s.wall]) });
     sh.lengthIn = s.length == null ? wallLen - sh.startIn : num(s.length, `${name} length`, 4, 400) * 12;
     sh.endIn = sh.startIn + sh.lengthIn;
-    sh.highIn = (isGable(sh.wall) ? b.eaveIn : wallTopIn(b, sh.wall, 0)) - sh.dropIn;
+    // A wraparound porch holds one height all the way around, set from the lowest eave.
+    sh.highIn = (wrap || isGable(sh.wall) ? b.eaveIn : wallTopIn(b, sh.wall, 0)) - sh.dropIn;
     sh.lowIn = sh.highIn - sh.depthIn * sh.pitch / 12;
     if (sh.lengthIn < 48 - 0.01 || sh.endIn > wallLen + 0.01) errors.push(`${name} runs past the end of the wall.`);
     else if (sh.lowIn < MIN_SHED_LOW_IN - 0.01) {
       errors.push(`${name} would be only ${Math.floor(sh.lowIn / 12)} ft ${Math.round(sh.lowIn % 12)} in high at its low side. Make it shallower or flatter, or raise the wall.`);
     }
     // The roof has to tuck under the main roof's overhang and its fascia.
-    const clearIn = edgeOverhangIn(b, sh.wall) > 0 ? eaveDropIn(b, sh.wall) + 6 : 0;
+    const clearIn = wrap ? wrap.clearIn : underRoofIn(sh.wall);
     if (sh.dropIn < clearIn - 0.01) {
       errors.push(`${name} would run into the main roof's overhang. Set it at least ${Math.ceil(clearIn)} in below the main eave.`);
     }
@@ -125,6 +136,71 @@ export function normalize(input) {
       errors.push(`${name} overlaps another addition on that wall.`);
     }
     b.sheds.push(sh);
+  };
+  (input.sheds ?? []).forEach((s, i) => {
+    if (s.kind === 'awning') return;
+    if (s.kind === 'wrap') {
+      const walls = WALLS.filter((wall) => (s.walls ?? []).includes(wall));
+      if (walls.length < 2 || (walls.length === 2 && isGable(walls[0]) === isGable(walls[1]))) { errors.push('The wraparound porch needs walls that touch at a corner.'); return; }
+      const clearIn = Math.max(...walls.map(underRoofIn));
+      for (const wall of walls) addShed({ kind: 'porch', wall, depth: s.depth, pitch: s.pitch, drop: s.drop, start: 0 }, i, { walls, clearIn });
+      return;
+    }
+    if (!(s.kind in SHEDS)) { errors.push(`Addition ${i + 1} has an unknown type.`); return; }
+    if (!WALLS.includes(s.wall)) { errors.push(`Addition ${i + 1} is not on a wall.`); return; }
+    addShed(s, i);
+  });
+
+  // Awnings: a small roof hung on the wall with brackets, over a door or window or in a spot of its own.
+  b.awnings = [];
+  (input.sheds ?? []).forEach((s, i) => {
+    if (s.kind !== 'awning') return;
+    if (!WALLS.includes(s.wall)) { errors.push(`Addition ${i + 1} is not on a wall.`); return; }
+    const name = `The awning on the ${s.wall} wall`;
+    const a = {
+      index: i, wall: s.wall, over: s.over ?? null,
+      outIn: num(s.out ?? 3, `${name} depth`, 2, 8) * 12,
+      widthIn: num(s.width ?? 5, `${name} width`, 3, 40) * 12,
+      pitch: num(s.pitch ?? 4, `${name} roof pitch`, 1, 12),
+    };
+    if (b.walls[a.wall].open) errors.push(`${name} needs a closed wall to hang on.`);
+    if (a.over != null) {
+      const op = b.openings.find((o) => o.index === a.over);
+      if (!op || op.wall !== a.wall) { errors.push(`${name} is set over a door or window that is not on that wall. Pick another one, or give it its own spot.`); return; }
+      if (a.widthIn < op.widthIn - 0.01) errors.push(`${name} is narrower than the ${NAMES[op.type]} under it.`);
+      a.startIn = (op.startIn + op.endIn) / 2 - a.widthIn / 2;
+      a.lowIn = op.sillIn + op.heightIn + AWNING_GAP_IN;
+      a.overType = op.type;
+    } else {
+      a.startIn = num(s.start ?? 0, `${name} position`, 0, 400) * 12;
+      a.lowIn = MIN_SHED_LOW_IN;
+    }
+    a.endIn = a.startIn + a.widthIn;
+    a.highIn = a.lowIn + a.outIn * a.pitch / 12;
+    if (a.startIn < -0.01 || a.endIn > wallLengthIn(b, a.wall) + 0.01) errors.push(`${name} runs past the end of the wall.`);
+    const roomIn = (isGable(a.wall) ? b.eaveIn : wallTopIn(b, a.wall, 0)) - underRoofIn(a.wall);
+    if (a.highIn > roomIn + 0.01) errors.push(`${name} would reach up into the main roof. Make it flatter, or have it stick out less.`);
+    const hits = (other) => other.wall === a.wall && a.startIn < other.endIn - 0.01 && other.startIn < a.endIn - 0.01;
+    if (b.sheds.some(hits) || b.awnings.some(hits)) errors.push(`${name} overlaps another addition on that wall.`);
+    b.awnings.push(a);
+  });
+
+  // Dormers stand on the front or back slope of a gable or gambrel roof. atIn is the left edge, from the left end.
+  b.dormers = [];
+  b.dormersLeftOff = 0;
+  (input.dormers ?? []).forEach((d, i) => {
+    if (b.roof !== 'gable' && b.roof !== 'gambrel') { b.dormersLeftOff++; return; }
+    const name = `Dormer ${i + 1}`;
+    if (d.side !== 'front' && d.side !== 'back') { errors.push(`${name} is not on a roof slope.`); return; }
+    const dm = {
+      index: i, side: d.side, style: d.style === 'shed' ? 'shed' : 'gable', window: d.window !== false,
+      atIn: num(d.at ?? 0, `${name} position`, 0, 400) * 12,
+      widthIn: num(d.width ?? 6, `${name} width`, 3, 16) * 12,
+    };
+    dm.endIn = dm.atIn + dm.widthIn;
+    if (dm.atIn < 24 - 0.01 || dm.endIn > b.lengthIn - 24 + 0.01) errors.push(`${name} has to sit at least 2 ft in from each end of the building.`);
+    if (b.dormers.some((o) => o.side === dm.side && dm.atIn < o.endIn + 24 - 0.01 && o.atIn < dm.endIn + 24 - 0.01)) errors.push(`${name} is closer than 2 ft to another dormer.`);
+    b.dormers.push(dm);
   });
 
   // Interior walls. One that runs across sits a distance from the left end and is measured
@@ -245,12 +321,21 @@ export function roofPlanes(b) {
 }
 
 // How far the roof runs past a wall, and how far its edge hangs below the wall top there.
+// A hip roof: the main slopes are the gable cross-section, and a slope of the
+// same pitch closes each end. halfIn is the level run of every slope, eave
+// edge to ridge. ridgeIn is what is left of the ridge. hipIn is one hip, from
+// the corner of the eave up to the end of the ridge, measured along the roof.
+export function hipGeo(b) {
+  const halfIn = b.widthIn / 2 + b.overhangIn;
+  return { halfIn, k: Math.hypot(12, b.pitch) / 12, ridgeIn: b.lengthIn - b.widthIn, hipIn: Math.hypot(halfIn, halfIn, halfIn * b.pitch / 12) };
+}
+
 export function edgeOverhangIn(b, wall) {
   if (isGable(wall)) return b.endOverhangIn;
   return b.roof === 'gambrel' ? 0 : b.overhangIn;
 }
 export function eaveDropIn(b, wall) {
-  if (isGable(wall) || b.roof === 'gambrel') return 0;
+  if ((isGable(wall) && b.roof !== 'hip') || b.roof === 'gambrel') return 0;
   if (b.roof === 'mono' && wall === 'back') return 0;
   return b.overhangIn * b.pitch / 12;
 }
@@ -268,7 +353,8 @@ export function roofTopIn(b, yIn) {
 export function wallTopIn(b, wall, atIn) {
   if (wall === 'front') return b.line[0].h;
   if (wall === 'back') return b.line[b.line.length - 1].h;
-  return roofTopIn(b, atIn);
+  // The end walls of a hip roof stop level at the eave.
+  return b.roof === 'hip' ? b.eaveIn : roofTopIn(b, atIn);
 }
 
 // Where the roof line stands above a height, as [start, end] across the width. Null when it never does.
@@ -286,6 +372,7 @@ export function roofSpanAbove(b, heightIn) {
 
 // Wall area under the roof line on one gable end, in square inches.
 export function gableAreaIn(b) {
+  if (b.roof === 'hip') return b.widthIn * b.eaveIn;
   let a = 0;
   for (let i = 0; i < b.line.length - 1; i++) a += (b.line[i + 1].y - b.line[i].y) * (b.line[i].h + b.line[i + 1].h) / 2;
   return a;

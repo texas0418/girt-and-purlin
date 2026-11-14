@@ -1,7 +1,7 @@
 // Everything past the bare shell: wainscot, gutters, the steel liner,
 // insulation, footings, the slab, ridge vent and skylight panels. Each part
 // is counted only when the job turns it on in its options.
-import { wallLengthIn, wallTopIn, isOpen, isGable, closedWalls, litWalls, CORNERS } from './building.js';
+import { wallLengthIn, wallTopIn, isOpen, isGable, closedWalls, litWalls, hipGeo, CORNERS } from './building.js';
 import { wallAreaIn, doorOver } from './metal.js';
 import { add, fitStock, spans, feetInches } from './stock.js';
 import { boards, openSpans, WALL_NAMES } from './runs.js';
@@ -101,6 +101,10 @@ export function finishParts(b, rules, { posts, trusses, sheds, wallTally, roofTa
   const vaulted = b.truss === 'scissor';
   const closedIn = closedWalls(b).reduce((sum, wall) => sum + wallLengthIn(b, wall), 0);
   const roofRunIn = b.lengthIn + 2 * b.endOverhangIn;
+  const hip = b.roof === 'hip';
+  // A hip roof's ridge is shorter than the building by its width, and starts half a width in from the left end.
+  const ridgeIn = hip ? hipGeo(b).ridgeIn : roofRunIn;
+  const noRidge = hip ? 'This hip roof comes to a point with no ridge to speak of' : 'A single-slope roof has no ridge';
 
   // Wainscot: every wall panel is cut in two, with Z trim over the joint. Z trim butts end to end.
   let walls = wallTally;
@@ -141,18 +145,18 @@ export function finishParts(b, rules, { posts, trusses, sheds, wallTally, roofTa
     }
   }
   if (o.skylights) metal.push({ group: 'Metal', name: 'Skylight Panels', size: 'clear polycarbonate', length: feetInches(mainRoofPanelIn), qty: o.skylights, ft: mainRoofPanelIn / 12 });
-  const hasRidge = b.planes.some((p) => p.highEdge === 'ridge');
-  if (o.ridgeVent && !hasRidge) warnings.push({ code: 'no-ridge', text: 'A single-slope roof has no ridge, so no ridge vent is counted.' });
-  if (o.ridgeVent && hasRidge) metal.push({ group: 'Metal', name: 'Ridge Vent', size: '', length: feetInches(rules.ridgeVentPieceIn), qty: up(roofRunIn / rules.ridgeVentPieceIn) });
+  const hasRidge = b.planes.some((p) => p.highEdge === 'ridge') && ridgeIn >= 24 - EPS;
+  if (o.ridgeVent && !hasRidge) warnings.push({ code: 'no-ridge', text: `${noRidge}, so no ridge vent is counted.` });
+  if (o.ridgeVent && hasRidge) metal.push({ group: 'Metal', name: 'Ridge Vent', size: '', length: feetInches(rules.ridgeVentPieceIn), qty: up(ridgeIn / rules.ridgeVentPieceIn) });
 
   // Cupolas sit on the ridge: one in the middle, or two at the quarter points.
   let cupolas = [];
-  if (o.cupolas && !hasRidge) warnings.push({ code: 'no-ridge-cupola', text: 'A single-slope roof has no ridge, so no cupola is counted.' });
+  if (o.cupolas && !hasRidge) warnings.push({ code: 'no-ridge-cupola', text: `${noRidge}, so no cupola is counted.` });
   if (o.cupolas && hasRidge) {
     const table = rules.cupolaByRidgeFt;
-    const [, count, autoIn] = table.find(([maxFt]) => b.lengthIn <= maxFt * 12 + EPS) ?? table[table.length - 1];
+    const [, count, autoIn] = table.find(([maxFt]) => (hip ? ridgeIn : b.lengthIn) <= maxFt * 12 + EPS) ?? table[table.length - 1];
     const sizeIn = o.cupolaSizeIn || autoIn;
-    cupolas = (count === 1 ? [0.5] : [0.25, 0.75]).map((share) => ({ x: b.lengthIn * share, sizeIn }));
+    cupolas = (count === 1 ? [0.5] : [0.25, 0.75]).map((share) => ({ x: hip ? b.widthIn / 2 + ridgeIn * share : b.lengthIn * share, sizeIn }));
     metal.push({ group: 'Metal', name: 'Cupolas', size: `${sizeIn} in square`, length: '', qty: count });
     const ridgePitch = Math.max(...b.planes.filter((p) => p.highEdge === 'ridge').map((p) => p.pitch));
     if (ridgePitch > rules.cupolaBaseMaxPitch + EPS) {
@@ -161,13 +165,16 @@ export function finishParts(b, rules, { posts, trusses, sheds, wallTally, roofTa
   }
 
   if (o.gutters) {
-    const eaves = [...b.planes.filter((p) => p.lowEdge === 'eave').map((p) => ({ runIn: roofRunIn, highIn: p.lowIn })),
-      ...sheds.map((s) => ({ runIn: s.lengthIn + 2 * b.overhangIn, highIn: s.lowIn }))];
+    // A hip roof has gutter on all four eaves, joined by a corner piece where an end cap would go.
+    const eaves = [...b.planes.filter((p) => p.lowEdge === 'eave').map((p) => ({ runIn: roofRunIn, highIn: p.lowIn, caps: hip ? 0 : 2 })),
+      ...(hip ? [0, 1].map(() => ({ runIn: b.widthIn + 2 * b.overhangIn, highIn: b.eaveIn, caps: 0 })) : []),
+      ...sheds.map((s) => ({ runIn: s.eaveRunIn, highIn: s.lowIn, caps: s.freeEnds }))];
+    const corners = (hip ? 4 : 0) + sheds.reduce((n, s) => n + s.ownedCorners.length, 0);
     const t = { sections: 0, joiners: 0, hangers: 0, caps: 0, spouts: 0, spoutSections: 0 };
     for (const e of eaves) {
       const sections = up(e.runIn / rules.gutterSectionIn);
       const spouts = up(e.runIn / (rules.downspoutMaxRunFt * 12));
-      t.sections += sections; t.joiners += sections - 1; t.caps += 2; t.spouts += spouts;
+      t.sections += sections; t.joiners += sections - 1; t.caps += e.caps ?? 2; t.spouts += spouts;
       t.hangers += up(e.runIn / rules.gutterHangerSpacingIn) + 1;
       t.spoutSections += spouts * up(e.highIn / rules.gutterSectionIn);
     }
@@ -175,7 +182,8 @@ export function finishParts(b, rules, { posts, trusses, sheds, wallTally, roofTa
     items.push(
       { ...line('Gutters', 'Gutter', '', t.sections), length: len },
       line('Gutters', 'Gutter Joiners', '', t.joiners),
-      line('Gutters', 'Gutter End Caps', '', t.caps),
+      ...(t.caps ? [line('Gutters', 'Gutter End Caps', '', t.caps)] : []),
+      ...(corners ? [line('Gutters', 'Gutter Corners', 'outside corner', corners)] : []),
       line('Gutters', 'Gutter Hangers', '', t.hangers),
       line('Gutters', 'Gutter Outlets', '', t.spouts),
       { ...line('Gutters', 'Downspouts', '', t.spoutSections), length: len },

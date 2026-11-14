@@ -84,7 +84,7 @@ export function dxf(result) {
   for (const wall of WALLS) {
     const len = wallLengthIn(b, wall);
     const u = (atIn) => x0 + (MIRRORED[wall] ? len - atIn : atIn);
-    const top = isGable(wall) ? b.line.map((p) => [p.y, p.h]) : [[0, wallTopIn(b, wall, 0)], [len, wallTopIn(b, wall, 0)]];
+    const top = isGable(wall) && b.roof !== 'hip' ? b.line.map((p) => [p.y, p.h]) : [[0, wallTopIn(b, wall, 0)], [len, wallTopIn(b, wall, 0)]];
     line('ELEV-GRADE', x0 - 24, baseY, x0 + len + 24, baseY);
     line('ELEV-OUTLINE', u(0), baseY, u(0), baseY + top[0][1]);
     line('ELEV-OUTLINE', u(len), baseY, u(len), baseY + top[top.length - 1][1]);

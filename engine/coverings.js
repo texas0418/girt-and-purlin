@@ -1,7 +1,7 @@
 // Roof and wall coverings other than screw-down rib steel: standing seam
 // and shingles on the roof, board and batten or lap siding on the walls.
 // The choice covers the whole building, lean-tos and porches included.
-import { wallLengthIn, wallTopIn, isOpen, closedWalls, CORNERS } from './building.js';
+import { wallLengthIn, wallTopIn, isOpen, closedWalls, hipGeo, CORNERS } from './building.js';
 import { wallPanels } from './metal.js';
 import { shedMetal } from './sheds.js';
 import { planePurlinRows } from './runs.js';
@@ -15,11 +15,17 @@ export const ROOF_COVERS = ['steel', 'standing', 'shingles'];
 export const WALL_COVERS = ['steel', 'batten', 'lap'];
 
 // Every roof surface on the job: the main roof planes, then each lean-to or porch.
-function surfaces(b, rules, sheds) {
+function surfaces(b, rules, sheds, more = []) {
   const runIn = b.lengthIn + 2 * b.endOverhangIn;
+  // A hip roof is four slopes with no rakes: two long ones cut back at both ends, and a triangle over each end wall.
+  const g = b.roof === 'hip' ? hipGeo(b) : null;
+  const main = g ? [[runIn, (runIn + g.ridgeIn) / 2], [b.widthIn + 2 * b.overhangIn, g.halfIn]].flatMap(([eaveIn, meanIn]) => [0, 1].map(() => (
+    { name: 'The roof', pitch: b.pitch, slopeIn: g.halfIn * g.k, runIn: eaveIn, areaIn: meanIn * g.halfIn * g.k, rows: planePurlinRows(b.planes[0], rules), eave: true, top: 'ridge', rakes: 0 })))
+    : null;
   return [
-    ...b.planes.map((p) => ({ name: 'The roof', pitch: p.pitch, slopeIn: p.slopeIn, runIn, rows: planePurlinRows(p, rules), eave: p.lowEdge === 'eave', top: p.highEdge })),
-    ...sheds.map((s) => ({ name: `The ${s.label}`, pitch: s.pitch, slopeIn: s.slopeIn, runIn: s.lengthIn + 2 * b.overhangIn, rows: s.purlinRows, eave: true, top: 'wall' })),
+    ...main ?? b.planes.map((p) => ({ name: 'The roof', pitch: p.pitch, slopeIn: p.slopeIn, runIn, rows: planePurlinRows(p, rules), eave: p.lowEdge === 'eave', top: p.highEdge })),
+    ...sheds.map((s) => ({ name: `The ${s.label}`, pitch: s.pitch, slopeIn: s.slopeIn, runIn: s.eaveRunIn, areaIn: s.roofAreaIn, rows: s.purlinRows, eave: true, top: 'wall', rakes: s.freeEnds })),
+    ...more,
   ];
 }
 
@@ -29,7 +35,7 @@ function standing(tallyIn, stockFt) {
   const out = {};
   const longest = Math.max(...stockFt) * 12;
   for (const [k, n] of Object.entries(tallyIn)) {
-    const parts = up(Number(k) / longest);
+    const parts = Math.ceil((Number(k) - EPS) / longest);
     add(out, fitStock(Number(k) / parts, stockFt), n * parts);
   }
   return out;
@@ -37,11 +43,11 @@ function standing(tallyIn, stockFt) {
 const boardLines = (group, name, size, tally) => Object.keys(tally).map(Number).sort((x, y) => y - x)
   .map((k) => ({ group, name, size, length: `${k} ft`, qty: tally[k], ft: k }));
 
-export function coverParts(b, rules, { sheds, roofTally, roofSqFt, wallSqFt }) {
+export function coverParts(b, rules, { sheds, more = [], extraWall = (r) => shedMetal(b, r, sheds).wall, roofTally, roofSqFt, wallSqFt }) {
   const o = b.options;
   const errors = [], warnings = [], items = [];
   const dropTrim = new Set();
-  const roofs = surfaces(b, rules, sheds);
+  const roofs = surfaces(b, rules, sheds, more);
 
   if (o.roofCover !== 'steel' && o.skylights) errors.push('Skylight panels only fit rib steel. Take the skylights off or go back to steel panels on the roof.');
 
@@ -54,7 +60,8 @@ export function coverParts(b, rules, { sheds, roofTally, roofSqFt, wallSqFt }) {
       warnings.push({ code: 'seam-long', text: `The standing seam panels would be ${feetInches(longest)} long. They cannot be lapped end to end, and their maker recommends no longer than ${rules.seamMaxPanelFt} ft.` });
     }
     // One clip on every purlin row under every seam.
-    const clips = roofs.reduce((n, r) => n + up(r.runIn / rules.seamCoverageIn) * r.rows, 0);
+    // On a slope cut back by hips the seams get shorter toward each end, so the count follows the area.
+    const clips = roofs.reduce((n, r) => n + up(up(r.runIn / rules.seamCoverageIn) * r.rows * (r.areaIn ?? r.slopeIn * r.runIn) / (r.slopeIn * r.runIn)), 0);
     items.push(
       line('Metal', 'Panel Clips', 'for standing seam', clips),
       line('Metal', 'Clip Screws', rules.seamClipScrewSize, clips * rules.seamScrewsPerClip),
@@ -65,14 +72,17 @@ export function coverParts(b, rules, { sheds, roofTally, roofSqFt, wallSqFt }) {
     for (const r of roofs) {
       if (r.pitch < rules.shingleMinPitch - EPS) errors.push(`${r.name} is flatter than ${rules.shingleMinPitch} in 12. Shingles need at least that much slope.`);
     }
-    for (const name of ['Ridge Cap', 'High Side Eave Trim', 'Gambrel Flashing', 'Eave Trim', 'Rake Trim']) dropTrim.add(name);
+    for (const name of ['Ridge Cap', 'Hip Cap', 'High Side Eave Trim', 'Gambrel Flashing', 'Eave Trim', 'Rake Trim', 'Valley Flashing', 'Transition Flashing']) dropTrim.add(name);
     // Two layers of underlayment on the flatter slopes, one on the rest.
-    const feltSqFt = roofs.reduce((sum, r) => sum + (r.slopeIn * r.runIn) / 144 * (r.pitch < rules.underlaymentDoubleBelowPitch - EPS ? 2 : 1), 0);
+    const feltSqFt = roofs.reduce((sum, r) => sum + (r.areaIn ?? r.slopeIn * r.runIn) / 144 * (r.pitch < rules.underlaymentDoubleBelowPitch - EPS ? 2 : 1), 0);
     const covers = rules.dripEdgeIn - rules.dripEdgeLapIn;
     // Drip edge on every eave and rake, and along the high side of a single slope.
-    const drip = roofs.reduce((n, r) => n + (r.eave ? up(r.runIn / covers) : 0) + (r.top === 'high' ? up(r.runIn / covers) : 0) + 2 * up(r.slopeIn / covers), 0);
-    const starterIn = roofs.reduce((sum, r) => sum + (r.eave ? r.runIn : 0) + 2 * r.slopeIn, 0);
-    const ridgeIn = b.planes.some((p) => p.highEdge === 'ridge') ? b.lengthIn + 2 * b.endOverhangIn : 0;
+    const drip = roofs.reduce((n, r) => n + (r.eave ? up(r.runIn / covers) : 0) + (r.top === 'high' ? up(r.runIn / covers) : 0) + (r.rakes ?? 2) * up(r.slopeIn / covers), 0);
+    const starterIn = roofs.reduce((sum, r) => sum + (r.eave ? r.runIn : 0) + (r.rakes ?? 2) * r.slopeIn, 0);
+    // Cap shingles cover the ridge, and on a hip roof the four hips as well.
+    const g = b.roof === 'hip' ? hipGeo(b) : null;
+    const ridgeIn = (g ? g.ridgeIn + 4 * g.hipIn : b.planes.some((p) => p.highEdge === 'ridge') ? b.lengthIn + 2 * b.endOverhangIn : 0)
+      + sheds.reduce((sum, s) => sum + s.ownedCorners.length * s.hipIn, 0);
     const squares = roofSqFt * (1 + rules.shingleWaste) / 100;
     items.push(
       line('Roofing', 'Roof Sheathing', rules.roofSheathingSize, up(roofSqFt / 32)),
@@ -105,7 +115,7 @@ export function coverParts(b, rules, { sheds, roofTally, roofSqFt, wallSqFt }) {
     const wide = { ...rules, panelCoverageIn: rules.battenBoardCoverIn };
     const main = wallPanels(b, wide);
     const tall = { ...main.tally };
-    for (const more of [main.short, shedMetal(b, wide, sheds).wall]) for (const [k, n] of Object.entries(more)) add(tall, Number(k), n);
+    for (const part of [main.short, extraWall(wide)]) for (const [k, n] of Object.entries(part)) add(tall, Number(k), n);
     const boards = standing(tall, rules.lumberStockFt);
     items.push(
       ...boardLines('Siding', 'Siding Boards', rules.battenBoardSize, boards),
